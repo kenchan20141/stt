@@ -3,11 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>實時粵普字幕</title>
+    <title>3D 實時粵普字幕機</title>
 
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+HK:wght@400;500;700&family=Noto+Serif+HK:wght@600;700&display=swap" rel="stylesheet">
+
+    <!-- Three.js 3D 核心庫 -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 
     <!-- 權威粵拼模組 -->
     <script type="module">
@@ -23,7 +26,7 @@
 
     <style>
         :root {
-            --bg: #090a0f;
+            --bg: #05070a;
             --canto-bg: #090a0f;
             --mando-bg: #0d1117;
             --card-border: rgba(255, 255, 255, 0.08);
@@ -45,16 +48,83 @@
             user-select: none;
         }
 
-        /* 解決手機瀏覽器導航列問題，支援 100dvh 與安全邊界 */
+        /* 3D 演播室環境背景 */
         body {
             background-color: var(--bg);
             color: var(--cantonese);
             height: 100vh;
             height: 100dvh;
             display: flex;
-            flex-direction: column;
+            align-items: center;
+            justify-content: center;
             overflow: hidden;
             -webkit-font-smoothing: antialiased;
+            perspective: 1200px;
+        }
+
+        /* Three.js 3D 機體全屏畫布 */
+        #threeCanvas {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            z-index: 1;
+            pointer-events: none;
+        }
+
+        /* 3D 字幕機主殼容器：立體金屬提詞機結構 */
+        .teleprompter-rig {
+            position: relative;
+            z-index: 10;
+            width: 100%;
+            max-width: 860px;
+            height: 100vh;
+            height: 100dvh;
+            max-height: 960px;
+            display: flex;
+            flex-direction: column;
+            padding: 20px 24px 28px 24px;
+            box-sizing: border-box;
+            pointer-events: auto;
+            transform-style: preserve-3d;
+            transition: transform 0.15s ease-out;
+        }
+
+        @media (max-width: 768px) {
+            .teleprompter-rig {
+                max-width: 100%;
+                height: 100dvh;
+                max-height: none;
+                padding: 10px 8px 16px 8px;
+            }
+        }
+
+        /* 嵌入式高解析提詞屏機體 */
+        .rig-screen-enclosure {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            background: #090a0f;
+            border-radius: 12px;
+            border: 3px solid #1e2638;
+            box-shadow: 
+                0 0 0 1px rgba(0, 0, 0, 0.8),
+                0 20px 45px rgba(0, 0, 0, 0.9),
+                inset 0 0 20px rgba(0, 0, 0, 0.85);
+            overflow: hidden;
+            position: relative;
+            min-height: 0;
+        }
+
+        /* 提詞機光學微弧反射紋理 */
+        .rig-screen-enclosure::after {
+            content: "";
+            position: absolute;
+            inset: 0;
+            background: linear-gradient(135deg, rgba(255, 255, 255, 0.035) 0%, rgba(255, 255, 255, 0) 40%, rgba(0, 0, 0, 0.2) 100%);
+            pointer-events: none;
+            z-index: 25;
         }
 
         /* 頂部控制欄 */
@@ -64,7 +134,7 @@
             justify-content: space-between;
             align-items: center;
             border-bottom: 1px solid var(--card-border);
-            background: #090a0f; /* 實色防透光 */
+            background: #090a0f;
             z-index: 30;
             flex-shrink: 0;
         }
@@ -117,7 +187,7 @@
             box-shadow: 0 0 16px rgba(16, 185, 129, 0.5);
         }
 
-        /* 雙欄主視圖容器：加入 min-height: 0 防止字多撐破父容器 */
+        /* 雙欄主視圖容器 */
         .viewport-container {
             flex: 1;
             display: flex;
@@ -127,7 +197,7 @@
             min-height: 0; 
         }
 
-        /* 欄位封裝：min-height: 0 是 flex 滾動裁切關鍵 */
+        /* 欄位封裝 */
         .column-box {
             display: flex;
             flex-direction: column;
@@ -147,7 +217,7 @@
             background-color: var(--mando-bg);
         }
 
-        /* 標籤欄：採用實體不透光背景與高層級，文字往上滑動絕對不會重疊穿透 */
+        /* 標籤欄 */
         .column-header {
             padding: 8px 18px;
             display: flex;
@@ -159,11 +229,11 @@
         }
 
         .canto-column .column-header {
-            background: #090a0f; /* 與粵語區純黑背景融為一體但不透光 */
+            background: #090a0f;
         }
 
         .mando-column .column-header {
-            background: #0d1117; /* 與普通話區背景一致但不透光 */
+            background: #0d1117;
         }
 
         .pane-tag {
@@ -193,7 +263,7 @@
             color: #64748b;
         }
 
-        /* 獨立滾動區域：底部留足 padding 與 safe-area-inset */
+        /* 獨立滾動區域 */
         .scroll-body {
             flex: 1;
             overflow-y: auto;
@@ -207,12 +277,11 @@
             padding: 16px 20px 40px 20px;
         }
 
-        /* 底部增加 safe-area-inset 安全空間，保證功能鍵不遮擋 */
         .mando-scroll-body {
             padding: 16px 20px 20px 20px;
         }
 
-        /* 底部安全緩衝墊片：物理撐開最底行文字 */
+        /* 底部安全緩衝墊片 */
         .bottom-safe-spacer {
             height: calc(80px + env(safe-area-inset-bottom, 24px));
             width: 100%;
@@ -389,12 +458,10 @@
             50% { opacity: 1; }
         }
 
-        /* 讓粵語在未出字或打字時，也能有專屬的閃爍光標 */
         .cantonese-content .typing-cursor::after {
             color: var(--cantonese);
         }
 
-        /* 確保空 span 也能把光標高度撐起來顯示 */
         .typing-cursor {
             display: inline-block;
             min-width: 1px;
@@ -403,68 +470,81 @@
 </head>
 <body>
 
-    <header>
-        <span class="brand-title">粵普實時字幕</span>
-        <div class="btn-group">
-            <button class="icon-btn" title="切換字體" onclick="cycleFontSize()">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M3.5 17.5L6.5 9.5L9.5 17.5"></path>
-                    <path d="M4.8 14.5H8.2"></path>
-                    <path d="M12.5 17.5L16.5 6.5L20.5 17.5"></path>
-                    <path d="M14 13.5H19"></path>
-                </svg>
-            </button>
-            <button id="toggleBtn" class="icon-btn power-btn" title="啟動識別" onclick="toggleSpeech()">
-                <svg id="playIcon" viewBox="0 0 24 24" fill="currentColor">
-                    <path d="M8 5.14v13.72a1 1 0 0 0 1.5.86l11-6.86a1 1 0 0 0 0-1.72l-11-6.86a1 1 0 0 0-1.5.86z"></path>
-                </svg>
-                <svg id="pauseIcon" style="display:none;" viewBox="0 0 24 24" fill="currentColor">
-                    <rect x="6" y="5" width="4" height="14" rx="1.5"></rect>
-                    <rect x="14" y="5" width="4" height="14" rx="1.5"></rect>
-                </svg>
-            </button>
-        </div>
-    </header>
+    <!-- 3D 演播室立體字幕機實體底層 -->
+    <canvas id="threeCanvas"></canvas>
 
-    <div id="fontToast">字體 標準</div>
+    <!-- 3D 物理提詞機主體裝配架 -->
+    <main id="teleprompterRig" class="teleprompter-rig">
 
-    <!-- 上下獨立視口 -->
-    <div class="viewport-container">
-        
-        <!-- 上欄：粵語區 -->
-        <section class="column-box canto-column">
-            <div class="column-header">
-                <span class="pane-tag tag-canto">粵語原文</span>
-                <div style="display:flex; align-items:center; gap:8px;">
-                    <span id="charCount" class="char-counter">0 字</span>
-                    <button class="icon-btn" style="width:24px; height:24px;" onclick="openPhoneticModal()" title="粵拼">
+        <!-- 提詞機嵌入式屏幕箱體 -->
+        <div class="rig-screen-enclosure">
+
+            <header>
+                <span class="brand-title">實時粵普字幕</span>
+                <div class="btn-group">
+                    <button class="icon-btn" title="切換字體" onclick="cycleFontSize()">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
-                            <path d="M3 18v-6a9 9 0 0 1 18 0v6"></path>
-                            <path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z"></path>
+                            <path d="M3.5 17.5L6.5 9.5L9.5 17.5"></path>
+                            <path d="M4.8 14.5H8.2"></path>
+                            <path d="M12.5 17.5L16.5 6.5L20.5 17.5"></path>
+                            <path d="M14 13.5H19"></path>
+                        </svg>
+                    </button>
+                    <button id="toggleBtn" class="icon-btn power-btn" title="啟動識別" onclick="toggleSpeech()">
+                        <svg id="playIcon" viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M8 5.14v13.72a1 1 0 0 0 1.5.86l11-6.86a1 1 0 0 0 0-1.72l-11-6.86a1 1 0 0 0-1.5.86z"></path>
+                        </svg>
+                        <svg id="pauseIcon" style="display:none;" viewBox="0 0 24 24" fill="currentColor">
+                            <rect x="6" y="5" width="4" height="14" rx="1.5"></rect>
+                            <rect x="14" y="5" width="4" height="14" rx="1.5"></rect>
                         </svg>
                     </button>
                 </div>
-            </div>
-            <div id="cantoScroll" class="scroll-body canto-scroll-body">
-                <div class="cantonese-content">
-                    <span id="confirmedPart"></span><span id="interimPart" class="interim-text"></span>
-                </div>
-            </div>
-        </section>
+            </header>
 
-        <!-- 下欄：普通話區 -->
-        <section class="column-box mando-column">
-            <div class="column-header">
-                <span class="pane-tag tag-mando">普通話翻譯</span>
-            </div>
-            <div id="mandoScroll" class="scroll-body mando-scroll-body">
-                <div id="mandarinContent" class="mandarin-content"></div>
-                <!-- 防手機功能鍵/手勢條遮擋墊片 -->
-                <div class="bottom-safe-spacer"></div>
-            </div>
-        </section>
+            <div id="fontToast">字體 標準</div>
 
-    </div>
+            <!-- 上下獨立視口 -->
+            <div class="viewport-container">
+                
+                <!-- 上欄：粵語區 -->
+                <section class="column-box canto-column">
+                    <div class="column-header">
+                        <span class="pane-tag tag-canto">粵語原文</span>
+                        <div style="display:flex; align-items:center; gap:8px;">
+                            <span id="charCount" class="char-counter">0 字</span>
+                            <button class="icon-btn" style="width:24px; height:24px;" onclick="openPhoneticModal()" title="粵拼">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+                                    <path d="M3 18v-6a9 9 0 0 1 18 0v6"></path>
+                                    <path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z"></path>
+                                </svg>
+                            </button>
+                        </div>
+                    </div>
+                    <div id="cantoScroll" class="scroll-body canto-scroll-body">
+                        <div class="cantonese-content">
+                            <span id="confirmedPart"></span><span id="interimPart" class="interim-text"></span>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- 下欄：普通話區 -->
+                <section class="column-box mando-column">
+                    <div class="column-header">
+                        <span class="pane-tag tag-mando">普通話翻譯</span>
+                    </div>
+                    <div id="mandoScroll" class="scroll-body mando-scroll-body">
+                        <div id="mandarinContent" class="mandarin-content"></div>
+                        <!-- 防手機功能鍵/手勢條遮擋墊片 -->
+                        <div class="bottom-safe-spacer"></div>
+                    </div>
+                </section>
+
+            </div>
+
+        </div>
+
+    </main>
 
     <!-- 粵拼彈窗 -->
     <div id="phoneticModal" class="modal-overlay" onclick="closeModalOnBackdrop(event)">
@@ -491,6 +571,123 @@
     </div>
 
     <script>
+        /* ------------------ 0. Three.js 3D 演播室字幕機實體構建 ------------------ */
+        const canvas = document.getElementById('threeCanvas');
+        const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 100);
+        camera.position.set(0, 0, 24);
+
+        // 機體主容器
+        const machineGroup = new THREE.Group();
+        scene.add(machineGroup);
+
+        // 金屬遮光外殼
+        const hoodMat = new THREE.MeshStandardMaterial({
+            color: 0x141822,
+            metalness: 0.82,
+            roughness: 0.28
+        });
+
+        const bezelMat = new THREE.MeshStandardMaterial({
+            color: 0x222a38,
+            metalness: 0.9,
+            roughness: 0.2
+        });
+
+        // 機身主箱體
+        const chassisGeo = new THREE.BoxGeometry(19.5, 23.5, 2.0);
+        const chassis = new THREE.Mesh(chassisGeo, hoodMat);
+        chassis.position.z = -1.2;
+        machineGroup.add(chassis);
+
+        // 頂部遮光翼板
+        const topHoodGeo = new THREE.BoxGeometry(19.6, 0.35, 3.2);
+        const topHood = new THREE.Mesh(topHoodGeo, bezelMat);
+        topHood.position.set(0, 11.8, 0.4);
+        topHood.rotation.x = 0.15;
+        machineGroup.add(topHood);
+
+        // 左側遮光翼板
+        const leftHoodGeo = new THREE.BoxGeometry(0.35, 23.6, 3.2);
+        const leftHood = new THREE.Mesh(leftHoodGeo, bezelMat);
+        leftHood.position.set(-9.85, 0, 0.4);
+        leftHood.rotation.y = -0.15;
+        machineGroup.add(leftHood);
+
+        // 右側遮光翼板
+        const rightHood = leftHood.clone();
+        rightHood.position.x = 9.85;
+        rightHood.rotation.y = 0.15;
+        machineGroup.add(rightHood);
+
+        // 機身四角裝配內六角螺釘
+        const boltGeo = new THREE.CylinderGeometry(0.18, 0.18, 0.4, 6);
+        const boltMat = new THREE.MeshStandardMaterial({ color: 0x64748b, metalness: 0.95, roughness: 0.1 });
+        const boltOffsets = [
+            [-9.2, 11.2], [9.2, 11.2],
+            [-9.2, -11.2], [9.2, -11.2]
+        ];
+        boltOffsets.forEach(([bx, by]) => {
+            const bolt = new THREE.Mesh(boltGeo, boltMat);
+            bolt.rotation.x = Math.PI / 2;
+            bolt.position.set(bx, by, 0.2);
+            machineGroup.add(bolt);
+        });
+
+        // 底部重型金屬支撐關節
+        const mountGeo = new THREE.CylinderGeometry(1.2, 1.5, 3.0, 16);
+        const mount = new THREE.Mesh(mountGeo, hoodMat);
+        mount.position.set(0, -13.0, -1.2);
+        machineGroup.add(mount);
+
+        // 演播室燈光組
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.55);
+        scene.add(ambientLight);
+
+        const keyLight = new THREE.DirectionalLight(0xbae6fd, 0.85);
+        keyLight.position.set(10, 15, 18);
+        scene.add(keyLight);
+
+        const rimLight = new THREE.DirectionalLight(0x38bdf8, 0.45);
+        rimLight.position.set(-15, -10, 10);
+        scene.add(rimLight);
+
+        // 滑鼠與觸控 3D 視差
+        let targetRotX = 0;
+        let targetRotY = 0;
+        const rigElement = document.getElementById('teleprompterRig');
+
+        window.addEventListener('mousemove', (e) => {
+            const nx = (e.clientX / window.innerWidth) * 2 - 1;
+            const ny = (e.clientY / window.innerHeight) * 2 - 1;
+            targetRotY = nx * 0.08;
+            targetRotX = -ny * 0.06;
+
+            if (rigElement) {
+                rigElement.style.transform = `rotateX(${-ny * 4.5}deg) rotateY(${nx * 5.5}deg)`;
+            }
+        });
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        function render3DLoop() {
+            requestAnimationFrame(render3DLoop);
+
+            machineGroup.rotation.y += (targetRotY - machineGroup.rotation.y) * 0.08;
+            machineGroup.rotation.x += (targetRotX - machineGroup.rotation.x) * 0.08;
+
+            renderer.render(scene, camera);
+        }
+        render3DLoop();
+
         /* ------------------ 1. 繁體字與字串安全過濾器 ------------------ */
         let hkConverter = null;
         try {
@@ -523,26 +720,6 @@
         /* ------------------ 2. 極致平滑「逐字」流式翻譯打字機 ------------------ */
         let recentContextList = [];
 
-        // 自動動態探測存活免費模型，杜絕 MODEL NOT FOUND
-        let resolvedFreeModel = 'openrouter/free';
-
-        async function detectAliveFreeModel() {
-            try {
-                if (window.puter && window.puter.ai && typeof window.puter.ai.listModels === 'function') {
-                    const list = await puter.ai.listModels();
-                    // 尋找當前在線、包含 :free 標籤或 openrouter/free 的 0 成本模型
-                    const live = list.find(m => m.id && (m.id === 'openrouter/free' || m.id.endsWith(':free')));
-                    if (live) {
-                        resolvedFreeModel = live.id;
-                        console.log("【Puter AI】已自動鎖定存活免費模型:", resolvedFreeModel);
-                    }
-                }
-            } catch (e) {
-                console.warn("探測線上模型失敗，默認採用 openrouter/free 路由器");
-            }
-        }
-        detectAliveFreeModel();
-
         class TypewriterStream {
             constructor(targetElement, onChar, onDone) {
                 this.el = targetElement;
@@ -551,7 +728,7 @@
                 this.queue = [];
                 this.timer = null;
                 this.isFinished = false;
-                this.baseSpeed = 22; // 22ms 逐字輸出速度
+                this.baseSpeed = 22;
             }
 
             push(text) {
@@ -637,27 +814,7 @@
                     }
                 );
 
-                // 核心安全調用：優先使用 0 額度消耗的免費模型，帶三級自動容錯回退，保證絕不拋出 MODEL NOT FOUND
-                let response = null;
-                try {
-                    response = await puter.ai.chat(messages, {
-                        model: resolvedFreeModel,
-                        stream: true
-                    });
-                } catch (e1) {
-                    console.warn(`[${resolvedFreeModel}] 無響應，回退到 openrouter/free 官方路由器:`, e1);
-                    try {
-                        response = await puter.ai.chat(messages, {
-                            model: 'openrouter/free',
-                            stream: true
-                        });
-                    } catch (e2) {
-                        console.warn("免費路由器無響應，回退至 Puter 預設通道:", e2);
-                        response = await puter.ai.chat(messages, {
-                            stream: true
-                        });
-                    }
-                }
+                const response = await puter.ai.chat(messages, { stream: true });
 
                 for await (const part of response) {
                     const rawToken = part?.text ?? "";
@@ -681,25 +838,25 @@
         const interimPart = document.getElementById('interimPart');
         const mandarinContent = document.getElementById('mandarinContent');
         const charCount = document.getElementById('charCount');
- 
+
         let rawConfirmedText = "";
         let fullPunctuatedText = "";
         let lastFinalCleanText = "";
         let lastFinalTimestamp = 0;
- 
+
         let autoScrollCanto = true;
         let autoScrollMando = true;
- 
+
         cantoScroll.addEventListener('scroll', () => {
             const threshold = 80;
             autoScrollCanto = (cantoScroll.scrollHeight - cantoScroll.scrollTop - cantoScroll.clientHeight) < threshold;
         });
- 
+
         mandoScroll.addEventListener('scroll', () => {
             const threshold = 120;
             autoScrollMando = (mandoScroll.scrollHeight - mandoScroll.scrollTop - mandoScroll.clientHeight) < threshold;
         });
- 
+
         function scrollCantoToBottom() {
             if (autoScrollCanto) {
                 requestAnimationFrame(() => {
@@ -707,37 +864,13 @@
                 });
             }
         }
- 
+
         function scrollMandoToBottom() {
             if (autoScrollMando) {
                 requestAnimationFrame(() => {
                     mandoScroll.scrollTop = mandoScroll.scrollHeight;
                 });
             }
-        }
- 
-        let cantoCurrentDisplay = ""; 
-        let cantoTargetText = "";
-        let cantoTypingTimer = null;
-
-        function feedCantoneseStream(newText) {
-            cantoTargetText = newText;
-            if (cantoTypingTimer) return;
-
-            cantoTypingTimer = setInterval(() => {
-                if (cantoCurrentDisplay.length < cantoTargetText.length) {
-                    const step = (cantoTargetText.length - cantoCurrentDisplay.length > 4) ? 2 : 1;
-                    cantoCurrentDisplay = cantoTargetText.slice(0, cantoCurrentDisplay.length + step);
-                    interimPart.textContent = cantoCurrentDisplay;
-                    scrollCantoToBottom();
-                } else if (cantoCurrentDisplay.length > cantoTargetText.length) {
-                    cantoCurrentDisplay = cantoTargetText;
-                    interimPart.textContent = cantoCurrentDisplay;
-                } else {
-                    clearInterval(cantoTypingTimer);
-                    cantoTypingTimer = null;
-                }
-            }, 20);
         }
 
         function handleSpeechInterim(interim) {
