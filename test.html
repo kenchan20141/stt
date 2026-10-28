@@ -493,6 +493,7 @@
         }
 
       /* ------------------ 2. Puter.js 帶上下文語境翻譯 ------------------ */
+/* ------------------ 2. Puter.js 帶上下文語境翻譯 ------------------ */
 let recentContextList = []; // 專門記住最近講過的 2 句，提供上文
 
 async function translateDeltaWithPuter(newSentence, targetSpan) {
@@ -512,19 +513,20 @@ async function translateDeltaWithPuter(newSentence, targetSpan) {
             ? `【前文參考（僅供理解指代與語境，嚴禁翻譯）】：${recentContextList.join('，')}`
             : "【無前文】";
 
+        // 👈 將 system 提示詞合併進 user，避免 role 報錯
+        const userPrompt = `你是頂級粵語轉現代普通話專家。請參考【前文參考】來理解指代、主語和語境，將【當前句】翻譯為現代流暢的繁體普通話。
+要求：只翻譯【當前句】，嚴禁翻譯前文，只輸出翻譯結果，不要任何前綴或解釋。
+
+${contextStr}
+【當前句】：${newSentence}`;
+
         const messages = [
             {
-                role: "system",
-                content: `你是頂級粵語轉現代普通話專家。請參考【前文參考】來理解指代、主語和語境，將【當前句】翻譯為現代流暢的繁體普通話。
-要求：只翻譯【當前句】，嚴禁翻譯前文，只輸出翻譯結果，不要任何前綴或解釋。`
-            },
-            {
                 role: "user",
-                content: `${contextStr}\n【當前句】：${newSentence}`
+                content: userPrompt
             }
         ];
 
-        // 👈 在此處指定使用 qwen-mt-lite 模型
         const response = await puter.ai.chat(messages, {
             model: "qwen-mt-lite"
         });
@@ -564,7 +566,6 @@ async function translateDeltaWithPuter(newSentence, targetSpan) {
         scrollMandoToBottom();
     }
 }
-
        /* ------------------ 3. 雙欄精準滾動與文字流 (防鬼畜重複加強版) ------------------ */
         const cantoScroll = document.getElementById('cantoScroll');
         const mandoScroll = document.getElementById('mandoScroll');
