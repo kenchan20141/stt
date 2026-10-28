@@ -2,7 +2,7 @@
 <html lang="zh-HK">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>實時粵普字幕</title>
 
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -25,7 +25,7 @@
         :root {
             --bg: #090a0f;
             --canto-bg: #090a0f;
-            --mando-bg: rgba(255, 255, 255, 0.02);
+            --mando-bg: #0d1117;
             --card-border: rgba(255, 255, 255, 0.08);
             
             --cantonese: #f8fafc;
@@ -34,7 +34,7 @@
             --ruby: #f59e0b;
 
             --cantonese-size: 1.55rem;
-            --mandarin-size: 1.18rem;
+            --mandarin-size: 1.20rem;
         }
 
         * {
@@ -45,10 +45,12 @@
             user-select: none;
         }
 
+        /* 解決手機瀏覽器導航列遮擋問題，採用 100dvh */
         body {
             background-color: var(--bg);
             color: var(--cantonese);
             height: 100vh;
+            height: 100dvh;
             display: flex;
             flex-direction: column;
             overflow: hidden;
@@ -62,7 +64,7 @@
             justify-content: space-between;
             align-items: center;
             border-bottom: 1px solid var(--card-border);
-            background: rgba(9, 10, 15, 0.96);
+            background: rgba(9, 10, 15, 0.98);
             backdrop-filter: blur(12px);
             z-index: 20;
             flex-shrink: 0;
@@ -97,11 +99,7 @@
             outline: none;
         }
 
-        .icon-btn:hover {
-            background: rgba(255, 255, 255, 0.12);
-            color: #ffffff;
-        }
-
+        .icon-btn:hover { background: rgba(255, 255, 255, 0.12); color: #ffffff; }
         .icon-btn:active { transform: scale(0.92); }
         .icon-btn svg { width: 17px; height: 17px; stroke-width: 2; }
 
@@ -120,7 +118,7 @@
             box-shadow: 0 0 16px rgba(16, 185, 129, 0.5);
         }
 
-        /* 雙欄核心排版容器 (垂直分配) */
+        /* 雙欄主視圖容器 */
         .viewport-container {
             flex: 1;
             display: flex;
@@ -129,58 +127,50 @@
             width: 100%;
         }
 
-        /* 上欄：主視覺 粵語區 (約佔 58%) */
-        .pane-cantonese {
-            flex: 58;
-            overflow-y: auto;
-            padding: 18px 20px 24px 20px;
+        /* 欄位封裝（固定標籤 + 獨立滾動體） */
+        .column-box {
             display: flex;
             flex-direction: column;
+            overflow: hidden;
+            position: relative;
+        }
+
+        .canto-column {
+            flex: 55;
             background-color: var(--canto-bg);
-            border-bottom: 1px solid var(--card-border);
-            scroll-behavior: smooth;
-            position: relative;
+            border-bottom: 2px solid var(--card-border);
         }
 
-        /* 下欄：對照 普語區 (約佔 42%) */
-        .pane-mandarin {
-            flex: 42;
-            overflow-y: auto;
-            padding: 16px 20px 30px 20px;
-            display: flex;
-            flex-direction: column;
+        .mando-column {
+            flex: 45;
             background-color: var(--mando-bg);
-            scroll-behavior: smooth;
-            position: relative;
         }
 
-        /* 隱形欄頂部的小標籤欄 */
-        .pane-meta {
-            position: sticky;
-            top: 0;
+        /* 固定標籤欄，絕不蓋到文字 */
+        .column-header {
+            padding: 8px 18px;
             display: flex;
             justify-content: space-between;
             align-items: center;
-            padding-bottom: 8px;
-            margin-bottom: 8px;
-            z-index: 10;
-            pointer-events: none;
+            background: rgba(0, 0, 0, 0.25);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+            flex-shrink: 0;
+            z-index: 5;
         }
 
         .pane-tag {
             font-family: "Noto Sans HK", sans-serif;
             font-size: 0.72rem;
             font-weight: 700;
-            padding: 2px 7px;
+            padding: 2px 8px;
             border-radius: 4px;
             letter-spacing: 0.5px;
-            pointer-events: auto;
         }
 
         .tag-canto {
-            color: #94a3b8;
-            background: rgba(255, 255, 255, 0.05);
-            border: 1px solid rgba(255, 255, 255, 0.08);
+            color: #cbd5e1;
+            background: rgba(255, 255, 255, 0.08);
+            border: 1px solid rgba(255, 255, 255, 0.12);
         }
 
         .tag-mando {
@@ -189,29 +179,37 @@
             border: 1px solid rgba(56, 189, 248, 0.3);
         }
 
-        .meta-actions {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            pointer-events: auto;
-        }
-
         .char-counter {
             font-family: "Noto Sans HK", sans-serif;
-            font-size: 0.72rem;
+            font-size: 0.75rem;
             color: #64748b;
         }
 
-        /* 文字流排版 */
+        /* 獨立滾動區域：底部留足 padding，徹底解決擋字與滾動不下去 */
+        .scroll-body {
+            flex: 1;
+            overflow-y: auto;
+            scroll-behavior: smooth;
+            -webkit-overflow-scrolling: touch;
+        }
+
+        .canto-scroll-body {
+            padding: 16px 20px 60px 20px;
+        }
+
+        .mando-scroll-body {
+            padding: 16px 20px 90px 20px; /* 留出充分的底部安全區 */
+        }
+
+        /* 文字排版 */
         .cantonese-content {
             font-family: "Noto Serif HK", serif;
             font-size: var(--cantonese-size);
             font-weight: 700;
-            line-height: 1.85;
+            line-height: 1.8;
             letter-spacing: 0.8px;
             color: var(--cantonese);
             word-break: break-word;
-            flex: 1;
         }
 
         .cantonese-content .interim-text {
@@ -228,7 +226,6 @@
             line-height: 1.75;
             color: var(--mandarin-text);
             word-break: break-word;
-            flex: 1;
         }
 
         .mandarin-pending {
@@ -263,15 +260,8 @@
 
         #fontToast.show { opacity: 1; transform: translateY(0); }
 
-        /* 滾動條樣式優化 */
-        .pane-cantonese::-webkit-scrollbar,
-        .pane-mandarin::-webkit-scrollbar,
-        .modal-body::-webkit-scrollbar {
-            width: 4px;
-        }
-        .pane-cantonese::-webkit-scrollbar-thumb,
-        .pane-mandarin::-webkit-scrollbar-thumb,
-        .modal-body::-webkit-scrollbar-thumb {
+        .scroll-body::-webkit-scrollbar, .modal-body::-webkit-scrollbar { width: 4px; }
+        .scroll-body::-webkit-scrollbar-thumb, .modal-body::-webkit-scrollbar-thumb {
             background: rgba(255, 255, 255, 0.15);
             border-radius: 4px;
         }
@@ -392,14 +382,14 @@
 
     <div id="fontToast">字體 標準</div>
 
-    <!-- 上下獨立分欄排版 -->
+    <!-- 上下獨立視口 -->
     <div class="viewport-container">
         
-        <!-- 上欄：粵語區 -->
-        <section id="cantoPane" class="pane-cantonese">
-            <div class="pane-meta">
+        <!-- 上欄：粵語區 (主要視覺) -->
+        <section class="column-box canto-column">
+            <div class="column-header">
                 <span class="pane-tag tag-canto">粵語原文</span>
-                <div class="meta-actions">
+                <div style="display:flex; align-items:center; gap:8px;">
                     <span id="charCount" class="char-counter">0 字</span>
                     <button class="icon-btn" style="width:24px; height:24px;" onclick="openPhoneticModal()" title="粵拼">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
@@ -409,17 +399,21 @@
                     </button>
                 </div>
             </div>
-            <div class="cantonese-content">
-                <span id="confirmedPart"></span><span id="interimPart" class="interim-text"></span>
+            <div id="cantoScroll" class="scroll-body canto-scroll-body">
+                <div class="cantonese-content">
+                    <span id="confirmedPart"></span><span id="interimPart" class="interim-text"></span>
+                </div>
             </div>
         </section>
 
         <!-- 下欄：普通話區 -->
-        <section id="mandoPane" class="pane-mandarin">
-            <div class="pane-meta">
-                <span class="pane-tag tag-mando">普通話對照</span>
+        <section class="column-box mando-column">
+            <div class="column-header">
+                <span class="pane-tag tag-mando">普通話翻譯</span>
             </div>
-            <div id="mandarinContent" class="mandarin-content"></div>
+            <div id="mandoScroll" class="scroll-body mando-scroll-body">
+                <div id="mandarinContent" class="mandarin-content"></div>
+            </div>
         </section>
 
     </div>
@@ -449,7 +443,7 @@
     </div>
 
     <script>
-        /* ------------------ 1. 繁體字校準與括號過濾器 ------------------ */
+        /* ------------------ 1. 繁體字與字串安全過濾器 ------------------ */
         let hkConverter = null;
         try {
             if (window.OpenCC) {
@@ -465,16 +459,23 @@
             return text;
         }
 
-        function stripAllBrackets(text) {
+        // 強力清洗：清除括號、引號，以及任何意外流出的 AI 提示詞
+        function sanitizeAiOutput(text) {
             if (!text) return "";
-            return text.replace(/[()（）\[\]【】{}《》「」『』〈〉"'“”‘’]/g, '').trim();
+            let cleaned = text;
+
+            // 過濾掉所有模型可能鸚鵡學舌的指令特徵詞
+            cleaned = cleaned.replace(/(請把|請將|這句粵語|翻譯成|繁體中文|普通話|嚴禁|要求|粵語：|譯文：|白話文|現代標準).*/g, '');
+            // 清理括號及引號
+            cleaned = cleaned.replace(/[()（）\[\]【】{}《》「」『』〈〉"'“”‘’]/g, '');
+            return cleaned.trim();
         }
 
         function cleanString(str) {
             return (str || '').replace(/[，。？！、\s\.,!\?]/g, '');
         }
 
-        /* ------------------ 2. Puter.js 單句增量續寫翻譯 ------------------ */
+        /* ------------------ 2. Puter.js 角色分離翻譯 (絕不外洩提示詞) ------------------ */
         async function translateDeltaWithPuter(newSentence, targetSpan) {
             if (!newSentence || !newSentence.trim()) {
                 targetSpan.remove();
@@ -487,16 +488,19 @@
             }
 
             try {
-                const prompt = `請將以下這句粵語口語直接翻譯成清晰、通俗、現代標準的白話文普通話。
-要求：
-1. 必須全部使用繁體中文，嚴禁出現任何簡體字。
-2. 必須是通俗日常的現代白話文，絕不能使用文言文或半文言。
-3. 徹底理順倒裝句式。
-4. 嚴禁任何括號、引號或附加解釋，只輸出這一句譯文。
+                // 使用 messages 結構區分 system 與 user，徹底阻斷模型學舌
+                const messages = [
+                    {
+                        role: "system",
+                        content: "你是最精確的粵語轉現代普通話專家。將用戶發送的粵語口語直接翻譯為現代繁體普通話白話文。只輸出翻譯結果本身，嚴禁任何前綴、解釋、說明或重復指示。"
+                    },
+                    {
+                        role: "user",
+                        content: newSentence
+                    }
+                ];
 
-粵語：${newSentence}`;
-
-                const response = await puter.ai.chat(prompt);
+                const response = await puter.ai.chat(messages);
 
                 let aiText = "";
                 if (typeof response === 'string') {
@@ -509,7 +513,7 @@
                     aiText = String(response);
                 }
 
-                aiText = ensureTraditional(stripAllBrackets(aiText));
+                aiText = ensureTraditional(sanitizeAiOutput(aiText));
 
                 if (aiText) {
                     if (!/[，。？！、]$/.test(aiText)) {
@@ -528,9 +532,9 @@
             }
         }
 
-        /* ------------------ 3. 雙欄分離管理器 ------------------ */
-        const cantoPane = document.getElementById('cantoPane');
-        const mandoPane = document.getElementById('mandoPane');
+        /* ------------------ 3. 雙欄精準滾動與文字流 ------------------ */
+        const cantoScroll = document.getElementById('cantoScroll');
+        const mandoScroll = document.getElementById('mandoScroll');
         const confirmedPart = document.getElementById('confirmedPart');
         const interimPart = document.getElementById('interimPart');
         const mandarinContent = document.getElementById('mandarinContent');
@@ -542,38 +546,40 @@
         let autoScrollCanto = true;
         let autoScrollMando = true;
 
-        cantoPane.addEventListener('scroll', () => {
-            const threshold = 60;
-            autoScrollCanto = (cantoPane.scrollHeight - cantoPane.scrollTop - cantoPane.clientHeight) < threshold;
+        cantoScroll.addEventListener('scroll', () => {
+            const threshold = 80;
+            autoScrollCanto = (cantoScroll.scrollHeight - cantoScroll.scrollTop - cantoScroll.clientHeight) < threshold;
         });
 
-        mandoPane.addEventListener('scroll', () => {
-            const threshold = 60;
-            autoScrollMando = (mandoPane.scrollHeight - mandoPane.scrollTop - mandoPane.clientHeight) < threshold;
+        mandoScroll.addEventListener('scroll', () => {
+            const threshold = 80;
+            autoScrollMando = (mandoScroll.scrollHeight - mandoScroll.scrollTop - mandoScroll.clientHeight) < threshold;
         });
 
         function scrollCantoToBottom() {
             if (autoScrollCanto) {
-                cantoPane.scrollTop = cantoPane.scrollHeight;
+                requestAnimationFrame(() => {
+                    cantoScroll.scrollTop = cantoScroll.scrollHeight;
+                });
             }
         }
 
         function scrollMandoToBottom() {
             if (autoScrollMando) {
-                mandoPane.scrollTop = mandoPane.scrollHeight;
+                requestAnimationFrame(() => {
+                    mandoScroll.scrollTop = mandoScroll.scrollHeight;
+                });
             }
         }
 
-        // 說話時實時更新未定稿內容
         function handleSpeechInterim(interim) {
             if (!interim || !interim.trim()) return;
             interimPart.innerText = interim;
             scrollCantoToBottom();
         }
 
-        // 定稿：雙欄分別追加，各自獨立滾動
         function handleSpeechFinal(finalText) {
-            finalText = ensureTraditional(stripAllBrackets(finalText.trim()));
+            finalText = ensureTraditional(sanitizeAiOutput(finalText.trim()));
             if (!finalText) return;
 
             interimPart.innerText = "";
@@ -582,7 +588,6 @@
             const cleanConfirmed = cleanString(rawConfirmedText);
             if (cleanConfirmed.endsWith(cleanFinal)) return;
 
-            // 計算出新講的那一句 delta
             let delta = finalText;
             for (let i = finalText.length; i >= 1; i--) {
                 const prefix = finalText.slice(0, i);
@@ -593,7 +598,7 @@
             }
             if (!delta) return;
 
-            // 1. 更新粵語欄
+            // 1. 粵語原文寫入
             const formatted = delta + "，";
             rawConfirmedText += delta;
             fullPunctuatedText += formatted;
@@ -601,14 +606,14 @@
             charCount.innerText = `${cleanString(rawConfirmedText).length} 字`;
             scrollCantoToBottom();
 
-            // 2. 更新普通話欄（在尾部追加等待 span）
+            // 2. 普通話建立待續寫 span
             const targetSpan = document.createElement('span');
             targetSpan.className = "mandarin-pending";
             targetSpan.innerText = " ⋯";
             mandarinContent.appendChild(targetSpan);
             scrollMandoToBottom();
 
-            // 送去 AI 翻譯
+            // 發送翻譯請求
             translateDeltaWithPuter(delta, targetSpan);
         }
 
@@ -740,9 +745,9 @@
 
         /* ------------------ 6. 字體調節 ------------------ */
         const fontScales = [
-            { name: "標準", canto: "1.55rem", mando: "1.18rem" },
-            { name: "放大", canto: "1.85rem", mando: "1.38rem" },
-            { name: "特大", canto: "2.20rem", mando: "1.65rem" }
+            { name: "標準", canto: "1.55rem", mando: "1.20rem" },
+            { name: "放大", canto: "1.85rem", mando: "1.40rem" },
+            { name: "特大", canto: "2.15rem", mando: "1.65rem" }
         ];
         let currentScaleIdx = 0;
         let toastTimer = null;
