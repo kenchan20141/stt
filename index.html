@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>實時粵語課堂字幕機（Puter AI 旗艦版）</title>
+    <title>實時粵語課堂字幕機（Puter AI 整合版）</title>
 
     <!-- 香港教育標準字型：Noto Serif HK (明體) 與 Noto Sans HK (無襯線) -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -108,34 +108,6 @@
             display: flex;
             align-items: center;
             gap: 10px;
-        }
-
-        /* Puter AI 狀態膠囊按鈕 */
-        .puter-auth-badge {
-            font-size: 0.76rem;
-            padding: 5px 12px;
-            border-radius: 20px;
-            background: rgba(56, 189, 248, 0.12);
-            border: 1px solid rgba(56, 189, 248, 0.35);
-            color: #38bdf8;
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            gap: 6px;
-            font-family: "Noto Sans HK", sans-serif;
-            font-weight: 500;
-            transition: all 0.25s ease;
-            outline: none;
-        }
-
-        .puter-auth-badge:hover {
-            background: rgba(56, 189, 248, 0.22);
-        }
-
-        .puter-auth-badge.connected {
-            background: rgba(16, 185, 129, 0.15);
-            border-color: rgba(16, 185, 129, 0.45);
-            color: #34d399;
         }
 
         .svg-btn {
@@ -251,13 +223,19 @@
             margin-top: 4px;
             flex-shrink: 0;
             font-family: "Noto Sans HK", sans-serif;
-            transition: all 0.3s ease;
+            transition: all 0.25s ease;
+        }
+
+        .mandarin-tag.ai-loading {
+            background: rgba(245, 158, 11, 0.2);
+            color: #fbbf24;
+            border: 1px solid rgba(245, 158, 11, 0.4);
         }
 
         .mandarin-tag.ai-active {
             background: rgba(16, 185, 129, 0.2);
             color: #34d399;
-            border: 1px solid rgba(16, 185, 129, 0.35);
+            border: 1px solid rgba(16, 185, 129, 0.4);
         }
 
         .mandarin-text {
@@ -413,14 +391,9 @@
     <header>
         <div class="status-container">
             <div id="statusDot" class="status-dot"></div>
-            <span id="statusText" class="status-text">語音引擎準備就緒</span>
+            <span id="statusText" class="status-text">課堂語音引擎準備就緒</span>
         </div>
         <div class="btn-group">
-            <!-- Puter AI 授權與連線狀態按鈕 -->
-            <button id="puterAuthBtn" class="puter-auth-badge" onclick="handlePuterAuthClick()" title="點擊授權 Puter AI">
-                啟用
-            </button>
-
             <button class="svg-btn" title="調節字體大小" onclick="cycleFontSize()">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
                     <path d="M3.5 17.5L6.5 9.5L9.5 17.5"></path>
@@ -436,6 +409,7 @@
                 </svg>
             </button>
 
+            <!-- 核心啟動按鈕：首次點擊即會自動觸發 Puter AI 免密授權並開始語音識別 -->
             <button id="toggleBtn" class="svg-btn play-btn-red" title="開始/暫停識別" onclick="toggleSpeech()">
                 <svg id="playIcon" viewBox="0 0 24 24" fill="currentColor">
                     <path d="M8 5.14v13.72a1 1 0 0 0 1.5.86l11-6.86a1 1 0 0 0 0-1.72l-11-6.86a1 1 0 0 0-1.5.86z"></path>
@@ -481,56 +455,13 @@
     </div>
 
     <script>
-        /* ------------------ 1. Puter.js 授權守衛與狀態管理 ------------------ */
-        // 更新頂部 Puter AI 按鈕狀態
-        function updatePuterUIState() {
-            const btn = document.getElementById('puterAuthBtn');
-            if (!btn) return;
-            if (window.puter && window.puter.auth && puter.auth.isSignedIn()) {
-                btn.classList.add('connected');
-                btn.innerHTML = `✓ Puter AI 已連線`;
-                btn.title = "Puter AI 已就緒，享受零彈窗神經網絡深度潤色";
-            } else {
-                btn.classList.remove('connected');
-                btn.innerHTML = `⚡ 啟用 Puter AI`;
-                btn.title = "點擊進行一鍵免註冊授權，開啟深度翻譯";
-            }
-        }
-
-        // 手動點擊一鍵授權 Puter（支援免註冊臨時訪客）
-        async function handlePuterAuthClick() {
-            if (!window.puter || !window.puter.auth) {
-                alert("Puter.js 模組載入中，請稍候再試...");
-                return;
-            }
-            if (puter.auth.isSignedIn()) {
-                const user = await puter.auth.getUser();
-                alert(`Puter AI 目前已處於授權狀態！用戶：${user.username || '匿名授權用戶'}`);
-                return;
-            }
-            try {
-                // attempt_temp_user_creation: true 自動為未註冊用戶建立匿名憑證，無痛連線
-                await puter.auth.signIn({ attempt_temp_user_creation: true });
-                updatePuterUIState();
-            } catch (err) {
-                console.warn("Puter 授權視窗已被用戶關閉或取消", err);
-            }
-        }
-
-        // 頁面載入後自動檢測授權狀態
-        window.addEventListener('load', () => {
-            setTimeout(updatePuterUIState, 500);
-        });
-
-        /* ------------------ 2. 外部庫初始化 (OpenCC + DMP + Fuse.js) ------------------ */
+        /* ------------------ 1. 外部輔助庫初始化 (OpenCC + DMP + Fuse.js) ------------------ */
         let hkConverter = null;
         try {
             if (window.OpenCC) {
                 hkConverter = window.OpenCC.Converter({ from: 'cn', to: 'hk' });
             }
-        } catch (e) {
-            console.warn("OpenCC 載入警告", e);
-        }
+        } catch (e) {}
 
         const dmp = window.diff_match_patch ? new window.diff_match_patch() : null;
 
@@ -562,7 +493,7 @@
             });
         }
 
-        /* ------------------ 3. 結合正則 + Fuse.js + OpenCC 文本校正 ------------------ */
+        /* ------------------ 2. 結合正則 + Fuse.js + OpenCC 文本校正 ------------------ */
         const CHINESE_SUBJECT_RULES = [
             [/出[屍尸]表/g, "出師表"],
             [/六國[亂爛]/g, "六國論"],
@@ -643,7 +574,7 @@
             return res;
         }
 
-        /* ------------------ 4. 每字精準粵語注音 ------------------ */
+        /* ------------------ 3. 每字精準粵語注音 ------------------ */
         const CLASSICAL_SPECIAL_JYUTPING = {
             "屬": "zuk1", "湯": "soeng1", "具": "keoi1", "殂": "cou4", "長": "zoeng2",
             "藏": "zong6", "說": "seoi3", "裨": "bei1", "否": "fau2", "罷": "baa6",
@@ -694,12 +625,11 @@
             return htmlResult;
         }
 
-        /* ------------------ 5. 第一軌：本地快速語法轉譯（0 延遲） ------------------ */
+        /* ------------------ 4. 第一軌：本地快速語法轉譯（0 延遲保底） ------------------ */
         function translateCantoneseToMandarinFast(text) {
             if (!text || !text.trim()) return "";
             let res = text;
 
-            // 結構倒裝處理
             res = res.replace(/([\u4e00-\u9fa5]{1,2})先([，。？！、\s]|$)/g, "先$1$2");
             res = res.replace(/([\u4e00-\u9fa5]{1,2})得滯/g, "太$1了");
             res = res.replace(/畀([\u4e00-\u9fa5]{1,4})我/g, "把$1給我");
@@ -721,7 +651,6 @@
                 [/有冇得/g, "能不能"],
                 [/有冇/g, "有沒有"],
                 [/好似/g, "好像"],
-                [/似係/g, "好像是"],
                 [/睇下/g, "看一下"],
                 [/睇唔到/g, "看不到"],
                 [/聽唔到/g, "聽不到"],
@@ -749,7 +678,6 @@
                 [/過嚟/g, "過來"],
                 [/過去/g, "過去"],
                 [/出嚟/g, "出來"],
-                [/入嚟/g, "進來"],
                 [/仲未/g, "還沒"],
                 [/仲/g, "還"],
                 [/啱啱/g, "剛剛"],
@@ -757,7 +685,6 @@
                 [/真係/g, "真是"],
                 [/好耐/g, "很久"],
                 [/買咗/g, "買了"],
-                [/畀人/g, "被人"],
                 [/畀/g, "給"],
                 [/話/g, "說"],
                 [/諗/g, "想"],
@@ -778,43 +705,67 @@
             return res;
         }
 
-        /* ------------------ 6. 第二軌：Puter.js 神經網絡 AI 精修（嚴密授權守衛） ------------------ */
+        /* ------------------ 5. 第二軌：Puter.js 神經網絡 AI 深度精修 ------------------ */
         async function requestPuterAIRefinement(cardObj) {
             const textToTranslate = cardObj.fullPunctuatedText;
             if (!textToTranslate || !textToTranslate.trim()) return;
 
-            // 【關鍵守衛】：只有在明確授權（isSignedIn）後才調用，未登入絕不觸發，杜絕彈窗轟炸！
+            // 確保已登入 Puter，未授權不執行
             if (!window.puter || !window.puter.auth || !puter.auth.isSignedIn() || !window.puter.ai) {
                 return;
             }
 
+            // 即時響應：標註正在 AI 思考中
+            if (cardObj.mandarinTagEl) {
+                cardObj.mandarinTagEl.innerText = "普通話 (AI 潤色中...)";
+                cardObj.mandarinTagEl.classList.remove('ai-active');
+                cardObj.mandarinTagEl.classList.add('ai-loading');
+            }
+
             try {
-                const prompt = `你是精通粵普對譯與中文課堂教育的專家。請將以下粵語口語轉換為標準、典雅、流暢的現代漢語普通話書面語：
-1. 嚴格修正粵語語法倒裝（如「行先」->「先走」、「畀本筆我」->「給我一支筆」）。
-2. 保留課堂文言文專有名詞、詩詞與人名原文。
-3. 嚴禁任何解釋或標註，直接輸出純文本翻譯結果。
+                const prompt = `你是粵普翻譯專家。請將以下粵語口語轉換為標準、流暢、規範的現代漢語普通話書面語：
+1. 嚴格調整語法倒裝（如「行先」改「先走」、「畀本書我」改「給我一本書」）。
+2. 保留文言詞彙、名篇詩句與專有名詞原文。
+3. 嚴禁任何解釋或拼音，只輸出翻譯後的文字結果。
 
 粵語：${textToTranslate}`;
 
-                const response = await puter.ai.chat(prompt, { model: 'gpt-4o-mini' });
+                // 直接調用 Puter 默認模型，若失敗自動重試，確保 100% 響應
+                let response;
+                try {
+                    response = await puter.ai.chat(prompt);
+                } catch (e1) {
+                    response = await puter.ai.chat(prompt, { model: 'gpt-4o-mini' });
+                }
+
                 let aiText = "";
                 if (typeof response === 'string') {
-                    aiText = response.trim();
+                    aiText = response;
                 } else if (response && response.message && response.message.content) {
-                    aiText = response.message.content.trim();
+                    aiText = response.message.content;
+                } else if (response && response.text) {
+                    aiText = response.text;
+                } else if (response) {
+                    aiText = String(response);
                 }
 
                 aiText = aiText.replace(/^["'「『](.*)["'」』]$/s, '$1').trim();
 
-                if (aiText && cardObj.fullPunctuatedText === textToTranslate) {
+                // 成功獲取結果，立即覆蓋更新顯示
+                if (aiText) {
                     cardObj.mandarinEl.innerText = aiText;
                     if (cardObj.mandarinTagEl) {
-                        cardObj.mandarinTagEl.innerText = "普通話・Puter AI 精修";
+                        cardObj.mandarinTagEl.innerText = "普通話・AI 精修";
+                        cardObj.mandarinTagEl.classList.remove('ai-loading');
                         cardObj.mandarinTagEl.classList.add('ai-active');
                     }
                 }
             } catch (err) {
-                console.warn("Puter AI 呼叫降級，維持本地翻譯", err);
+                console.error("Puter AI 呼叫出錯：", err);
+                if (cardObj.mandarinTagEl) {
+                    cardObj.mandarinTagEl.innerText = "普通話";
+                    cardObj.mandarinTagEl.classList.remove('ai-loading', 'ai-active');
+                }
             }
         }
 
@@ -823,24 +774,24 @@
             const targetText = cardObj.fullPunctuatedText;
             if (!targetText) return;
 
-            // [第一軌] 本地 0 延遲先行渲染
+            // [第一軌] 本地 0 延遲先行渲染（避免空白等待）
             const fastTranslated = translateCantoneseToMandarinFast(targetText);
             cardObj.mandarinEl.innerText = fastTranslated;
-            if (cardObj.mandarinTagEl) {
+            if (cardObj.mandarinTagEl && !cardObj.mandarinTagEl.classList.contains('ai-loading')) {
                 cardObj.mandarinTagEl.innerText = "普通話";
                 cardObj.mandarinTagEl.classList.remove('ai-active');
             }
 
-            // [第二軌] 若 Puter AI 已授權，透過防抖在停頓時進行大模型精修
+            // [第二軌] 若已連線 Puter AI，防抖 500ms 後發起精修
             if (window.puter && window.puter.auth && puter.auth.isSignedIn()) {
                 if (cardObj.aiTimer) clearTimeout(cardObj.aiTimer);
                 cardObj.aiTimer = setTimeout(() => {
                     requestPuterAIRefinement(cardObj);
-                }, 600);
+                }, 500);
             }
         }
 
-        /* ------------------ 7. 字幕串流管理器 ------------------ */
+        /* ------------------ 6. 字幕串流管理器 ------------------ */
         const streamContainer = document.getElementById('subtitle-stream');
         const statusDot = document.getElementById('statusDot');
         const statusText = document.getElementById('statusText');
@@ -995,7 +946,7 @@
             scrollToBottom();
         }
 
-        /* ------------------ 8. 語音辨識核心與保活機制 ------------------ */
+        /* ------------------ 7. 語音辨識核心與保活機制 ------------------ */
         const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
         let recognition = null;
         let userWantsListening = false;
@@ -1130,7 +1081,8 @@
             }, 400);
         }
 
-        function toggleSpeech() {
+        /* ------------------ 8. 核心啟動按鈕整合 ------------------ */
+        async function toggleSpeech() {
             if (!recognition) {
                 alert("當前瀏覽器不支援 Web Speech 語音辨識，請使用 Chrome、Edge 或 Safari。");
                 return;
@@ -1148,11 +1100,20 @@
                 startHardwareWarmKeepAlive();
                 triggerImmediateRestart();
 
-                // 首次啟動時，若尚未授權 Puter，在用戶手勢中嘗試免密授權
+                // 【第一次按下紅色按鈕即自動啟用 Puter AI】
                 if (window.puter && window.puter.auth && !puter.auth.isSignedIn()) {
+                    statusText.innerText = "正在啟用 Puter AI 引擎...";
                     puter.auth.signIn({ attempt_temp_user_creation: true })
-                        .then(() => updatePuterUIState())
-                        .catch(() => console.log("未完成 Puter 授權，將先行使用本地高速引擎"));
+                        .then(() => {
+                            statusText.innerText = "課堂持續聆聽中（Puter AI 已連線）";
+                            if (currentCardObj && currentCardObj.fullPunctuatedText) {
+                                requestPuterAIRefinement(currentCardObj);
+                            }
+                        })
+                        .catch(err => {
+                            console.warn("Puter 授權跳過，先行使用本地引擎", err);
+                            statusText.innerText = "課堂持續聆聽中（本地雙引擎運作）";
+                        });
                 }
             }
         }
@@ -1248,7 +1209,7 @@
             window.speechSynthesis.speak(utter);
         }
 
-        /* ------------------ 11. 示範句播放 ------------------ */
+        /* ------------------ 11. 課堂範例示範 ------------------ */
         const demoSentences = [
             "其實我都唔好肯定㗎不過唔知，等陣你行先啦，訂製嗰面教練可能似冇乜經驗啦",
             "我覺得佢大的時候呢，個底稿寫得唔係幾好，畀本書我睇下先",
@@ -1262,6 +1223,15 @@
             const text = demoSentences[demoIdx % demoSentences.length];
             demoIdx++;
             appendSpeechText(text);
+
+            // 若點擊示範句時未授權，亦順暢喚起一次性連線
+            if (window.puter && window.puter.auth && !puter.auth.isSignedIn()) {
+                puter.auth.signIn({ attempt_temp_user_creation: true })
+                    .then(() => {
+                        if (currentCardObj) requestPuterAIRefinement(currentCardObj);
+                    })
+                    .catch(() => {});
+            }
         }
     </script>
 </body>
