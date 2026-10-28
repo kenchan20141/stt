@@ -548,30 +548,32 @@
             }
         }
 
-        /* ------------------ 3. 雙欄精準滾動與文字流 ------------------ */
+       /* ------------------ 3. 雙欄精準滾動與文字流 (防鬼畜重複加強版) ------------------ */
         const cantoScroll = document.getElementById('cantoScroll');
         const mandoScroll = document.getElementById('mandoScroll');
         const confirmedPart = document.getElementById('confirmedPart');
         const interimPart = document.getElementById('interimPart');
         const mandarinContent = document.getElementById('mandarinContent');
         const charCount = document.getElementById('charCount');
-
+ 
         let rawConfirmedText = "";
         let fullPunctuatedText = "";
-
+        let lastFinalCleanText = "";
+        let lastFinalTimestamp = 0;
+ 
         let autoScrollCanto = true;
         let autoScrollMando = true;
-
+ 
         cantoScroll.addEventListener('scroll', () => {
             const threshold = 80;
             autoScrollCanto = (cantoScroll.scrollHeight - cantoScroll.scrollTop - cantoScroll.clientHeight) < threshold;
         });
-
+ 
         mandoScroll.addEventListener('scroll', () => {
             const threshold = 120;
             autoScrollMando = (mandoScroll.scrollHeight - mandoScroll.scrollTop - mandoScroll.clientHeight) < threshold;
         });
-
+ 
         function scrollCantoToBottom() {
             if (autoScrollCanto) {
                 requestAnimationFrame(() => {
@@ -579,7 +581,7 @@
                 });
             }
         }
-
+ 
         function scrollMandoToBottom() {
             if (autoScrollMando) {
                 requestAnimationFrame(() => {
@@ -587,48 +589,72 @@
                 });
             }
         }
-
+ 
         function handleSpeechInterim(interim) {
             if (!interim || !interim.trim()) return;
+            // 如果臨時結果與剛說完的一模一樣，不重複閃爍
+            if (cleanString(interim) === cleanString(lastFinalCleanText)) return;
             interimPart.innerText = interim;
             scrollCantoToBottom();
         }
-
+ 
         function handleSpeechFinal(finalText) {
             finalText = ensureTraditional(sanitizeAiOutput(finalText.trim()));
             if (!finalText) return;
-
+ 
             interimPart.innerText = "";
-
+ 
             const cleanFinal = cleanString(finalText);
             const cleanConfirmed = cleanString(rawConfirmedText);
-            if (cleanConfirmed.endsWith(cleanFinal)) return;
-
+            const now = Date.now();
+ 
+            // 1. 【防重複核心過濾 1】：時間過短且字詞完全相同（手機引擎常見的重複回調）
+            if (cleanFinal === lastFinalCleanText && (now - lastFinalTimestamp < 2500)) {
+                return;
+            }
+ 
+            // 2. 【防重複核心過濾 2】：尾部完全包含檢查
+            // 檢查已確認內容的最後 40 個字，是否已經以這段文字結尾
+            const tailSlice = cleanConfirmed.slice(-Math.max(cleanFinal.length + 5, 40));
+            if (tailSlice.endsWith(cleanFinal)) {
+                return;
+            }
+ 
+            // 3. 【防重複核心過濾 3】：滑動窗口尋找真正的新增量 (Delta)
+            // 手機有時會把「上一句的後半截 + 這一句」黏在一起回傳，例如回傳「頭先我開發出嚟嘅就係舒服啲」
             let delta = finalText;
-            for (let i = finalText.length; i >= 1; i--) {
-                const prefix = finalText.slice(0, i);
-                if (cleanConfirmed.endsWith(cleanString(prefix))) {
+            for (let i = finalText.length; i >= 2; i--) {
+                const checkPrefix = cleanString(finalText.slice(0, i));
+                if (checkPrefix.length >= 2 && tailSlice.endsWith(checkPrefix)) {
+                    // 找到了重疊的前綴，只取後面真正沒說過的文字
                     delta = finalText.slice(i).trim();
                     break;
                 }
             }
-            if (!delta) return;
-
-            // 1. 粵語原文寫入
+ 
+            const cleanDelta = cleanString(delta);
+            // 如果截取後沒有新字，或只剩標點符號，直接拋棄
+            if (!cleanDelta || cleanDelta.length === 0) return;
+ 
+            // 更新防重複歷史記錄
+            lastFinalCleanText = cleanFinal;
+            lastFinalTimestamp = now;
+ 
+            // 4. 粵語原文寫入
             const formatted = delta + "，";
             rawConfirmedText += delta;
             fullPunctuatedText += formatted;
             confirmedPart.innerText = fullPunctuatedText;
             charCount.innerText = `${cleanString(rawConfirmedText).length} 字`;
             scrollCantoToBottom();
-
-            // 2. 普通話建立待續寫 span
+ 
+            // 5. 普通話建立待續寫 span
             const targetSpan = document.createElement('span');
             targetSpan.className = "mandarin-pending";
             targetSpan.innerText = " ⋯";
             mandarinContent.appendChild(targetSpan);
             scrollMandoToBottom();
-
+ 
             // 發送翻譯請求
             translateDeltaWithPuter(delta, targetSpan);
         }
