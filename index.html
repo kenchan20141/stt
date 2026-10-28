@@ -135,7 +135,7 @@
             padding: 20px 24px;
             display: flex;
             flex-direction: column;
-            gap: 12px;
+            gap: 16px;
             animation: fadeIn 0.2s ease;
         }
 
@@ -168,7 +168,7 @@
             display: flex;
             align-items: flex-start;
             gap: 12px;
-            padding-top: 12px;
+            padding-top: 14px;
             border-top: 1px solid var(--card-border);
         }
 
@@ -180,7 +180,7 @@
             border: 1px solid rgba(56, 189, 248, 0.3);
             color: var(--mandarin);
             font-weight: 700;
-            margin-top: 4px;
+            margin-top: 5px;
             flex-shrink: 0;
             font-family: "Noto Sans HK", sans-serif;
         }
@@ -194,7 +194,7 @@
             font-family: "Noto Sans HK", sans-serif;
         }
 
-        /* 增量翻譯微弱佔位，不干擾用家 */
+        /* 增量翻譯微弱佔位 */
         .mandarin-pending {
             color: #64748b;
             font-size: 0.85em;
@@ -394,8 +394,7 @@
             return text.replace(/[()（）\[\]【】{}《》「」『』〈〉"'“”‘’]/g, '').trim();
         }
 
-        /* ------------------ 2. 100% 純 Puter.js 單句增量續寫翻譯 ------------------ */
-        // 只翻譯新增的句子，在尾部自然續寫，絕不重刷整段
+        /* ------------------ 2. Puter.js 單句增量續寫翻譯 ------------------ */
         async function translateDeltaWithPuter(newSentence, targetSpan) {
             if (!newSentence || !newSentence.trim()) {
                 targetSpan.remove();
@@ -408,7 +407,6 @@
             }
 
             try {
-                // 專門針對新講的「這一句話」進行白話翻譯
                 const prompt = `請將以下這句粵語口語直接翻譯成清晰、通俗、現代標準的白話文普通話。
 要求：
 1. 必須全部使用繁體中文，嚴禁出現任何簡體字。
@@ -434,7 +432,6 @@
                 aiText = ensureTraditional(stripAllBrackets(aiText));
 
                 if (aiText) {
-                    // 若末尾無標點，自動補充逗號連接
                     if (!/[，。？！、]$/.test(aiText)) {
                         aiText += "，";
                     }
@@ -475,7 +472,7 @@
 
             card.innerHTML = `
                 <div class="card-meta">
-                    <span>${timeStr}</span>
+                    <span>${timeStr} 開始</span>
                     <div style="display:flex; align-items:center; gap:8px;">
                         <span class="char-count">0 字</span>
                         <button class="icon-btn" style="width:26px; height:26px;" onclick="openPhoneticModal(this)" title="粵拼">
@@ -508,7 +505,6 @@
             return currentCardObj;
         }
 
-        // 說話時僅動態渲染未定稿字詞，不干擾已確認的普通話
         function handleSpeechInterim(interim) {
             if (!interim || !interim.trim()) return;
             if (!currentCardObj) createNewCard();
@@ -517,7 +513,6 @@
             scrollToBottom();
         }
 
-        // 說完一句話（定稿）：在尾部接續，不閃爍、不重譯前面內容
         function handleSpeechFinal(finalText) {
             finalText = ensureTraditional(stripAllBrackets(finalText.trim()));
             if (!finalText) return;
@@ -529,7 +524,7 @@
             const cleanConfirmed = cleanString(currentCardObj.rawConfirmedText);
             if (cleanConfirmed.endsWith(cleanFinal)) return;
 
-            // 計算出剛剛新講的那一句 delta
+            // 計算新增的 delta 句子
             let delta = finalText;
             for (let i = finalText.length; i >= 1; i--) {
                 const prefix = finalText.slice(0, i);
@@ -540,11 +535,7 @@
             }
             if (!delta) return;
 
-            // 超過篇幅建立新卡片
-            if (cleanString(currentCardObj.rawConfirmedText).length > 150) {
-                createNewCard();
-            }
-
+            // 保持單卡片持續增長，不再強制開新欄
             const formatted = delta + "，";
             currentCardObj.rawConfirmedText += delta;
             currentCardObj.fullPunctuatedText += formatted;
@@ -552,13 +543,12 @@
             currentCardObj.confirmedSpan.innerText = currentCardObj.fullPunctuatedText;
             currentCardObj.counterEl.innerText = `${cleanString(currentCardObj.rawConfirmedText).length} 字`;
 
-            // 【增量續寫核心】：在普通話尾部建立獨立 span，不改動前面已經翻譯好的文字
+            // 普通話增量接續翻譯
             const targetSpan = document.createElement('span');
             targetSpan.className = "mandarin-pending";
             targetSpan.innerText = " ⋯";
             currentCardObj.mandarinEl.appendChild(targetSpan);
 
-            // 只把剛才講的這句 delta 送去 Puter.js 翻譯
             translateDeltaWithPuter(delta, targetSpan);
 
             scrollToBottom();
@@ -570,7 +560,7 @@
             }
         }
 
-        /* ------------------ 4. 防休眠永續語音核心 ------------------ */
+        /* ------------------ 4. 防休眠語音辨識 ------------------ */
         const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
         let recognition = null;
         let userWantsListening = false;
@@ -655,7 +645,7 @@
             };
         }
 
-        /* ------------------ 5. 單鍵授權與啟動 ------------------ */
+        /* ------------------ 5. 授權與啟動 ------------------ */
         async function toggleSpeech() {
             if (!recognition) {
                 alert("當前瀏覽器不支援語音辨識，請使用 Chrome、Edge 或 Safari。");
