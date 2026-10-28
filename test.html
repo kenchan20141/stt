@@ -388,6 +388,17 @@
     50% { opacity: 1; }
 }
 
+        /* 讓粵語在未出字或打字時，也能有專屬的閃爍光標 */
+.cantonese-content .typing-cursor::after {
+    color: var(--cantonese); /* 或使用 #f8fafc */
+}
+
+/* 確保空 span 也能把光標高度撐起來顯示 */
+.typing-cursor {
+    display: inline-block;
+    min-width: 1px;
+}
+
         
         
     </style>
@@ -699,10 +710,12 @@ function feedCantoneseStream(newText) {
     }, 20); // 20ms 一個字，肉眼極致順滑
 }
 
-/* ------------------ 3. 粵語平滑逐字流與識別處理 (與普通話同款打字機) ------------------ */
+/* ------------------ 3. 粵語逐字打字機（帶開頭閃爍光標） ------------------ */
+
+// 說話時：臨時字串後面也跟著閃爍光標
 function handleSpeechInterim(interim) {
     if (!interim) return;
-    // 說話進行中時，在 interimPart 顯示藍色臨時提示
+    interimPart.className = "interim-text typing-cursor";
     interimPart.textContent = interim;
     scrollCantoToBottom();
 }
@@ -710,7 +723,8 @@ function handleSpeechInterim(interim) {
 function handleSpeechFinal(finalText) {
     if (!finalText || !finalText.trim()) return;
 
-    // 清空未結算的臨時文字
+    // 清理臨時輸入區
+    interimPart.className = "interim-text";
     interimPart.textContent = "";
 
     const cleanFinal = cleanString(finalText);
@@ -737,39 +751,41 @@ function handleSpeechFinal(finalText) {
     lastFinalCleanText = cleanFinal;
     lastFinalTimestamp = now;
 
-    // 1. 【粵語逐字打字機】：完全比照普通話
+    // 1. 【粵語區】：先掛載空節點與閃爍光標
     const cantoSpan = document.createElement('span');
-    cantoSpan.className = "typing-cursor"; // 帶上同款閃爍光標 ▍
+    cantoSpan.className = "typing-cursor"; // 立即顯示閃爍光標 ▍
+    cantoSpan.textContent = "";
     confirmedPart.appendChild(cantoSpan);
     scrollCantoToBottom();
 
-    const cantoWriter = new TypewriterStream(
-        cantoSpan,
-        () => {
-            scrollCantoToBottom();
-        },
-        () => {
-            // 打字完成後，移除光標，補上標點符號
-            cantoSpan.classList.remove("typing-cursor");
-            let txt = cantoSpan.textContent.trim();
-            if (txt && !/[，。？！、]$/.test(txt)) {
-                cantoSpan.textContent = txt + "，";
-            }
-            rawConfirmedText += txt;
-            fullPunctuatedText += cantoSpan.textContent;
-            charCount.textContent = `${cleanString(rawConfirmedText).length} 字`;
-            scrollCantoToBottom();
-        }
-    );
-    // 將粵語文字推入打字隊列（一個字一個字敲出來）
-    cantoWriter.push(delta);
-    cantoWriter.finish();
-
-    // 2. 【普通話逐字打字機】：同步啟動翻譯
+    // 2. 【普通話區】：同步掛載空節點與光標
     const mandoSpan = document.createElement('span');
     mandarinContent.appendChild(mandoSpan);
     scrollMandoToBottom();
 
+    // 給予 120ms 的呼吸停頓感，讓你清晰看到「光標閃爍」加載，隨後流暢出字
+    setTimeout(() => {
+        const cantoWriter = new TypewriterStream(
+            cantoSpan,
+            () => scrollCantoToBottom(),
+            () => {
+                cantoSpan.classList.remove("typing-cursor");
+                let txt = cantoSpan.textContent.trim();
+                if (txt && !/[，。？！、]$/.test(txt)) {
+                    cantoSpan.textContent = txt + "，";
+                }
+                rawConfirmedText += txt;
+                fullPunctuatedText += cantoSpan.textContent;
+                charCount.textContent = `${cleanString(rawConfirmedText).length} 字`;
+                scrollCantoToBottom();
+            }
+        );
+
+        cantoWriter.push(delta);
+        cantoWriter.finish();
+    }, 120);
+
+    // 啟動普通話翻譯
     translateDeltaWithPuter(delta, mandoSpan);
 }
         /* ------------------ 4. 語音辨識與防休眠 ------------------ */
