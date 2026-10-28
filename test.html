@@ -730,14 +730,16 @@ function handleSpeechFinal(finalText) {
     const cleanFinal = cleanString(finalText);
     const now = Date.now();
 
-    // 防重複與抖動
-    if (cleanFinal === lastFinalCleanText && (now - lastFinalTimestamp < 1500)) return;
+    // 1. 防短時間內完全相同文本重複觸發 (2秒內)
+    if (cleanFinal === lastFinalCleanText && (now - lastFinalTimestamp < 2000)) return;
 
+    // 2. 檢查尾部重疊
     const cleanConfirmed = cleanString(rawConfirmedText);
-    const tailSlice = cleanConfirmed.slice(-Math.max(cleanFinal.length + 5, 40));
+    const tailSlice = cleanConfirmed.slice(-Math.max(cleanFinal.length + 10, 50));
     if (tailSlice.endsWith(cleanFinal)) return;
 
     let delta = finalText.trim();
+    // 扣除重疊前綴
     for (let i = delta.length; i >= 2; i--) {
         const checkPrefix = cleanString(delta.slice(0, i));
         if (checkPrefix.length >= 2 && tailSlice.endsWith(checkPrefix)) {
@@ -748,12 +750,16 @@ function handleSpeechFinal(finalText) {
 
     if (!cleanString(delta)) return;
 
+    // 🔥【核心修復】：立即登記歷史記錄，絕不等待打字完成！
+    // 這樣下一次辨識進來時，就能100%攔截重複內容
     lastFinalCleanText = cleanFinal;
     lastFinalTimestamp = now;
+    rawConfirmedText += delta; 
+    charCount.textContent = `${cleanString(rawConfirmedText).length} 字`;
 
     // 1. 【粵語區】：先掛載空節點與閃爍光標
     const cantoSpan = document.createElement('span');
-    cantoSpan.className = "typing-cursor"; // 立即顯示閃爍光標 ▍
+    cantoSpan.className = "typing-cursor"; // 立即顯示閃爍光標
     cantoSpan.textContent = "";
     confirmedPart.appendChild(cantoSpan);
     scrollCantoToBottom();
@@ -763,7 +769,7 @@ function handleSpeechFinal(finalText) {
     mandarinContent.appendChild(mandoSpan);
     scrollMandoToBottom();
 
-    // 給予 120ms 的呼吸停頓感，讓你清晰看到「光標閃爍」加載，隨後流暢出字
+    // 延時 120ms 展現呼吸加載感，隨後開始打字
     setTimeout(() => {
         const cantoWriter = new TypewriterStream(
             cantoSpan,
@@ -774,9 +780,7 @@ function handleSpeechFinal(finalText) {
                 if (txt && !/[，。？！、]$/.test(txt)) {
                     cantoSpan.textContent = txt + "，";
                 }
-                rawConfirmedText += txt;
                 fullPunctuatedText += cantoSpan.textContent;
-                charCount.textContent = `${cleanString(rawConfirmedText).length} 字`;
                 scrollCantoToBottom();
             }
         );
@@ -785,7 +789,7 @@ function handleSpeechFinal(finalText) {
         cantoWriter.finish();
     }, 120);
 
-    // 啟動普通話翻譯
+    // 啟動普通話翻譯（帶上下文）
     translateDeltaWithPuter(delta, mandoSpan);
 }
         /* ------------------ 4. 語音辨識與防休眠 ------------------ */
