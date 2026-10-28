@@ -23,15 +23,18 @@
 
     <style>
         :root {
-            --bg: #08090d;
-            --card-bg: rgba(255, 255, 255, 0.03);
-            --card-border: rgba(255, 255, 255, 0.07);
+            --bg: #090a0f;
+            --canto-bg: #090a0f;
+            --mando-bg: rgba(255, 255, 255, 0.02);
+            --card-border: rgba(255, 255, 255, 0.08);
+            
             --cantonese: #f8fafc;
             --mandarin: #38bdf8;
+            --mandarin-text: #bae6fd;
             --ruby: #f59e0b;
 
             --cantonese-size: 1.55rem;
-            --mandarin-size: 1.25rem;
+            --mandarin-size: 1.18rem;
         }
 
         * {
@@ -45,7 +48,6 @@
         body {
             background-color: var(--bg);
             color: var(--cantonese);
-            font-family: "Noto Serif HK", serif;
             height: 100vh;
             display: flex;
             flex-direction: column;
@@ -53,38 +55,39 @@
             -webkit-font-smoothing: antialiased;
         }
 
-        /* 極簡頂部欄 */
+        /* 頂部控制欄 */
         header {
-            padding: 12px 24px;
+            padding: 10px 20px;
             display: flex;
             justify-content: space-between;
             align-items: center;
             border-bottom: 1px solid var(--card-border);
-            background: rgba(8, 9, 13, 0.95);
+            background: rgba(9, 10, 15, 0.96);
             backdrop-filter: blur(12px);
             z-index: 20;
+            flex-shrink: 0;
         }
 
         .brand-title {
             font-size: 0.95rem;
             font-weight: 700;
             color: #94a3b8;
-            letter-spacing: 1px;
+            letter-spacing: 0.8px;
             font-family: "Noto Sans HK", sans-serif;
         }
 
         .btn-group {
             display: flex;
             align-items: center;
-            gap: 12px;
+            gap: 10px;
         }
 
         .icon-btn {
-            background: rgba(255, 255, 255, 0.05);
+            background: rgba(255, 255, 255, 0.06);
             border: 1px solid var(--card-border);
             color: #cbd5e1;
-            width: 38px;
-            height: 38px;
+            width: 36px;
+            height: 36px;
             border-radius: 8px;
             display: flex;
             align-items: center;
@@ -100,14 +103,14 @@
         }
 
         .icon-btn:active { transform: scale(0.92); }
-        .icon-btn svg { width: 18px; height: 18px; stroke-width: 2; }
+        .icon-btn svg { width: 17px; height: 17px; stroke-width: 2; }
 
         .power-btn {
             background: #ef4444;
             border: 1px solid rgba(255, 255, 255, 0.25);
             color: #ffffff;
-            width: 42px;
-            height: 42px;
+            width: 40px;
+            height: 40px;
             border-radius: 50%;
             box-shadow: 0 0 16px rgba(239, 68, 68, 0.4);
         }
@@ -117,87 +120,120 @@
             box-shadow: 0 0 16px rgba(16, 185, 129, 0.5);
         }
 
-        /* 字幕視窗 */
-        #subtitle-stream {
+        /* 雙欄核心排版容器 (垂直分配) */
+        .viewport-container {
             flex: 1;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            width: 100%;
+        }
+
+        /* 上欄：主視覺 粵語區 (約佔 58%) */
+        .pane-cantonese {
+            flex: 58;
             overflow-y: auto;
-            padding: 24px 28px 220px 28px;
+            padding: 18px 20px 24px 20px;
             display: flex;
             flex-direction: column;
-            gap: 22px;
+            background-color: var(--canto-bg);
+            border-bottom: 1px solid var(--card-border);
             scroll-behavior: smooth;
+            position: relative;
         }
 
-        .caption-card {
-            background: var(--card-bg);
-            border: 1px solid var(--card-border);
-            border-radius: 14px;
-            padding: 20px 24px;
+        /* 下欄：對照 普語區 (約佔 42%) */
+        .pane-mandarin {
+            flex: 42;
+            overflow-y: auto;
+            padding: 16px 20px 30px 20px;
             display: flex;
             flex-direction: column;
-            gap: 16px;
-            animation: fadeIn 0.2s ease;
+            background-color: var(--mando-bg);
+            scroll-behavior: smooth;
+            position: relative;
         }
 
-        .card-meta {
+        /* 隱形欄頂部的小標籤欄 */
+        .pane-meta {
+            position: sticky;
+            top: 0;
             display: flex;
             justify-content: space-between;
             align-items: center;
+            padding-bottom: 8px;
+            margin-bottom: 8px;
+            z-index: 10;
+            pointer-events: none;
+        }
+
+        .pane-tag {
             font-family: "Noto Sans HK", sans-serif;
-            font-size: 0.75rem;
+            font-size: 0.72rem;
+            font-weight: 700;
+            padding: 2px 7px;
+            border-radius: 4px;
+            letter-spacing: 0.5px;
+            pointer-events: auto;
+        }
+
+        .tag-canto {
+            color: #94a3b8;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+        }
+
+        .tag-mando {
+            color: var(--mandarin);
+            background: rgba(56, 189, 248, 0.12);
+            border: 1px solid rgba(56, 189, 248, 0.3);
+        }
+
+        .meta-actions {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            pointer-events: auto;
+        }
+
+        .char-counter {
+            font-family: "Noto Sans HK", sans-serif;
+            font-size: 0.72rem;
             color: #64748b;
         }
 
-        .cantonese-text {
+        /* 文字流排版 */
+        .cantonese-content {
+            font-family: "Noto Serif HK", serif;
             font-size: var(--cantonese-size);
             font-weight: 700;
-            line-height: 1.8;
+            line-height: 1.85;
             letter-spacing: 0.8px;
             color: var(--cantonese);
             word-break: break-word;
+            flex: 1;
         }
 
-        .cantonese-text .interim-text {
+        .cantonese-content .interim-text {
             color: #38bdf8;
             opacity: 0.85;
             margin-left: 4px;
             border-bottom: 2px dashed rgba(56, 189, 248, 0.4);
         }
 
-        .mandarin-box {
-            display: flex;
-            align-items: flex-start;
-            gap: 12px;
-            padding-top: 14px;
-            border-top: 1px solid var(--card-border);
-        }
-
-        .mandarin-label {
-            font-size: 0.72rem;
-            padding: 2px 7px;
-            border-radius: 4px;
-            background: rgba(56, 189, 248, 0.12);
-            border: 1px solid rgba(56, 189, 248, 0.3);
-            color: var(--mandarin);
-            font-weight: 700;
-            margin-top: 5px;
-            flex-shrink: 0;
+        .mandarin-content {
             font-family: "Noto Sans HK", sans-serif;
-        }
-
-        .mandarin-text {
             font-size: var(--mandarin-size);
-            line-height: 1.7;
-            color: #bae6fd;
-            word-break: break-word;
             font-weight: 500;
-            font-family: "Noto Sans HK", sans-serif;
+            line-height: 1.75;
+            color: var(--mandarin-text);
+            word-break: break-word;
+            flex: 1;
         }
 
-        /* 增量翻譯微弱佔位 */
         .mandarin-pending {
             color: #64748b;
-            font-size: 0.85em;
+            font-size: 0.9em;
             margin-left: 4px;
             animation: pulseQuiet 1.2s infinite;
         }
@@ -209,13 +245,13 @@
 
         #fontToast {
             position: fixed;
-            top: 65px;
-            right: 24px;
+            top: 58px;
+            right: 20px;
             background: rgba(15, 23, 42, 0.95);
             border: 1px solid rgba(56, 189, 248, 0.3);
             color: #38bdf8;
             font-size: 0.8rem;
-            padding: 6px 12px;
+            padding: 5px 10px;
             border-radius: 6px;
             pointer-events: none;
             opacity: 0;
@@ -226,6 +262,19 @@
         }
 
         #fontToast.show { opacity: 1; transform: translateY(0); }
+
+        /* 滾動條樣式優化 */
+        .pane-cantonese::-webkit-scrollbar,
+        .pane-mandarin::-webkit-scrollbar,
+        .modal-body::-webkit-scrollbar {
+            width: 4px;
+        }
+        .pane-cantonese::-webkit-scrollbar-thumb,
+        .pane-mandarin::-webkit-scrollbar-thumb,
+        .modal-body::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.15);
+            border-radius: 4px;
+        }
 
         /* 拼音彈窗 */
         .modal-overlay {
@@ -314,10 +363,6 @@
             justify-content: space-between;
             align-items: center;
         }
-
-        @keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
-        #subtitle-stream::-webkit-scrollbar, .modal-body::-webkit-scrollbar { width: 4px; }
-        #subtitle-stream::-webkit-scrollbar-thumb, .modal-body::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.15); border-radius: 4px; }
     </style>
 </head>
 <body>
@@ -346,7 +391,38 @@
     </header>
 
     <div id="fontToast">字體 標準</div>
-    <main id="subtitle-stream"></main>
+
+    <!-- 上下獨立分欄排版 -->
+    <div class="viewport-container">
+        
+        <!-- 上欄：粵語區 -->
+        <section id="cantoPane" class="pane-cantonese">
+            <div class="pane-meta">
+                <span class="pane-tag tag-canto">粵語原文</span>
+                <div class="meta-actions">
+                    <span id="charCount" class="char-counter">0 字</span>
+                    <button class="icon-btn" style="width:24px; height:24px;" onclick="openPhoneticModal()" title="粵拼">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M3 18v-6a9 9 0 0 1 18 0v6"></path>
+                            <path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z"></path>
+                        </svg>
+                    </button>
+                </div>
+            </div>
+            <div class="cantonese-content">
+                <span id="confirmedPart"></span><span id="interimPart" class="interim-text"></span>
+            </div>
+        </section>
+
+        <!-- 下欄：普通話區 -->
+        <section id="mandoPane" class="pane-mandarin">
+            <div class="pane-meta">
+                <span class="pane-tag tag-mando">普通話對照</span>
+            </div>
+            <div id="mandarinContent" class="mandarin-content"></div>
+        </section>
+
+    </div>
 
     <!-- 粵拼彈窗 -->
     <div id="phoneticModal" class="modal-overlay" onclick="closeModalOnBackdrop(event)">
@@ -392,6 +468,10 @@
         function stripAllBrackets(text) {
             if (!text) return "";
             return text.replace(/[()（）\[\]【】{}《》「」『』〈〉"'“”‘’]/g, '').trim();
+        }
+
+        function cleanString(str) {
+            return (str || '').replace(/[，。？！、\s\.,!\?]/g, '');
         }
 
         /* ------------------ 2. Puter.js 單句增量續寫翻譯 ------------------ */
@@ -443,88 +523,66 @@
             } catch (err) {
                 console.error("【Puter.js 增量翻譯失敗】：", err);
                 targetSpan.remove();
+            } finally {
+                scrollMandoToBottom();
             }
         }
 
-        /* ------------------ 3. 字幕流管理器 ------------------ */
-        const streamContainer = document.getElementById('subtitle-stream');
-        const toggleBtn = document.getElementById('toggleBtn');
-        const playIcon = document.getElementById('playIcon');
-        const pauseIcon = document.getElementById('pauseIcon');
+        /* ------------------ 3. 雙欄分離管理器 ------------------ */
+        const cantoPane = document.getElementById('cantoPane');
+        const mandoPane = document.getElementById('mandoPane');
+        const confirmedPart = document.getElementById('confirmedPart');
+        const interimPart = document.getElementById('interimPart');
+        const mandarinContent = document.getElementById('mandarinContent');
+        const charCount = document.getElementById('charCount');
 
-        let autoScroll = true;
-        let currentCardObj = null;
+        let rawConfirmedText = "";
+        let fullPunctuatedText = "";
 
-        streamContainer.addEventListener('scroll', () => {
-            const threshold = 80;
-            autoScroll = streamContainer.scrollHeight - streamContainer.scrollTop - streamContainer.clientHeight < threshold;
+        let autoScrollCanto = true;
+        let autoScrollMando = true;
+
+        cantoPane.addEventListener('scroll', () => {
+            const threshold = 60;
+            autoScrollCanto = (cantoPane.scrollHeight - cantoPane.scrollTop - cantoPane.clientHeight) < threshold;
         });
 
-        function cleanString(str) {
-            return (str || '').replace(/[，。？！、\s\.,!\?]/g, '');
+        mandoPane.addEventListener('scroll', () => {
+            const threshold = 60;
+            autoScrollMando = (mandoPane.scrollHeight - mandoPane.scrollTop - mandoPane.clientHeight) < threshold;
+        });
+
+        function scrollCantoToBottom() {
+            if (autoScrollCanto) {
+                cantoPane.scrollTop = cantoPane.scrollHeight;
+            }
         }
 
-        function createNewCard() {
-            const card = document.createElement('div');
-            card.className = 'caption-card';
-
-            const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-
-            card.innerHTML = `
-                <div class="card-meta">
-                    <span>${timeStr} 開始</span>
-                    <div style="display:flex; align-items:center; gap:8px;">
-                        <span class="char-count">0 字</span>
-                        <button class="icon-btn" style="width:26px; height:26px;" onclick="openPhoneticModal(this)" title="粵拼">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
-                                <path d="M3 18v-6a9 9 0 0 1 18 0v6"></path>
-                                <path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z"></path>
-                            </svg>
-                        </button>
-                    </div>
-                </div>
-                <div class="cantonese-text"><span class="confirmed-part"></span><span class="interim-text"></span></div>
-                <div class="mandarin-box">
-                    <span class="mandarin-label">普通話</span>
-                    <div class="mandarin-text"></div>
-                </div>
-            `;
-            streamContainer.appendChild(card);
-
-            currentCardObj = {
-                cardEl: card,
-                confirmedSpan: card.querySelector('.confirmed-part'),
-                interimSpan: card.querySelector('.interim-text'),
-                mandarinEl: card.querySelector('.mandarin-text'),
-                counterEl: card.querySelector('.char-count'),
-                rawConfirmedText: "",
-                fullPunctuatedText: ""
-            };
-
-            scrollToBottom();
-            return currentCardObj;
+        function scrollMandoToBottom() {
+            if (autoScrollMando) {
+                mandoPane.scrollTop = mandoPane.scrollHeight;
+            }
         }
 
+        // 說話時實時更新未定稿內容
         function handleSpeechInterim(interim) {
             if (!interim || !interim.trim()) return;
-            if (!currentCardObj) createNewCard();
-
-            currentCardObj.interimSpan.innerText = interim;
-            scrollToBottom();
+            interimPart.innerText = interim;
+            scrollCantoToBottom();
         }
 
+        // 定稿：雙欄分別追加，各自獨立滾動
         function handleSpeechFinal(finalText) {
             finalText = ensureTraditional(stripAllBrackets(finalText.trim()));
             if (!finalText) return;
 
-            if (!currentCardObj) createNewCard();
-            currentCardObj.interimSpan.innerText = "";
+            interimPart.innerText = "";
 
             const cleanFinal = cleanString(finalText);
-            const cleanConfirmed = cleanString(currentCardObj.rawConfirmedText);
+            const cleanConfirmed = cleanString(rawConfirmedText);
             if (cleanConfirmed.endsWith(cleanFinal)) return;
 
-            // 計算新增的 delta 句子
+            // 計算出新講的那一句 delta
             let delta = finalText;
             for (let i = finalText.length; i >= 1; i--) {
                 const prefix = finalText.slice(0, i);
@@ -535,37 +593,35 @@
             }
             if (!delta) return;
 
-            // 保持單卡片持續增長，不再強制開新欄
+            // 1. 更新粵語欄
             const formatted = delta + "，";
-            currentCardObj.rawConfirmedText += delta;
-            currentCardObj.fullPunctuatedText += formatted;
+            rawConfirmedText += delta;
+            fullPunctuatedText += formatted;
+            confirmedPart.innerText = fullPunctuatedText;
+            charCount.innerText = `${cleanString(rawConfirmedText).length} 字`;
+            scrollCantoToBottom();
 
-            currentCardObj.confirmedSpan.innerText = currentCardObj.fullPunctuatedText;
-            currentCardObj.counterEl.innerText = `${cleanString(currentCardObj.rawConfirmedText).length} 字`;
-
-            // 普通話增量接續翻譯
+            // 2. 更新普通話欄（在尾部追加等待 span）
             const targetSpan = document.createElement('span');
             targetSpan.className = "mandarin-pending";
             targetSpan.innerText = " ⋯";
-            currentCardObj.mandarinEl.appendChild(targetSpan);
+            mandarinContent.appendChild(targetSpan);
+            scrollMandoToBottom();
 
+            // 送去 AI 翻譯
             translateDeltaWithPuter(delta, targetSpan);
-
-            scrollToBottom();
         }
 
-        function scrollToBottom() {
-            if (autoScroll) {
-                streamContainer.scrollTop = streamContainer.scrollHeight;
-            }
-        }
-
-        /* ------------------ 4. 防休眠語音辨識 ------------------ */
+        /* ------------------ 4. 語音辨識與防休眠 ------------------ */
         const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
         let recognition = null;
         let userWantsListening = false;
         let isEngineRunning = false;
         let wakeLock = null;
+
+        const toggleBtn = document.getElementById('toggleBtn');
+        const playIcon = document.getElementById('playIcon');
+        const pauseIcon = document.getElementById('pauseIcon');
 
         const SILENT_AUDIO_URI = "data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA=";
         const keepAliveAudio = new Audio(SILENT_AUDIO_URI);
@@ -645,7 +701,7 @@
             };
         }
 
-        /* ------------------ 5. 授權與啟動 ------------------ */
+        /* ------------------ 5. 單鍵授權與啟動 ------------------ */
         async function toggleSpeech() {
             if (!recognition) {
                 alert("當前瀏覽器不支援語音辨識，請使用 Chrome、Edge 或 Safari。");
@@ -679,16 +735,14 @@
             toggleBtn.classList.remove('active');
             playIcon.style.display = 'block';
             pauseIcon.style.display = 'none';
-            if (currentCardObj && currentCardObj.interimSpan) {
-                currentCardObj.interimSpan.innerText = "";
-            }
+            interimPart.innerText = "";
         }
 
         /* ------------------ 6. 字體調節 ------------------ */
         const fontScales = [
-            { name: "標準", canto: "1.55rem", mando: "1.25rem" },
-            { name: "放大", canto: "1.85rem", mando: "1.45rem" },
-            { name: "特大", canto: "2.25rem", mando: "1.75rem" }
+            { name: "標準", canto: "1.55rem", mando: "1.18rem" },
+            { name: "放大", canto: "1.85rem", mando: "1.38rem" },
+            { name: "特大", canto: "2.20rem", mando: "1.65rem" }
         ];
         let currentScaleIdx = 0;
         let toastTimer = null;
@@ -704,7 +758,9 @@
             fontToast.classList.add('show');
             clearTimeout(toastTimer);
             toastTimer = setTimeout(() => fontToast.classList.remove('show'), 1200);
-            scrollToBottom();
+
+            scrollCantoToBottom();
+            scrollMandoToBottom();
         }
 
         /* ------------------ 7. 粵拼彈窗與發音 ------------------ */
@@ -743,10 +799,8 @@
             return text;
         }
 
-        async function openPhoneticModal(btn) {
-            const card = btn.closest('.caption-card');
-            const cantoneseEl = card.querySelector('.confirmed-part');
-            const fullText = (cantoneseEl.innerText || "").trim();
+        async function openPhoneticModal() {
+            const fullText = (confirmedPart.innerText || "").trim();
             currentPureText = cleanString(fullText);
 
             if (!fullText) {
