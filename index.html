@@ -3,11 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>實時粵語課堂字幕機</title>
+    <title>實時粵語白話字幕機</title>
 
+    <!-- 香港教育標準字型 -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+HK:wght@400;500;600;700&family=Noto+Serif+HK:wght@500;600;700;900&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+HK:wght@400;500;700&family=Noto+Serif+HK:wght@600;700;900&display=swap" rel="stylesheet">
 
     <!-- 1. 權威粵拼 ESM 模組 -->
     <script type="module">
@@ -15,28 +16,30 @@
         window.ToJyutping = ToJyutping;
     </script>
 
-    <!-- 2. 外部輔助庫 -->
+    <!-- 2. Three.js 3D 視覺引擎 -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+
+    <!-- 3. OpenCC-js 香港繁體正字 -->
     <script src="https://cdn.jsdelivr.net/npm/opencc-js@1.0.5/dist/umd/full.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/fuse.js@7.0.0/dist/fuse.basic.min.js"></script>
+
+    <!-- 4. Puter.js 白話大模型引擎 -->
     <script src="https://js.puter.com/v2/"></script>
 
     <style>
         :root {
-            --bg-color: #0b0c10;
-            --card-bg: rgba(255, 255, 255, 0.04);
-            --card-border: rgba(255, 255, 255, 0.09);
-            --cantonese-color: #f8fafc;
+            --bg-color: #030508;
+            --prompter-card-bg: rgba(9, 14, 23, 0.75);
+            --prompter-border: rgba(56, 189, 248, 0.18);
+            --prompter-border-glow: rgba(56, 189, 248, 0.35);
+            --cantonese-color: #ffffff;
             --mandarin-color: #38bdf8;
-            --meta-color: #94a3b8;
+            --mandarin-glow: rgba(56, 189, 248, 0.28);
             --accent-active: #10b981;
-            --accent-glow: rgba(16, 185, 129, 0.4);
-            --ruby-color: #fbbf24;
+            --ruby-color: #f59e0b;
+            --play-red: #ef4444;
 
-            --play-red: #e11d48;
-            --play-red-glow: rgba(225, 29, 72, 0.45);
-
-            --cantonese-size: 1.45rem;
-            --mandarin-size: 1.05rem;
+            --cantonese-size: 1.55rem;
+            --mandarin-size: 1.22rem;
         }
 
         * {
@@ -50,224 +53,267 @@
         body {
             background-color: var(--bg-color);
             color: var(--cantonese-color);
-            font-family: "Noto Serif HK", "Noto Serif TC", "Source Han Serif TC", "Songti TC", "Kaiti TC", serif;
+            font-family: "Noto Serif HK", serif;
             height: 100vh;
             display: flex;
             flex-direction: column;
             overflow: hidden;
             -webkit-font-smoothing: antialiased;
+            position: relative;
         }
 
+        /* Three.js 全屏動態畫布 */
+        #three-canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 1;
+            pointer-events: none;
+        }
+
+        /* 頂部控制面板（字幕機 HUD 風格） */
         header {
-            padding: 10px 18px;
+            position: relative;
+            z-index: 10;
+            padding: 14px 24px;
             display: flex;
             justify-content: space-between;
             align-items: center;
-            border-bottom: 1px solid var(--card-border);
-            background: rgba(11, 12, 16, 0.95);
-            backdrop-filter: blur(14px);
-            z-index: 10;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+            background: linear-gradient(180deg, rgba(3, 5, 8, 0.92) 0%, rgba(3, 5, 8, 0.65) 100%);
+            backdrop-filter: blur(16px);
         }
 
-        .status-container {
+        .hud-status {
             display: flex;
             align-items: center;
             gap: 12px;
         }
 
-        .status-dot {
-            width: 10px;
-            height: 10px;
+        .hud-live-tag {
+            font-family: "Noto Sans HK", sans-serif;
+            font-size: 0.72rem;
+            font-weight: 700;
+            letter-spacing: 1.5px;
+            padding: 3px 8px;
+            border-radius: 4px;
+            background: rgba(239, 68, 68, 0.15);
+            border: 1px solid rgba(239, 68, 68, 0.4);
+            color: #f87171;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .hud-live-tag.recording {
+            background: rgba(16, 185, 129, 0.15);
+            border-color: rgba(16, 185, 129, 0.4);
+            color: #34d399;
+        }
+
+        .hud-live-tag .dot {
+            width: 6px;
+            height: 6px;
             border-radius: 50%;
-            background-color: #475569;
-            transition: all 0.3s ease;
+            background: currentColor;
+            animation: pulseDot 1.4s infinite;
         }
 
-        .status-dot.active {
-            background-color: var(--accent-active);
-            box-shadow: 0 0 12px var(--accent-glow);
-            animation: pulse 1.8s infinite;
-        }
-
-        .status-text {
+        .hud-text {
             font-size: 0.88rem;
-            color: var(--meta-color);
+            color: #94a3b8;
             font-weight: 500;
             font-family: "Noto Sans HK", sans-serif;
+            letter-spacing: 0.5px;
         }
 
         .btn-group {
             display: flex;
             align-items: center;
-            gap: 10px;
+            gap: 12px;
         }
 
-        .svg-btn {
-            background: rgba(255, 255, 255, 0.06);
-            border: 1px solid var(--card-border);
-            color: #94a3b8;
-            width: 38px;
-            height: 38px;
-            border-radius: 50%;
+        .hud-btn {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            color: #cbd5e1;
+            width: 40px;
+            height: 40px;
+            border-radius: 10px;
             display: flex;
             align-items: center;
             justify-content: center;
             cursor: pointer;
-            transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+            transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
             outline: none;
         }
 
-        .svg-btn:active { transform: scale(0.9); }
-        .svg-btn:hover { color: #f8fafc; background: rgba(255, 255, 255, 0.12); }
-        .svg-btn svg { width: 18px; height: 18px; stroke-width: 2; }
+        .hud-btn:active { transform: scale(0.92); }
+        .hud-btn:hover { color: #ffffff; background: rgba(255, 255, 255, 0.15); border-color: rgba(255, 255, 255, 0.25); }
+        .hud-btn svg { width: 19px; height: 19px; stroke-width: 2; }
 
-        .play-btn-red {
+        .btn-record {
             background: var(--play-red);
-            border: 1px solid rgba(255, 255, 255, 0.2);
+            border: 1px solid rgba(255, 255, 255, 0.3);
             color: #ffffff;
-            box-shadow: 0 0 14px var(--play-red-glow);
+            box-shadow: 0 0 16px rgba(239, 68, 68, 0.5);
+            width: 44px;
+            height: 44px;
+            border-radius: 50%;
         }
 
-        .play-btn-red:hover { background: #be123c; }
-        .play-btn-red.active { background: #9f1239; animation: redPulse 1.8s infinite; }
+        .btn-record:hover { background: #dc2626; }
+        .btn-record.active {
+            background: #059669;
+            box-shadow: 0 0 20px rgba(16, 185, 129, 0.6);
+            border-color: rgba(255, 255, 255, 0.4);
+        }
 
+        /* 字幕流視窗 */
         #subtitle-stream {
+            position: relative;
+            z-index: 5;
             flex: 1;
             overflow-y: auto;
-            padding: 22px 20px 240px 20px;
+            padding: 30px 24px 260px 24px;
             display: flex;
             flex-direction: column;
-            gap: 22px;
+            gap: 26px;
             scroll-behavior: smooth;
         }
 
-        .caption-card {
-            background: var(--card-bg);
-            border: 1px solid var(--card-border);
-            border-radius: 16px;
-            padding: 20px 24px;
+        /* 字幕卡片（字幕機提詞卡風格） */
+        .prompter-card {
+            background: var(--prompter-card-bg);
+            border: 1px solid var(--prompter-border);
+            border-radius: 18px;
+            padding: 24px 28px;
             display: flex;
             flex-direction: column;
-            gap: 12px;
-            animation: fadeIn 0.25s ease;
+            gap: 14px;
+            animation: cardEnter 0.3s cubic-bezier(0.16, 1, 0.3, 1);
             position: relative;
-            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
+            backdrop-filter: blur(20px);
+            box-shadow: 0 10px 32px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+            transition: all 0.3s ease;
         }
 
-        .caption-card-header {
+        .prompter-card.active-target {
+            border-color: var(--prompter-border-glow);
+            box-shadow: 0 12px 40px rgba(0, 0, 0, 0.6), 0 0 24px rgba(56, 189, 248, 0.15);
+        }
+
+        .card-header-bar {
             display: flex;
             justify-content: space-between;
             align-items: center;
         }
 
-        .caption-meta-info {
+        .card-metrics {
             display: flex;
             align-items: center;
-            gap: 12px;
+            gap: 14px;
             font-family: "Noto Sans HK", sans-serif;
         }
 
-        .caption-time {
-            font-size: 0.75rem;
+        .metric-time {
+            font-size: 0.78rem;
             color: #64748b;
+            letter-spacing: 0.5px;
         }
 
-        .char-counter {
-            font-size: 0.72rem;
+        .metric-count {
+            font-size: 0.74rem;
             color: #38bdf8;
             background: rgba(56, 189, 248, 0.12);
-            padding: 2px 8px;
-            border-radius: 4px;
+            padding: 2px 10px;
+            border-radius: 6px;
         }
 
-        .cantonese-text {
+        /* 廣東話字幕行 */
+        .cantonese-row {
             font-size: var(--cantonese-size);
-            font-weight: 600;
-            line-height: 1.85;
+            font-weight: 700;
+            line-height: 1.8;
             letter-spacing: 0.8px;
             color: var(--cantonese-color);
             word-break: break-word;
-            transition: font-size 0.2s ease;
+            text-shadow: 0 2px 10px rgba(0, 0, 0, 0.7);
         }
 
-        .cantonese-text .interim-preview {
+        .cantonese-row .interim-inline {
             color: #38bdf8;
-            opacity: 0.85;
+            opacity: 0.9;
             margin-left: 4px;
-            border-bottom: 1px dashed rgba(56, 189, 248, 0.4);
+            border-bottom: 2px dashed rgba(56, 189, 248, 0.5);
         }
 
-        .mandarin-box {
+        /* 白話普通話字幕行 */
+        .mandarin-row {
             display: flex;
             align-items: flex-start;
-            gap: 12px;
-            margin-top: 6px;
-            padding-top: 10px;
-            border-top: 1px dashed rgba(255, 255, 255, 0.08);
+            gap: 14px;
+            padding-top: 14px;
+            border-top: 1px solid rgba(255, 255, 255, 0.08);
         }
 
-        .mandarin-tag {
-            font-size: 0.68rem;
-            padding: 2px 7px;
+        .mandarin-label {
+            font-size: 0.72rem;
+            padding: 3px 8px;
             border-radius: 4px;
             background: rgba(56, 189, 248, 0.15);
+            border: 1px solid rgba(56, 189, 248, 0.35);
             color: var(--mandarin-color);
             font-weight: 700;
             margin-top: 4px;
             flex-shrink: 0;
             font-family: "Noto Sans HK", sans-serif;
-            transition: all 0.2s ease;
+            letter-spacing: 1px;
         }
 
-        .mandarin-tag.ai-loading {
-            background: rgba(245, 158, 11, 0.2);
-            color: #fbbf24;
-            border: 1px solid rgba(245, 158, 11, 0.4);
-        }
-
-        .mandarin-tag.ai-active {
-            background: rgba(16, 185, 129, 0.2);
-            color: #34d399;
-            border: 1px solid rgba(16, 185, 129, 0.4);
-        }
-
-        .mandarin-text {
+        .mandarin-content {
             font-size: var(--mandarin-size);
             line-height: 1.7;
-            color: #7dd3fc;
+            color: #bae6fd;
             word-break: break-word;
-            font-weight: 400;
-            transition: font-size 0.2s ease, color 0.2s ease;
+            font-weight: 500;
+            font-family: "Noto Sans HK", sans-serif;
+            text-shadow: 0 0 16px var(--mandarin-glow);
+            transition: color 0.3s ease;
         }
 
+        /* 提示字泡 */
         #fontToast {
             position: fixed;
-            top: 60px;
-            right: 18px;
+            top: 75px;
+            right: 24px;
             background: rgba(15, 23, 42, 0.95);
-            border: 1px solid rgba(56, 189, 248, 0.3);
+            border: 1px solid rgba(56, 189, 248, 0.35);
             color: #38bdf8;
-            font-size: 0.8rem;
-            padding: 5px 12px;
-            border-radius: 10px;
+            font-size: 0.82rem;
+            padding: 6px 14px;
+            border-radius: 8px;
             pointer-events: none;
             opacity: 0;
             transform: translateY(-4px);
             transition: all 0.2s ease;
-            z-index: 20;
+            z-index: 30;
             font-family: "Noto Sans HK", sans-serif;
         }
 
         #fontToast.show { opacity: 1; transform: translateY(0); }
 
+        /* 拼音彈窗 */
         .modal-overlay {
             position: fixed;
             top: 0;
             left: 0;
             width: 100vw;
             height: 100vh;
-            background: rgba(0, 0, 0, 0.8);
-            backdrop-filter: blur(10px);
+            background: rgba(0, 0, 0, 0.85);
+            backdrop-filter: blur(14px);
             z-index: 100;
             display: none;
             align-items: center;
@@ -278,13 +324,13 @@
         .modal-overlay.active { display: flex; }
 
         .modal-window {
-            background: #12151d;
-            border: 1px solid rgba(255, 255, 255, 0.16);
+            background: #090e17;
+            border: 1px solid rgba(56, 189, 248, 0.25);
             width: 100%;
             max-width: 680px;
             max-height: 84vh;
             border-radius: 20px;
-            box-shadow: 0 25px 60px rgba(0, 0, 0, 0.7);
+            box-shadow: 0 25px 60px rgba(0, 0, 0, 0.85);
             display: flex;
             flex-direction: column;
             overflow: hidden;
@@ -296,10 +342,10 @@
             display: flex;
             justify-content: space-between;
             align-items: center;
-            border-bottom: 1px solid var(--card-border);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.08);
         }
 
-        .modal-title-group {
+        .modal-title {
             display: flex;
             align-items: center;
             gap: 10px;
@@ -314,11 +360,11 @@
             overflow-y: auto;
             flex: 1;
             line-height: 2.6;
-            background: #0d0f15;
+            background: #05080f;
             display: flex;
             flex-wrap: wrap;
             align-content: flex-start;
-            gap: 2px 2px;
+            gap: 2px;
         }
 
         ruby.jp-ruby {
@@ -326,25 +372,24 @@
             flex-direction: column-reverse;
             align-items: center;
             vertical-align: bottom;
-            margin: 2px 3px;
+            margin: 2px 4px;
             line-height: 1;
         }
 
         ruby.jp-ruby rt.c-rt {
             display: block;
-            font-size: 0.76rem;
+            font-size: 0.78rem;
             line-height: 1;
             font-family: "Noto Sans HK", sans-serif;
             color: var(--ruby-color);
             font-weight: 500;
-            letter-spacing: 0.4px;
-            margin-bottom: 5px;
+            margin-bottom: 6px;
             user-select: none;
         }
 
         ruby.jp-ruby span.c-char {
             display: block;
-            font-size: 1.55rem;
+            font-size: 1.6rem;
             font-weight: 600;
             line-height: 1.25;
             font-family: "Noto Serif HK", serif;
@@ -353,17 +398,16 @@
 
         span.jp-punct {
             display: inline-block;
-            font-size: 1.55rem;
+            font-size: 1.6rem;
             line-height: 1.25;
             vertical-align: bottom;
             color: #64748b;
             margin: 0 3px 2px 3px;
-            font-family: "Noto Serif HK", serif;
         }
 
         .modal-footer {
             padding: 14px 22px;
-            border-top: 1px solid var(--card-border);
+            border-top: 1px solid rgba(255, 255, 255, 0.08);
             display: flex;
             justify-content: space-between;
             align-items: center;
@@ -371,23 +415,30 @@
             font-family: "Noto Sans HK", sans-serif;
         }
 
-        @keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
-        @keyframes modalPop { from { opacity: 0; transform: scale(0.95); } to { opacity: 1; transform: scale(1); } }
-        @keyframes pulse { 0% { transform: scale(0.95); opacity: 0.7; } 50% { transform: scale(1.2); opacity: 1; } 100% { transform: scale(0.95); opacity: 0.7; } }
-        @keyframes redPulse { 0% { box-shadow: 0 0 10px rgba(225, 29, 72, 0.4); } 50% { box-shadow: 0 0 22px rgba(225, 29, 72, 0.85); } 100% { box-shadow: 0 0 10px rgba(225, 29, 72, 0.4); } }
+        @keyframes cardEnter { from { opacity: 0; transform: translateY(12px) scale(0.99); } to { opacity: 1; transform: translateY(0) scale(1); } }
+        @keyframes modalPop { from { opacity: 0; transform: scale(0.96); } to { opacity: 1; transform: scale(1); } }
+        @keyframes pulseDot { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.4; transform: scale(0.8); } }
+
         #subtitle-stream::-webkit-scrollbar, .modal-body::-webkit-scrollbar { width: 5px; }
-        #subtitle-stream::-webkit-scrollbar-thumb, .modal-body::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.14); border-radius: 3px; }
+        #subtitle-stream::-webkit-scrollbar-thumb, .modal-body::-webkit-scrollbar-thumb { background: rgba(56, 189, 248, 0.2); border-radius: 4px; }
     </style>
 </head>
 <body>
 
+    <!-- 3D 視覺聲波畫布 -->
+    <canvas id="three-canvas"></canvas>
+
+    <!-- 頂部字幕機 HUD -->
     <header>
-        <div class="status-container">
-            <div id="statusDot" class="status-dot"></div>
-            <span id="statusText" class="status-text">語音引擎準備就緒</span>
+        <div class="hud-status">
+            <div id="liveBadge" class="hud-live-tag">
+                <span class="dot"></span>
+                <span id="liveBadgeText">待機</span>
+            </div>
+            <span id="statusInfo" class="hud-text">語音字幕機就緒</span>
         </div>
         <div class="btn-group">
-            <button class="svg-btn" title="調節字體大小" onclick="cycleFontSize()">
+            <button class="hud-btn" title="切換字體尺寸" onclick="cycleFontSize()">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
                     <path d="M3.5 17.5L6.5 9.5L9.5 17.5"></path>
                     <path d="M4.8 14.5H8.2"></path>
@@ -396,13 +447,14 @@
                 </svg>
             </button>
 
-            <button class="svg-btn" title="課堂範例示範" onclick="playDemoSentence()">
+            <button class="hud-btn" title="課堂範例示範" onclick="playDemoSentence()">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
                     <path d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3Z"></path>
                 </svg>
             </button>
 
-            <button id="toggleBtn" class="svg-btn play-btn-red" title="開始/暫停識別" onclick="toggleSpeech()">
+            <!-- 核心識別啟動鍵：按一次即啟用 Puter AI 並開始識別 -->
+            <button id="toggleBtn" class="hud-btn btn-record" title="開始識別" onclick="toggleSpeech()">
                 <svg id="playIcon" viewBox="0 0 24 24" fill="currentColor">
                     <path d="M8 5.14v13.72a1 1 0 0 0 1.5.86l11-6.86a1 1 0 0 0 0-1.72l-11-6.86a1 1 0 0 0-1.5.86z"></path>
                 </svg>
@@ -414,20 +466,21 @@
         </div>
     </header>
 
-    <div id="fontToast">字體：標準</div>
+    <div id="fontToast">字體 標準</div>
     <main id="subtitle-stream"></main>
 
+    <!-- 拼音彈窗 -->
     <div id="phoneticModal" class="modal-overlay" onclick="closeModalOnBackdrop(event)">
         <div class="modal-window">
             <div class="modal-header">
-                <div class="modal-title-group">
+                <div class="modal-title">
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                         <path d="M3 18v-6a9 9 0 0 1 18 0v6"></path>
                         <path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z"></path>
                     </svg>
                     <span>粵語每字拼音與發音</span>
                 </div>
-                <button class="svg-btn" style="width:32px; height:32px;" onclick="closePhoneticModal()">
+                <button class="hud-btn" style="width:32px; height:32px;" onclick="closePhoneticModal()">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
                         <line x1="18" y1="6" x2="6" y2="18"></line>
                         <line x1="6" y1="6" x2="18" y2="18"></line>
@@ -437,7 +490,7 @@
             <div id="modalContent" class="modal-body"></div>
             <div class="modal-footer">
                 <span id="ttsStatus" style="font-size: 0.82rem; color: #94a3b8;">就緒</span>
-                <button id="ttsPlayBtn" class="svg-btn" style="background:#0284c7; color:#fff;" title="播放粵語發音" onclick="speakCurrentText()">
+                <button id="ttsPlayBtn" class="hud-btn" style="background:#0284c7; color:#fff;" title="播放粵語發音" onclick="speakCurrentText()">
                     <svg viewBox="0 0 24 24" fill="currentColor">
                         <polygon points="6 3 20 12 6 21 6 3"></polygon>
                     </svg>
@@ -447,96 +500,102 @@
     </div>
 
     <script>
-        /* ------------------ 1. 外部輔助庫初始化 ------------------ */
+        /* ------------------ 1. Three.js 聲波字幕機視覺背景 ------------------ */
+        let scene, camera, renderer, particles;
+        const particleCount = 1400;
+        let pPositions, pPhases;
+        let isAudioSpeaking = false;
+
+        function initThreeScene() {
+            const canvas = document.getElementById('three-canvas');
+            scene = new THREE.Scene();
+            camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 1, 1000);
+            camera.position.z = 240;
+            camera.position.y = 40;
+            camera.rotation.x = -0.15;
+
+            renderer = new THREE.WebGLRenderer({ canvas: canvas, alpha: true, antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+
+            const geometry = new THREE.BufferGeometry();
+            pPositions = new Float32Array(particleCount * 3);
+            pPhases = new Float32Array(particleCount);
+
+            let i3 = 0;
+            for (let i = 0; i < particleCount; i++) {
+                pPositions[i3] = (Math.random() - 0.5) * 600;
+                pPositions[i3 + 1] = (Math.random() - 0.5) * 80 - 60;
+                pPositions[i3 + 2] = (Math.random() - 0.5) * 500;
+                pPhases[i] = Math.random() * Math.PI * 2;
+                i3 += 3;
+            }
+
+            geometry.setAttribute('position', new THREE.BufferAttribute(pPositions, 3));
+
+            const material = new THREE.PointsMaterial({
+                color: 0x38bdf8,
+                size: 2.2,
+                transparent: true,
+                opacity: 0.45,
+                blending: THREE.AdditiveBlending
+            });
+
+            particles = new THREE.Points(geometry, material);
+            scene.add(particles);
+
+            window.addEventListener('resize', onWindowResize, false);
+            animateThree();
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        let clock = new THREE.Clock();
+        function animateThree() {
+            requestAnimationFrame(animateThree);
+            const time = clock.getElapsedTime();
+            const positions = particles.geometry.attributes.position.array;
+            const waveSpeed = isAudioSpeaking ? 4.5 : 1.2;
+            const waveHeight = isAudioSpeaking ? 16 : 5;
+
+            let i3 = 0;
+            for (let i = 0; i < particleCount; i++) {
+                const u = positions[i3];
+                positions[i3 + 1] = Math.sin(u * 0.02 + time * waveSpeed + pPhases[i]) * waveHeight - 50;
+                i3 += 3;
+            }
+            particles.geometry.attributes.position.needsUpdate = true;
+            renderer.render(scene, camera);
+        }
+        window.addEventListener('DOMContentLoaded', initThreeScene);
+
+        /* ------------------ 2. 徹底白話文轉譯規則（無括號、無文言） ------------------ */
         let hkConverter = null;
         try {
-            if (window.OpenCC) {
-                hkConverter = window.OpenCC.Converter({ from: 'cn', to: 'hk' });
-            }
+            if (window.OpenCC) hkConverter = window.OpenCC.Converter({ from: 'cn', to: 'hk' });
         } catch (e) {}
 
-        const CLASSROOM_CORE_VOCAB = [
-            "出師表", "六國論", "岳陽樓記", "醉翁亭記", "始得西山宴遊記", "前赤壁賦",
-            "念奴嬌", "赤壁懷古", "聲聲慢", "青玉案", "逍遙遊", "庖丁解牛",
-            "廉頗藺相如列傳", "師說", "勸學", "魚我所欲也", "鴻門會", "項莊舞劍",
-            "中道崩殂", "陟罰臧否", "裨補闕漏", "猥自枉屈", "咨諏善道", "臨表涕零",
-            "弊在賂秦", "抱薪救火", "檣傾楫摧", "浩浩湯湯", "岸芷汀蘭", "政通人和",
-            "百廢具興", "傴僂提攜", "宴酣之樂", "觥籌交錯", "餘音嫋嫋", "正襟危坐"
-        ];
-
-        let vocabFuse = null;
-        if (window.Fuse) {
-            vocabFuse = new window.Fuse(CLASSROOM_CORE_VOCAB, {
-                includeScore: true,
-                threshold: 0.32,
-                minMatchCharLength: 2
-            });
-        }
-
-        /* ------------------ 2. 定稿專用校正庫（僅在定稿時執行 1 次，零消耗） ------------------ */
-        const CHINESE_SUBJECT_RULES = [
-            [/出[屍尸]表/g, "出師表"],
-            [/六國[亂爛]/g, "六國論"],
-            [/[約越月]洋樓記/g, "岳陽樓記"],
-            [/[最醉]擁亭記/g, "醉翁亭記"],
-            [/始得西山[燕宴]遊記/g, "始得西山宴遊記"],
-            [/前赤壁[副婦父]/g, "前赤壁賦"],
-            [/念[老佬]嬌/g, "念奴嬌"],
-            [/星[星猩]慢/g, "聲聲慢"],
-            [/青[肉落]案/g, "青玉案"],
-            [/消[遙遙]遊/g, "逍遙遊"],
-            [/[拋包][釘丁]解牛/g, "庖丁解牛"],
-            [/連[波坡]藺相如/g, "廉頗藺相如"],
-            [/[練連]頗/g, "廉頗"],
-            [/藺相[魚余]/g, "藺相如"],
-            [/[C絲C司]說/g, "師說"],
-            [/[券倦]學/g, "勸學"],
-            [/魚我所[欲慾]也/g, "魚我所欲也"],
-            [/[紅洪]門[宴會]/g, "鴻門會"],
-            [/項[莊裝]舞劍/g, "項莊舞劍"],
-            [/中道崩[曹除存]/g, "中道崩殂"],
-            [/崩[曹除存]/g, "崩殂"],
-            [/[則直]發[裝藏]否/g, "陟罰臧否"],
-            [/[避卑]補[闕缺]漏/g, "裨補闕漏"],
-            [/委自枉屈/g, "猥自枉屈"],
-            [/資諏善道/g, "咨諏善道"],
-            [/臨表[體涕]零/g, "臨表涕零"],
-            [/弊在[露路]秦/g, "弊在賂秦"],
-            [/抱[身薪]救火/g, "抱薪救火"],
-            [/檣[傾頃]楫[摧催]/g, "檣傾楫摧"],
-            [/浩浩[蕩蕩湯湯]{2}/g, "浩浩湯湯"],
-            [/岸[子芷]汀蘭/g, "岸芷汀蘭"],
-            [/政通人[何和]/g, "政通人和"],
-            [/百廢[具俱]興/g, "百廢具興"],
-            [/傴[樓僂]提攜/g, "傴僂提攜"],
-            [/燕[堪酣]之樂/g, "宴酣之樂"],
-            [/光籌交錯/g, "觥籌交錯"]
-        ];
-
-        function optimizeFinalText(text) {
+        // 清理所有括號與特殊字符
+        function stripAllBrackets(text) {
             if (!text) return "";
-            let res = text;
-
-            if (hkConverter) {
-                try { res = hkConverter(res); } catch (e) {}
-            }
-
-            for (let i = 0; i < CHINESE_SUBJECT_RULES.length; i++) {
-                res = res.replace(CHINESE_SUBJECT_RULES[i][0], CHINESE_SUBJECT_RULES[i][1]);
-            }
-            return res;
+            return text.replace(/[()（）\[\]【】{}《》「」『』〈〉]/g, '').trim();
         }
 
-        /* ------------------ 3. 毫秒級極速本地粵普轉譯（0 延遲，支持倒裝） ------------------ */
-        function translateFast(text) {
+        // 毫秒級通俗口語白話對照表（嚴禁文言文）
+        function translateToSpokenVernacular(text) {
             if (!text || !text.trim()) return "";
             let res = text;
 
+            // 口語倒裝徹底理順
             res = res.replace(/([\u4e00-\u9fa5]{1,2})先([，。？！、\s]|$)/g, "先$1$2");
             res = res.replace(/([\u4e00-\u9fa5]{1,2})得滯/g, "太$1了");
             res = res.replace(/畀([\u4e00-\u9fa5]{1,4})我/g, "把$1給我");
 
-            const FAST_MAP = [
+            const SPOKEN_MAP = [
                 [/都唔好肯定/g, "也不太敢確定"],
                 [/唔好肯定/g, "不太敢確定"],
                 [/唔係幾好/g, "不太好"],
@@ -554,6 +613,8 @@
                 [/睇下/g, "看一下"],
                 [/屋企/g, "家裡"],
                 [/返工/g, "上班"],
+                [/收工/g, "下班"],
+                [/返學/g, "上學"],
                 [/佢哋/g, "他們"],
                 [/我哋/g, "我們"],
                 [/你哋/g, "你們"],
@@ -572,7 +633,6 @@
                 [/緊/g, "正在"],
                 [/過嚟/g, "過來"],
                 [/啱啱/g, "剛剛"],
-                [/啱/g, "對"],
                 [/真係/g, "真是"],
                 [/買咗/g, "買了"],
                 [/畀/g, "給"],
@@ -580,35 +640,39 @@
                 [/諗/g, "想"],
                 [/睇/g, "看"],
                 [/講/g, "說"],
-                [/㗎喇[。，！]/g, "的了。"],
-                [/㗎[。，！]/g, "的。"],
-                [/啦[。，！]/g, "吧。"],
-                [/囉[。，！]/g, "呢。"],
+                [/㗎喇/g, "的了"],
+                [/㗎/g, "的"],
+                [/啦/g, "吧"],
+                [/囉/g, "呢"],
                 [/嘅/g, "的"]
             ];
 
-            for (let i = 0; i < FAST_MAP.length; i++) {
-                res = res.replace(FAST_MAP[i][0], FAST_MAP[i][1]);
+            for (let i = 0; i < SPOKEN_MAP.length; i++) {
+                res = res.replace(SPOKEN_MAP[i][0], SPOKEN_MAP[i][1]);
             }
-            return res;
+            return stripAllBrackets(res);
         }
 
-        /* ------------------ 4. 第二軌：Puter AI 靜默潤色（背景非阻塞） ------------------ */
-        async function requestPuterAIRefinement(cardObj) {
-            const textToTranslate = cardObj.fullPunctuatedText;
-            if (!textToTranslate || !textToTranslate.trim()) return;
+        /* ------------------ 3. Puter AI 通俗白話深層轉譯（絕非文言） ------------------ */
+        async function requestPuterWhiteTalk(cardObj) {
+            const rawCanto = cardObj.fullPunctuatedText;
+            if (!rawCanto || !rawCanto.trim()) return;
 
             if (!window.puter || !window.puter.auth || !puter.auth.isSignedIn() || !window.puter.ai) {
                 return;
             }
 
-            if (cardObj.mandarinTagEl) {
-                cardObj.mandarinTagEl.innerText = "普通話 (AI 潤色中...)";
-                cardObj.mandarinTagEl.className = "mandarin-tag ai-loading";
-            }
-
             try {
-                const prompt = `你是粵普翻譯專家。請將以下粵語轉換為規範普通話書面語，修正倒裝，保留文言詞彙與詩句。只輸出結果：\n${textToTranslate}`;
+                // 嚴格提示詞：通俗現代標準白話，禁止文言文，嚴禁括號
+                const prompt = `請將以下粵語口語直接翻譯成清晰、通俗、現代標準的白話文普通話。
+要求：
+1. 必須是現代白話，絕不可用文言文、半文言或古漢語句式。
+2. 徹底理順粵語口語倒裝，使其符合現代普通話日常表達習慣。
+3. 嚴禁出現任何括號，如圓括號、方括號、引號等。
+4. 直接輸出白話譯文本身，不得包含任何說明或附言。
+
+粵語：${rawCanto}`;
+
                 const response = await puter.ai.chat(prompt);
 
                 let aiText = "";
@@ -616,34 +680,26 @@
                 else if (response && response.message) aiText = response.message.content;
                 else if (response) aiText = String(response);
 
-                aiText = aiText.replace(/^["'「『](.*)["'」』]$/s, '$1').trim();
+                aiText = stripAllBrackets(aiText);
 
+                // 直接顯示精修版本
                 if (aiText) {
                     cardObj.mandarinEl.innerText = aiText;
-                    if (cardObj.mandarinTagEl) {
-                        cardObj.mandarinTagEl.innerText = "普通話・AI 精修";
-                        cardObj.mandarinTagEl.className = "mandarin-tag ai-active";
-                    }
                 }
-            } catch (err) {
-                if (cardObj.mandarinTagEl) {
-                    cardObj.mandarinTagEl.innerText = "普通話";
-                    cardObj.mandarinTagEl.className = "mandarin-tag";
-                }
-            }
+            } catch (err) {}
         }
 
-        /* ------------------ 5. 字幕串流管理器 ------------------ */
+        /* ------------------ 4. 字幕機串流架構 ------------------ */
         const streamContainer = document.getElementById('subtitle-stream');
-        const statusDot = document.getElementById('statusDot');
-        const statusText = document.getElementById('statusText');
+        const liveBadge = document.getElementById('liveBadge');
+        const liveBadgeText = document.getElementById('liveBadgeText');
+        const statusInfo = document.getElementById('statusInfo');
         const toggleBtn = document.getElementById('toggleBtn');
         const playIcon = document.getElementById('playIcon');
         const pauseIcon = document.getElementById('pauseIcon');
 
         let autoScroll = true;
         let currentCardObj = null;
-        const MAX_CHAR_PER_CARD = 160;
 
         streamContainer.addEventListener('scroll', () => {
             const threshold = 80;
@@ -654,40 +710,42 @@
             return (str || '').replace(/[，。？！、\s\.,!\?]/g, '');
         }
 
-        function createNewCard() {
+        function createNewPrompterCard() {
+            // 移除先前的聚焦高亮
+            document.querySelectorAll('.prompter-card').forEach(c => c.classList.remove('active-target'));
+
             const card = document.createElement('div');
-            card.className = 'caption-card';
+            card.className = 'prompter-card active-target';
 
             const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
             card.innerHTML = `
-                <div class="caption-card-header">
-                    <div class="caption-meta-info">
-                        <span class="caption-time">${timeStr}</span>
-                        <span class="char-counter">0 字</span>
+                <div class="card-header-bar">
+                    <div class="card-metrics">
+                        <span class="metric-time">${timeStr}</span>
+                        <span class="metric-count">0 字</span>
                     </div>
-                    <button class="svg-btn" style="width:32px; height:32px;" title="查看每字粵拼與發音" onclick="openPhoneticModal(this)">
+                    <button class="hud-btn" style="width:32px; height:32px;" title="查看每字粵拼與發音" onclick="openPhoneticModal(this)">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
                             <path d="M3 18v-6a9 9 0 0 1 18 0v6"></path>
                             <path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z"></path>
                         </svg>
                     </button>
                 </div>
-                <div class="cantonese-text"><span class="confirmed-content"></span><span class="interim-preview"></span></div>
-                <div class="mandarin-box">
-                    <span class="mandarin-tag">普通話</span>
-                    <div class="mandarin-text">聆聽中...</div>
+                <div class="cantonese-row"><span class="confirmed-part"></span><span class="interim-inline"></span></div>
+                <div class="mandarin-row">
+                    <span class="mandarin-label">普通話</span>
+                    <div class="mandarin-content">聆聽中...</div>
                 </div>
             `;
             streamContainer.appendChild(card);
 
             currentCardObj = {
                 cardEl: card,
-                confirmedSpan: card.querySelector('.confirmed-content'),
-                interimSpan: card.querySelector('.interim-preview'),
-                mandarinEl: card.querySelector('.mandarin-text'),
-                mandarinTagEl: card.querySelector('.mandarin-tag'),
-                counterEl: card.querySelector('.char-counter'),
+                confirmedSpan: card.querySelector('.confirmed-part'),
+                interimSpan: card.querySelector('.interim-inline'),
+                mandarinEl: card.querySelector('.mandarin-content'),
+                counterEl: card.querySelector('.metric-count'),
                 rawConfirmedText: "",
                 fullPunctuatedText: "",
                 aiTimer: null
@@ -697,65 +755,66 @@
             return currentCardObj;
         }
 
-        // 毫秒級臨時渲染：邊說邊出字，完全不卡頓
-        function handleInterimSpeech(interimRaw) {
-            if (!interimRaw || !interimRaw.trim()) return;
-            if (!currentCardObj) createNewCard();
+        // 說話時實時上屏（0 延遲）
+        function handleSpeechInterim(interim) {
+            isAudioSpeaking = true;
+            if (!interim || !interim.trim()) return;
+            if (!currentCardObj) createNewPrompterCard();
 
-            // 臨時字直接上屏（0 延遲，絕不跑重型運算）
-            currentCardObj.interimSpan.innerText = interimRaw;
-
-            // 同步快速預覽普通話（讓用戶看到即時反應）
-            const combinedPreview = currentCardObj.fullPunctuatedText + interimRaw;
-            currentCardObj.mandarinEl.innerText = translateFast(combinedPreview);
+            currentCardObj.interimSpan.innerText = interim;
+            const previewText = currentCardObj.fullPunctuatedText + interim;
+            // 直接顯示白話預覽
+            currentCardObj.mandarinEl.innerText = translateToSpokenVernacular(previewText);
             scrollToBottom();
         }
 
-        // 定稿上屏：停頓時觸發
-        function handleFinalSpeech(finalRaw) {
-            finalRaw = finalRaw.trim();
-            if (!finalRaw) return;
+        // 說完停頓定稿
+        function handleSpeechFinal(finalText) {
+            isAudioSpeaking = false;
+            finalText = stripAllBrackets(finalText.trim());
+            if (!finalText) return;
 
-            if (!currentCardObj) createNewCard();
+            if (hkConverter) {
+                try { finalText = hkConverter(finalText); } catch (e) {}
+            }
+
+            if (!currentCardObj) createNewPrompterCard();
             currentCardObj.interimSpan.innerText = "";
 
-            // 僅在定稿時做輕量正字修正
-            const corrected = optimizeFinalText(finalRaw);
-            const cleanFinal = cleanString(corrected);
+            const cleanFinal = cleanString(finalText);
             const cleanConfirmed = cleanString(currentCardObj.rawConfirmedText);
-
             if (cleanConfirmed.endsWith(cleanFinal)) return;
 
-            let deltaText = corrected;
-            for (let i = corrected.length; i >= 1; i--) {
-                const prefix = corrected.slice(0, i);
+            let delta = finalText;
+            for (let i = finalText.length; i >= 1; i--) {
+                const prefix = finalText.slice(0, i);
                 if (cleanConfirmed.endsWith(cleanString(prefix))) {
-                    deltaText = corrected.slice(i).trim();
+                    delta = finalText.slice(i).trim();
                     break;
                 }
             }
-            if (!deltaText) return;
+            if (!delta) return;
 
-            if (cleanString(currentCardObj.rawConfirmedText).length > MAX_CHAR_PER_CARD) {
-                createNewCard();
+            if (cleanString(currentCardObj.rawConfirmedText).length > 150) {
+                createNewPrompterCard();
             }
 
-            const formattedDelta = deltaText + "，";
-            currentCardObj.rawConfirmedText += deltaText;
-            currentCardObj.fullPunctuatedText += formattedDelta;
+            const formatted = delta + "，";
+            currentCardObj.rawConfirmedText += delta;
+            currentCardObj.fullPunctuatedText += formatted;
 
             currentCardObj.confirmedSpan.innerText = currentCardObj.fullPunctuatedText;
             currentCardObj.counterEl.innerText = `${cleanString(currentCardObj.rawConfirmedText).length} 字`;
 
-            // 即時本機普通話
-            currentCardObj.mandarinEl.innerText = translateFast(currentCardObj.fullPunctuatedText);
+            // 本地白話先行
+            currentCardObj.mandarinEl.innerText = translateToSpokenVernacular(currentCardObj.fullPunctuatedText);
 
-            // 觸發 Puter AI 防抖潤色
+            // 停頓 0.35 秒後直接替換為 Puter AI 精修白話版本
             if (window.puter && window.puter.auth && puter.auth.isSignedIn()) {
                 if (currentCardObj.aiTimer) clearTimeout(currentCardObj.aiTimer);
                 currentCardObj.aiTimer = setTimeout(() => {
-                    requestPuterAIRefinement(currentCardObj);
-                }, 400);
+                    requestPuterWhiteTalk(currentCardObj);
+                }, 350);
             }
 
             scrollToBottom();
@@ -767,7 +826,7 @@
             }
         }
 
-        /* ------------------ 6. Web Speech 語音識別核心（輕量流暢） ------------------ */
+        /* ------------------ 5. Web Speech 識別核心 ------------------ */
         const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
         let recognition = null;
         let userWantsListening = false;
@@ -776,17 +835,12 @@
 
         async function acquireWakeLock() {
             try {
-                if ('wakeLock' in navigator) {
-                    wakeLock = await navigator.wakeLock.request('screen');
-                }
+                if ('wakeLock' in navigator) wakeLock = await navigator.wakeLock.request('screen');
             } catch (err) {}
         }
 
         function releaseWakeLock() {
-            if (wakeLock) {
-                wakeLock.release().catch(() => {});
-                wakeLock = null;
-            }
+            if (wakeLock) { wakeLock.release().catch(() => {}); wakeLock = null; }
         }
 
         if (SpeechRecognition) {
@@ -798,8 +852,9 @@
 
             recognition.onstart = () => {
                 isEngineRunning = true;
-                statusDot.classList.add('active');
-                statusText.innerText = "極速識別中（即講即出）...";
+                liveBadge.className = "hud-live-tag recording";
+                liveBadgeText.innerText = "直播識別";
+                statusInfo.innerText = "白話字幕機實時運作中";
                 toggleBtn.classList.add('active');
                 playIcon.style.display = 'none';
                 pauseIcon.style.display = 'block';
@@ -810,26 +865,25 @@
                 for (let i = event.resultIndex; i < event.results.length; ++i) {
                     const trans = event.results[i][0].transcript;
                     if (event.results[i].isFinal) {
-                        handleFinalSpeech(trans);
+                        handleSpeechFinal(trans);
                     } else {
                         interim += trans;
                     }
                 }
-                if (interim) {
-                    handleInterimSpeech(interim);
-                }
+                if (interim) handleSpeechInterim(interim);
             };
 
             recognition.onerror = (e) => {
                 if (e.error === 'not-allowed') {
                     userWantsListening = false;
                     stopListeningUI();
-                    alert("請允許麥克風權限以進行課堂識別。");
+                    alert("請允許麥克風權限以使用字幕機。");
                 }
             };
 
             recognition.onend = () => {
                 isEngineRunning = false;
+                isAudioSpeaking = false;
                 if (userWantsListening) {
                     setTimeout(() => {
                         if (userWantsListening && !isEngineRunning) {
@@ -842,7 +896,7 @@
             };
         }
 
-        /* ------------------ 7. 啟動按鈕（單擊紅鍵一體化授權） ------------------ */
+        /* ------------------ 6. 單鍵啟動：按紅鍵即授權啟動 ------------------ */
         async function toggleSpeech() {
             if (!recognition) {
                 alert("當前瀏覽器不支援 Web Speech 語音辨識，請使用 Chrome、Edge 或 Safari。");
@@ -859,38 +913,37 @@
                 acquireWakeLock();
                 try { recognition.start(); } catch(e) {}
 
-                // 首次使用紅色按鈕時，靜默啟用 Puter AI
+                // 首次點擊時自動免密授權 Puter AI
                 if (window.puter && window.puter.auth && !puter.auth.isSignedIn()) {
                     puter.auth.signIn({ attempt_temp_user_creation: true })
                         .then(() => {
-                            statusText.innerText = "極速識別中（Puter AI 已連線）";
                             if (currentCardObj && currentCardObj.fullPunctuatedText) {
-                                requestPuterAIRefinement(currentCardObj);
+                                requestPuterWhiteTalk(currentCardObj);
                             }
                         })
-                        .catch(() => {
-                            statusText.innerText = "極速識別中（本地極速引擎）";
-                        });
+                        .catch(() => {});
                 }
             }
         }
 
         function stopListeningUI() {
-            statusDot.classList.remove('active');
-            statusText.innerText = "課堂識別已暫停";
+            liveBadge.className = "hud-live-tag";
+            liveBadgeText.innerText = "已暫停";
+            statusInfo.innerText = "字幕機已暫停";
             toggleBtn.classList.remove('active');
             playIcon.style.display = 'block';
             pauseIcon.style.display = 'none';
+            isAudioSpeaking = false;
             if (currentCardObj && currentCardObj.interimSpan) {
                 currentCardObj.interimSpan.innerText = "";
             }
         }
 
-        /* ------------------ 8. 字體調節 ------------------ */
+        /* ------------------ 7. 字體調節 ------------------ */
         const fontScales = [
-            { name: "標準", canto: "1.45rem", mando: "1.05rem" },
-            { name: "放大", canto: "1.75rem", mando: "1.25rem" },
-            { name: "特大", canto: "2.10rem", mando: "1.45rem" }
+            { name: "標準", canto: "1.55rem", mando: "1.22rem" },
+            { name: "放大", canto: "1.85rem", mando: "1.45rem" },
+            { name: "特大", canto: "2.25rem", mando: "1.75rem" }
         ];
         let currentScaleIdx = 0;
         let toastTimer = null;
@@ -902,65 +955,63 @@
             document.documentElement.style.setProperty('--cantonese-size', cur.canto);
             document.documentElement.style.setProperty('--mandarin-size', cur.mando);
 
-            fontToast.innerText = `字體：${cur.name}`;
+            fontToast.innerText = `字體 ${cur.name}`;
             fontToast.classList.add('show');
             clearTimeout(toastTimer);
             toastTimer = setTimeout(() => fontToast.classList.remove('show'), 1200);
             scrollToBottom();
         }
 
-        /* ------------------ 9. 粵拼彈窗與朗讀 TTS ------------------ */
+        /* ------------------ 8. 粵拼彈窗與發音 ------------------ */
         const modal = document.getElementById('phoneticModal');
         const modalContent = document.getElementById('modalContent');
         const ttsStatus = document.getElementById('ttsStatus');
-        let currentSectionPureText = "";
-
-        const CLASSICAL_SPECIAL_JYUTPING = {
-            "屬": "zuk1", "湯": "soeng1", "具": "keoi1", "殂": "cou4", "長": "zoeng2",
-            "藏": "zong6", "說": "seoi3", "裨": "bei1", "否": "fau2", "罷": "baa6",
-            "賈": "gaa2", "數": "sou3", "石": "daan3", "龜": "gwan1", "鬻": "zuk1",
-            "擁": "jung2", "遺": "wai6", "率": "seot1", "暴": "puk1", "當": "dong1",
-            "輮": "jau4", "挺": "ting5", "知": "zi3", "生": "sing3", "惡": "wu1"
-        };
+        let currentPureText = "";
 
         async function fetchJyutpingRubyHTML(text) {
             if (!text) return "";
-            let htmlResult = "";
+            if (!window.ToJyutping) {
+                try {
+                    const mod = await import('https://cdn.jsdelivr.net/npm/to-jyutping@3.1.1/+esm');
+                    window.ToJyutping = mod.default || mod;
+                } catch (e) {}
+            }
+
+            let html = "";
             if (window.ToJyutping && typeof window.ToJyutping.getJyutpingList === 'function') {
                 try {
                     const list = window.ToJyutping.getJyutpingList(text);
                     for (const [char, rawJp] of list) {
                         if (char === '\n') {
-                            htmlResult += '<div style="flex-basis: 100%; height: 8px;"></div>';
+                            html += '<div style="flex-basis: 100%; height: 8px;"></div>';
                             continue;
                         }
-                        const jp = CLASSICAL_SPECIAL_JYUTPING[char] || rawJp;
-                        if (jp) {
-                            htmlResult += `<ruby class="jp-ruby"><span class="c-char">${char}</span><rt class="c-rt">${jp}</rt></ruby>`;
+                        if (rawJp) {
+                            html += `<ruby class="jp-ruby"><span class="c-char">${char}</span><rt class="c-rt">${rawJp}</rt></ruby>`;
                         } else {
-                            htmlResult += `<span class="jp-punct">${char}</span>`;
+                            html += `<span class="jp-punct">${char}</span>`;
                         }
                     }
-                    return htmlResult;
+                    return html;
                 } catch (err) {}
             }
             return text;
         }
 
         async function openPhoneticModal(btn) {
-            const card = btn.closest('.caption-card');
-            const cantoneseEl = card.querySelector('.confirmed-content');
+            const card = btn.closest('.prompter-card');
+            const cantoneseEl = card.querySelector('.confirmed-part');
             const fullText = (cantoneseEl.innerText || "").trim();
-            currentSectionPureText = cleanString(fullText);
+            currentPureText = cleanString(fullText);
 
             if (!fullText) {
-                modalContent.innerHTML = "<div style='color:#64748b; font-size:1rem; padding:10px;'>暫未有已確認錄入的文字。</div>";
+                modalContent.innerHTML = "<div style='color:#64748b; font-size:1rem; padding:10px;'>暫無文字</div>";
                 modal.classList.add('active');
                 return;
             }
 
-            modalContent.innerHTML = "<div style='color:#94a3b8; font-size:1rem; width:100%; text-align:center; padding:30px 0;'>正在標註每字標準粵拼...</div>";
-            ttsStatus.innerText = "標音中...";
+            modalContent.innerHTML = "<div style='color:#94a3b8; font-size:1rem; width:100%; text-align:center; padding:30px 0;'>正在標註粵拼...</div>";
+            ttsStatus.innerText = "標音中";
             modal.classList.add('active');
 
             const rubyHTML = await fetchJyutpingRubyHTML(fullText);
@@ -981,36 +1032,34 @@
             if (!('speechSynthesis' in window)) return;
             window.speechSynthesis.cancel();
 
-            const utter = new SpeechSynthesisUtterance(currentSectionPureText);
+            const utter = new SpeechSynthesisUtterance(currentPureText);
             utter.lang = 'zh-HK';
-            utter.rate = 0.82;
+            utter.rate = 0.85;
 
-            utter.onstart = () => ttsStatus.innerText = "朗讀中...";
+            utter.onstart = () => ttsStatus.innerText = "朗讀中";
             utter.onend = () => ttsStatus.innerText = "完畢";
             utter.onerror = () => ttsStatus.innerText = "就緒";
 
             window.speechSynthesis.speak(utter);
         }
 
-        /* ------------------ 10. 測試示範 ------------------ */
+        /* ------------------ 9. 範例示範 ------------------ */
         const demoSentences = [
-            "其實我都唔好肯定㗎不過唔知，等陣你行先啦，訂製嗰面教練可能似冇乜經驗啦",
+            "其實我都唔好肯定㗎，等陣你行先啦，訂製嗰面教練可能似冇乜經驗啦",
             "我覺得佢大的時候呢，個底稿寫得唔係幾好，畀本書我睇下先",
-            "今天我們探討諸葛亮出師表，先帝創業未半而中道崩殂",
-            "在六國論中蘇洵提出弊在賂秦，暴霜露斬荊棘，抱薪救火",
-            "范仲淹在岳陽樓記描寫浩浩湯湯，政通人和百廢具興"
+            "今日我哋一齊研究下呢個課題，大家睇下邊個方案比較好"
         ];
         let demoIdx = 0;
 
         function playDemoSentence() {
             const text = demoSentences[demoIdx % demoSentences.length];
             demoIdx++;
-            handleFinalSpeech(text);
+            handleSpeechFinal(text);
 
             if (window.puter && window.puter.auth && !puter.auth.isSignedIn()) {
                 puter.auth.signIn({ attempt_temp_user_creation: true })
                     .then(() => {
-                        if (currentCardObj) requestPuterAIRefinement(currentCardObj);
+                        if (currentCardObj) requestPuterWhiteTalk(currentCardObj);
                     })
                     .catch(() => {});
             }
