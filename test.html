@@ -492,77 +492,78 @@
             return (str || '').replace(/[，。？！、\s\.,!\?]/g, '');
         }
 
-       /* ------------------ 2. Puter.js 帶上下文語境翻譯 ------------------ */
-        let recentContextList = []; // 專門記住最近講過的 2 句，提供上文
- 
-        async function translateDeltaWithPuter(newSentence, targetSpan) {
-            if (!newSentence || !newSentence.trim()) {
-                targetSpan.remove();
-                return;
-            }
- 
-            if (!window.puter || !window.puter.ai) {
-                targetSpan.remove();
-                return;
-            }
- 
-            try {
-                // 如果有前文，打包成參考提示給 AI
-                const contextStr = recentContextList.length > 0
-                    ? `【前文參考（僅供理解指代與語境，嚴禁翻譯）】：${recentContextList.join('，')}`
-                    : "【無前文】";
- 
-                const messages = [
-                    {
-                        role: "system",
-                        content: `你是頂級粵語轉現代普通話專家。請參考【前文參考】來理解指代、主語和語境，將【當前句】翻譯為現代流暢的繁體普通話。
+      /* ------------------ 2. Puter.js 帶上下文語境翻譯 ------------------ */
+let recentContextList = []; // 專門記住最近講過的 2 句，提供上文
+
+async function translateDeltaWithPuter(newSentence, targetSpan) {
+    if (!newSentence || !newSentence.trim()) {
+        targetSpan.remove();
+        return;
+    }
+
+    if (!window.puter || !window.puter.ai) {
+        targetSpan.remove();
+        return;
+    }
+
+    try {
+        // 如果有前文，打包成參考提示給 AI
+        const contextStr = recentContextList.length > 0
+            ? `【前文參考（僅供理解指代與語境，嚴禁翻譯）】：${recentContextList.join('，')}`
+            : "【無前文】";
+
+        const messages = [
+            {
+                role: "system",
+                content: `你是頂級粵語轉現代普通話專家。請參考【前文參考】來理解指代、主語和語境，將【當前句】翻譯為現代流暢的繁體普通話。
 要求：只翻譯【當前句】，嚴禁翻譯前文，只輸出翻譯結果，不要任何前綴或解釋。`
-                    },
-                    {
-                        role: "user",
-                        content: `${contextStr}\n【當前句】：${newSentence}`
-                    }
-                ];
- 
-              const response = await puter.ai.chat(messages, {
-    model: "infron:deepseek/deepseek-v4.1-flash:free"
-});
- 
-                let aiText = "";
-                if (typeof response === 'string') {
-                    aiText = response;
-                } else if (response && response.message && response.message.content) {
-                    aiText = response.message.content;
-                } else if (response && response.text) {
-                    aiText = response.text;
-                } else if (response) {
-                    aiText = String(response);
-                }
- 
-                aiText = ensureTraditional(sanitizeAiOutput(aiText));
- 
-                if (aiText) {
-                    if (!/[，。？！、]$/.test(aiText)) {
-                        aiText += "，";
-                    }
-                    targetSpan.className = "";
-                    targetSpan.innerText = aiText;
- 
-                    // 翻譯成功後，把這句放進記憶庫，只保留最近 2 句
-                    recentContextList.push(newSentence);
-                    if (recentContextList.length > 2) {
-                        recentContextList.shift();
-                    }
-                } else {
-                    targetSpan.remove();
-                }
-            } catch (err) {
-                console.error("【Puter.js 語境翻譯失敗】：", err);
-                targetSpan.remove();
-            } finally {
-                scrollMandoToBottom();
+            },
+            {
+                role: "user",
+                content: `${contextStr}\n【當前句】：${newSentence}`
             }
+        ];
+
+        // 👈 在此處指定使用 qwen-mt-lite 模型
+        const response = await puter.ai.chat(messages, {
+            model: "qwen-mt-lite"
+        });
+
+        let aiText = "";
+        if (typeof response === 'string') {
+            aiText = response;
+        } else if (response && response.message && response.message.content) {
+            aiText = response.message.content;
+        } else if (response && response.text) {
+            aiText = response.text;
+        } else if (response) {
+            aiText = String(response);
         }
+
+        aiText = ensureTraditional(sanitizeAiOutput(aiText));
+
+        if (aiText) {
+            if (!/[，。？！、]$/.test(aiText)) {
+                aiText += "，";
+            }
+            targetSpan.className = "";
+            targetSpan.innerText = aiText;
+
+            // 翻譯成功後，把這句放進記憶庫，只保留最近 2 句
+            recentContextList.push(newSentence);
+            if (recentContextList.length > 2) {
+                recentContextList.shift();
+            }
+        } else {
+            targetSpan.remove();
+        }
+    } catch (err) {
+        console.error("【Puter.js 語境翻譯失敗】：", err);
+        targetSpan.remove();
+    } finally {
+        scrollMandoToBottom();
+    }
+}
 
        /* ------------------ 3. 雙欄精準滾動與文字流 (防鬼畜重複加強版) ------------------ */
         const cantoScroll = document.getElementById('cantoScroll');
@@ -675,27 +676,20 @@
             translateDeltaWithPuter(delta, targetSpan);
         }
 
-      /* ------------------ 4. 語音辨識與防休眠 (修復電腦卡頓版) ------------------ */
+        /* ------------------ 4. 語音辨識與防休眠 ------------------ */
         const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
         let recognition = null;
         let userWantsListening = false;
         let isEngineRunning = false;
         let wakeLock = null;
-        let restartTimer = null;
 
         const toggleBtn = document.getElementById('toggleBtn');
         const playIcon = document.getElementById('playIcon');
         const pauseIcon = document.getElementById('pauseIcon');
 
-        // 只在手機端啟用防休眠音頻，且使用具有真實長度(約1秒)的靜音音頻，避免電腦端死循環
-        const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
-        const SILENT_AUDIO_URI = "data:audio/wav;base64,UklGRigAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQQAAAAAAP8A/w==";
-        let keepAliveAudio = null;
-        
-        if (isMobile) {
-            keepAliveAudio = new Audio(SILENT_AUDIO_URI);
-            keepAliveAudio.loop = true;
-        }
+        const SILENT_AUDIO_URI = "data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA=";
+        const keepAliveAudio = new Audio(SILENT_AUDIO_URI);
+        keepAliveAudio.loop = true;
 
         async function acquireWakeLock() {
             try {
@@ -704,31 +698,23 @@
         }
 
         function releaseWakeLock() {
-            if (wakeLock) { 
-                wakeLock.release().catch(() => {}); 
-                wakeLock = null; 
+            if (wakeLock) { wakeLock.release().catch(() => {}); wakeLock = null; }
+        }
+
+        function ensureRecognitionActive() {
+            if (userWantsListening && !isEngineRunning && recognition) {
+                try { recognition.start(); } catch (e) {}
             }
         }
 
-        function safeStartRecognition() {
-            if (!userWantsListening || isEngineRunning || !recognition) return;
-            try {
-                recognition.start();
-            } catch (e) {
-                // 如果引擎正處於啟動過渡期，延時後再試一次
-                clearTimeout(restartTimer);
-                restartTimer = setTimeout(() => {
-                    if (userWantsListening && !isEngineRunning) {
-                        try { recognition.start(); } catch(err) {}
-                    }
-                }, 600);
-            }
-        }
+        setInterval(() => {
+            if (userWantsListening) ensureRecognitionActive();
+        }, 400);
 
         document.addEventListener('visibilitychange', () => {
             if (document.visibilityState === 'visible' && userWantsListening) {
                 acquireWakeLock();
-                if (!isEngineRunning) safeStartRecognition();
+                ensureRecognitionActive();
             }
         });
 
@@ -764,19 +750,15 @@
                     userWantsListening = false;
                     stopListeningUI();
                     alert("請允許麥克風權限以進行實時識別。");
-                } else if (e.error !== 'no-speech') {
-                    // 一般異常不要極限重連，給予 500ms 冷卻
-                    clearTimeout(restartTimer);
-                    restartTimer = setTimeout(safeStartRecognition, 500);
+                } else {
+                    setTimeout(ensureRecognitionActive, 60);
                 }
             };
 
             recognition.onend = () => {
                 isEngineRunning = false;
                 if (userWantsListening) {
-                    // 避免 40ms 暴擊，給予合理過渡時間
-                    clearTimeout(restartTimer);
-                    restartTimer = setTimeout(safeStartRecognition, 300);
+                    setTimeout(ensureRecognitionActive, 40);
                 } else {
                     stopListeningUI();
                 }
