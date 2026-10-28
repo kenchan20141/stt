@@ -194,6 +194,19 @@
             font-family: "Noto Sans HK", sans-serif;
         }
 
+        /* 增量翻譯微弱佔位，不干擾用家 */
+        .mandarin-pending {
+            color: #64748b;
+            font-size: 0.85em;
+            margin-left: 4px;
+            animation: pulseQuiet 1.2s infinite;
+        }
+
+        @keyframes pulseQuiet {
+            0%, 100% { opacity: 0.25; }
+            50% { opacity: 0.7; }
+        }
+
         #fontToast {
             position: fixed;
             top: 65px;
@@ -381,30 +394,30 @@
             return text.replace(/[()（）\[\]【】{}《》「」『』〈〉"'“”‘’]/g, '').trim();
         }
 
-        /* ------------------ 2. 100% 純 Puter.js 白話大模型翻譯（無本地速譯） ------------------ */
-        async function translatePurelyWithPuter(cardObj) {
-            const rawCanto = cardObj.fullPunctuatedText;
-            if (!rawCanto || !rawCanto.trim()) return;
-
-            // 狀態直接標記為翻譯中
-            cardObj.mandarinEl.innerText = "翻譯中...";
+        /* ------------------ 2. 100% 純 Puter.js 單句增量續寫翻譯 ------------------ */
+        // 只翻譯新增的句子，在尾部自然續寫，絕不重刷整段
+        async function translateDeltaWithPuter(newSentence, targetSpan) {
+            if (!newSentence || !newSentence.trim()) {
+                targetSpan.remove();
+                return;
+            }
 
             if (!window.puter || !window.puter.ai) {
-                cardObj.mandarinEl.innerText = "Puter SDK 未載入";
+                targetSpan.remove();
                 return;
             }
 
             try {
-                const prompt = `請將以下粵語口語直接翻譯成清晰、通俗、現代標準的白話文普通話。
+                // 專門針對新講的「這一句話」進行白話翻譯
+                const prompt = `請將以下這句粵語口語直接翻譯成清晰、通俗、現代標準的白話文普通話。
 要求：
 1. 必須全部使用繁體中文，嚴禁出現任何簡體字。
-2. 必須是通俗日常的現代白話文，絕不能使用文言文、半文言或古漢語句式。
-3. 徹底理順所有粵語倒裝句式。
-4. 嚴禁任何括號、引號或附加解釋，直接輸出譯文本身。
+2. 必須是通俗日常的現代白話文，絕不能使用文言文或半文言。
+3. 徹底理順倒裝句式。
+4. 嚴禁任何括號、引號或附加解釋，只輸出這一句譯文。
 
-粵語：${rawCanto}`;
+粵語：${newSentence}`;
 
-                console.log("【100% Puter.js 請求中】：", rawCanto);
                 const response = await puter.ai.chat(prompt);
 
                 let aiText = "";
@@ -421,14 +434,18 @@
                 aiText = ensureTraditional(stripAllBrackets(aiText));
 
                 if (aiText) {
-                    console.log("【100% Puter.js 回傳成功】：", aiText);
-                    cardObj.mandarinEl.innerText = aiText;
+                    // 若末尾無標點，自動補充逗號連接
+                    if (!/[，。？！、]$/.test(aiText)) {
+                        aiText += "，";
+                    }
+                    targetSpan.className = "";
+                    targetSpan.innerText = aiText;
                 } else {
-                    cardObj.mandarinEl.innerText = "無譯文回傳";
+                    targetSpan.remove();
                 }
             } catch (err) {
-                console.error("【Puter.js 調用失敗】：", err);
-                cardObj.mandarinEl.innerText = "Puter AI 連線異常";
+                console.error("【Puter.js 增量翻譯失敗】：", err);
+                targetSpan.remove();
             }
         }
 
@@ -472,7 +489,7 @@
                 <div class="cantonese-text"><span class="confirmed-part"></span><span class="interim-text"></span></div>
                 <div class="mandarin-box">
                     <span class="mandarin-label">普通話</span>
-                    <div class="mandarin-text">等待講話...</div>
+                    <div class="mandarin-text"></div>
                 </div>
             `;
             streamContainer.appendChild(card);
@@ -484,15 +501,14 @@
                 mandarinEl: card.querySelector('.mandarin-text'),
                 counterEl: card.querySelector('.char-count'),
                 rawConfirmedText: "",
-                fullPunctuatedText: "",
-                aiTimer: null
+                fullPunctuatedText: ""
             };
 
             scrollToBottom();
             return currentCardObj;
         }
 
-        // 說話時僅實時更新粵語，普通話不執行任何本地偽翻譯
+        // 說話時僅動態渲染未定稿字詞，不干擾已確認的普通話
         function handleSpeechInterim(interim) {
             if (!interim || !interim.trim()) return;
             if (!currentCardObj) createNewCard();
@@ -501,7 +517,7 @@
             scrollToBottom();
         }
 
-        // 說完停頓：由 Puter.js 100% 獨立翻譯
+        // 說完一句話（定稿）：在尾部接續，不閃爍、不重譯前面內容
         function handleSpeechFinal(finalText) {
             finalText = ensureTraditional(stripAllBrackets(finalText.trim()));
             if (!finalText) return;
@@ -513,6 +529,7 @@
             const cleanConfirmed = cleanString(currentCardObj.rawConfirmedText);
             if (cleanConfirmed.endsWith(cleanFinal)) return;
 
+            // 計算出剛剛新講的那一句 delta
             let delta = finalText;
             for (let i = finalText.length; i >= 1; i--) {
                 const prefix = finalText.slice(0, i);
@@ -523,6 +540,7 @@
             }
             if (!delta) return;
 
+            // 超過篇幅建立新卡片
             if (cleanString(currentCardObj.rawConfirmedText).length > 150) {
                 createNewCard();
             }
@@ -534,11 +552,14 @@
             currentCardObj.confirmedSpan.innerText = currentCardObj.fullPunctuatedText;
             currentCardObj.counterEl.innerText = `${cleanString(currentCardObj.rawConfirmedText).length} 字`;
 
-            // 純 Puter.js 翻譯通道（停頓 0.3 秒觸發）
-            if (currentCardObj.aiTimer) clearTimeout(currentCardObj.aiTimer);
-            currentCardObj.aiTimer = setTimeout(() => {
-                translatePurelyWithPuter(currentCardObj);
-            }, 300);
+            // 【增量續寫核心】：在普通話尾部建立獨立 span，不改動前面已經翻譯好的文字
+            const targetSpan = document.createElement('span');
+            targetSpan.className = "mandarin-pending";
+            targetSpan.innerText = " ⋯";
+            currentCardObj.mandarinEl.appendChild(targetSpan);
+
+            // 只把剛才講的這句 delta 送去 Puter.js 翻譯
+            translateDeltaWithPuter(delta, targetSpan);
 
             scrollToBottom();
         }
@@ -556,7 +577,6 @@
         let isEngineRunning = false;
         let wakeLock = null;
 
-        // HTML5 靜音音訊防休眠
         const SILENT_AUDIO_URI = "data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA=";
         const keepAliveAudio = new Audio(SILENT_AUDIO_URI);
         keepAliveAudio.loop = true;
@@ -577,7 +597,6 @@
             }
         }
 
-        // 看門狗守護線程：每 400ms 保證永續運行
         setInterval(() => {
             if (userWantsListening) ensureRecognitionActive();
         }, 400);
@@ -650,10 +669,8 @@
                 try { recognition.stop(); } catch(e) {}
                 stopListeningUI();
             } else {
-                // 強制檢查並登入 Puter，確保 100% 調用 AI
                 if (window.puter && window.puter.auth && !puter.auth.isSignedIn()) {
                     try {
-                        console.log("【Puter】正在進行免註冊快速連線...");
                         await puter.auth.signIn({ attempt_temp_user_creation: true });
                     } catch (e) {
                         alert("Puter AI 授權未完成，請允許授權視窗以開啟翻譯。");
