@@ -372,6 +372,24 @@
             justify-content: space-between;
             align-items: center;
         }
+
+/* 逐字輸出時的跟隨光標 */
+.typing-cursor::after {
+    content: " ▍";
+    display: inline-block;
+    color: var(--mandarin);
+    font-size: 0.85em;
+    vertical-align: middle;
+    animation: blinkCursor 0.7s infinite;
+}
+
+@keyframes blinkCursor {
+    0%, 100% { opacity: 0; }
+    50% { opacity: 1; }
+}
+
+        
+        
     </style>
 </head>
 <body>
@@ -480,87 +498,136 @@
             return text;
         }
 
-        function sanitizeAiOutput(text) {
-            if (!text) return "";
-            let cleaned = text;
-            cleaned = cleaned.replace(/(請把|請將|這句粵語|翻譯成|繁體中文|普通話|嚴禁|要求|粵語：|譯文：|白話文|現代標準).*/g, '');
-            cleaned = cleaned.replace(/[()（）\[\]【】{}《》「」『』〈〉"'“”‘’]/g, '');
-            return cleaned.trim();
-        }
+       function sanitizeAiOutput(text) {
+    if (!text) return "";
+    let cleaned = text;
+    // 只剔除開頭的說明性標籤或前綴，絕不誤殺後續翻譯內容
+    cleaned = cleaned.replace(/^(翻譯結果|譯文|普通話|現代標準中文)[：:\s]*/i, '');
+    cleaned = cleaned.replace(/^[（(][^）)]*[）)]\s*/g, '');
+    cleaned = cleaned.replace(/[`"'“”‘’]/g, '');
+    return cleaned.trim();
+}
 
         function cleanString(str) {
             return (str || '').replace(/[，。？！、\s\.,!\?]/g, '');
         }
 
-       /* ------------------ 2. Puter.js 帶上下文語境翻譯 ------------------ */
-        let recentContextList = []; // 專門記住最近講過的 2 句，提供上文
- 
-        async function translateDeltaWithPuter(newSentence, targetSpan) {
-            if (!newSentence || !newSentence.trim()) {
-                targetSpan.remove();
-                return;
-            }
- 
-            if (!window.puter || !window.puter.ai) {
-                targetSpan.remove();
-                return;
-            }
- 
-            try {
-                // 如果有前文，打包成參考提示給 AI
-                const contextStr = recentContextList.length > 0
-                    ? `【前文參考（僅供理解指代與語境，嚴禁翻譯）】：${recentContextList.join('，')}`
-                    : "【無前文】";
- 
-                const messages = [
-                    {
-                        role: "system",
-                        content: `你是頂級粵語轉現代普通話專家。請參考【前文參考】來理解指代、主語和語境，將【當前句】翻譯為現代流暢的繁體普通話。
-要求：只翻譯【當前句】，嚴禁翻譯前文，只輸出翻譯結果，不要任何前綴或解釋。`
-                    },
-                    {
-                        role: "user",
-                        content: `${contextStr}\n【當前句】：${newSentence}`
-                    }
-                ];
- 
-                const response = await puter.ai.chat(messages);
- 
-                let aiText = "";
-                if (typeof response === 'string') {
-                    aiText = response;
-                } else if (response && response.message && response.message.content) {
-                    aiText = response.message.content;
-                } else if (response && response.text) {
-                    aiText = response.text;
-                } else if (response) {
-                    aiText = String(response);
+ /* ------------------ 2. 極致平滑「逐字」流式翻譯打字機 ------------------ */
+let recentContextList = [];
+
+class TypewriterStream {
+    constructor(targetElement, onChar, onDone) {
+        this.el = targetElement;
+        this.onChar = onChar;
+        this.onDone = onDone;
+        this.queue = [];
+        this.timer = null;
+        this.isFinished = false;
+        this.baseSpeed = 22; // 22ms 逐字輸出速度
+    }
+
+    push(text) {
+        if (!text) return;
+        for (const char of text) {
+            this.queue.push(char);
+        }
+        if (!this.timer) this.tick();
+    }
+
+    tick() {
+        const step = () => {
+            if (this.queue.length > 0) {
+                const popCount = this.queue.length > 12 ? 2 : 1;
+                for (let i = 0; i < popCount && this.queue.length > 0; i++) {
+                    this.el.textContent += this.queue.shift();
                 }
- 
-                aiText = ensureTraditional(sanitizeAiOutput(aiText));
- 
-                if (aiText) {
-                    if (!/[，。？！、]$/.test(aiText)) {
-                        aiText += "，";
-                    }
-                    targetSpan.className = "";
-                    targetSpan.innerText = aiText;
- 
-                    // 翻譯成功後，把這句放進記憶庫，只保留最近 2 句
-                    recentContextList.push(newSentence);
-                    if (recentContextList.length > 2) {
-                        recentContextList.shift();
-                    }
-                } else {
-                    targetSpan.remove();
+                if (this.onChar) this.onChar();
+                this.timer = setTimeout(step, this.baseSpeed);
+            } else {
+                this.timer = null;
+                if (this.isFinished && this.onDone) {
+                    this.onDone();
                 }
-            } catch (err) {
-                console.error("【Puter.js 語境翻譯失敗】：", err);
-                targetSpan.remove();
-            } finally {
+            }
+        };
+        step();
+    }
+
+    finish() {
+        this.isFinished = true;
+        if (this.queue.length === 0 && !this.timer && this.onDone) {
+            this.onDone();
+        }
+    }
+}
+
+async function translateDeltaWithPuter(newSentence, targetSpan) {
+    if (!newSentence || !newSentence.trim()) {
+        targetSpan.remove();
+        return;
+    }
+
+    if (!window.puter || !window.puter.ai) {
+        targetSpan.remove();
+        return;
+    }
+
+    try {
+        const contextStr = recentContextList.length > 0
+            ? `【前文參考】：${recentContextList.join('，')}`
+            : "【無前文】";
+
+        const messages = [
+            {
+                role: "system",
+                content: `你是頂級粵語轉現代普通話專家。請參考前文理解語境，將當前句翻譯為自然流暢的繁體普通話。
+要求：只翻譯當前句，嚴禁翻譯前文，只輸出譯文內容，禁止任何解釋。`
+            },
+            {
+                role: "user",
+                content: `${contextStr}\n【當前句】：${newSentence}`
+            }
+        ];
+
+        targetSpan.className = "typing-cursor";
+        targetSpan.textContent = "";
+
+        const writer = new TypewriterStream(
+            targetSpan,
+            () => scrollMandoToBottom(),
+            () => {
+                // 打字完畢後，安全移除光標，保留完整文字
+                targetSpan.classList.remove("typing-cursor");
+
+                let txt = targetSpan.textContent.trim();
+                // 只有結尾沒有標點時才補充逗號
+                if (txt && !/[，。？！、]$/.test(txt)) {
+                    targetSpan.textContent = txt + "，";
+                }
+
+                recentContextList.push(newSentence);
+                if (recentContextList.length > 2) recentContextList.shift();
                 scrollMandoToBottom();
             }
+        );
+
+        const response = await puter.ai.chat(messages, { stream: true });
+
+        for await (const part of response) {
+            const rawToken = part?.text ?? "";
+            if (!rawToken) continue;
+            // 逐字轉繁體並推入打字機
+            writer.push(ensureTraditional(rawToken));
         }
+
+        writer.finish();
+
+    } catch (err) {
+        console.error("【Puter.js 翻譯異常】：", err);
+        targetSpan.classList.remove("typing-cursor");
+        if (!targetSpan.textContent.trim()) targetSpan.remove();
+    }
+}
 
        /* ------------------ 3. 雙欄精準滾動與文字流 (防鬼畜重複加強版) ------------------ */
         const cantoScroll = document.getElementById('cantoScroll');
@@ -604,75 +671,90 @@
             }
         }
  
-        function handleSpeechInterim(interim) {
-            if (!interim || !interim.trim()) return;
-            // 如果臨時結果與剛說完的一模一樣，不重複閃爍
-            if (cleanString(interim) === cleanString(lastFinalCleanText)) return;
-            interimPart.innerText = interim;
-            scrollCantoToBottom();
-        }
- 
-        function handleSpeechFinal(finalText) {
-            finalText = ensureTraditional(sanitizeAiOutput(finalText.trim()));
-            if (!finalText) return;
- 
-            interimPart.innerText = "";
- 
-            const cleanFinal = cleanString(finalText);
-            const cleanConfirmed = cleanString(rawConfirmedText);
-            const now = Date.now();
- 
-            // 1. 【防重複核心過濾 1】：時間過短且字詞完全相同（手機引擎常見的重複回調）
-            if (cleanFinal === lastFinalCleanText && (now - lastFinalTimestamp < 2500)) {
-                return;
-            }
- 
-            // 2. 【防重複核心過濾 2】：尾部完全包含檢查
-            // 檢查已確認內容的最後 40 個字，是否已經以這段文字結尾
-            const tailSlice = cleanConfirmed.slice(-Math.max(cleanFinal.length + 5, 40));
-            if (tailSlice.endsWith(cleanFinal)) {
-                return;
-            }
- 
-            // 3. 【防重複核心過濾 3】：滑動窗口尋找真正的新增量 (Delta)
-            // 手機有時會把「上一句的後半截 + 這一句」黏在一起回傳，例如回傳「頭先我開發出嚟嘅就係舒服啲」
-            let delta = finalText;
-            for (let i = finalText.length; i >= 2; i--) {
-                const checkPrefix = cleanString(finalText.slice(0, i));
-                if (checkPrefix.length >= 2 && tailSlice.endsWith(checkPrefix)) {
-                    // 找到了重疊的前綴，只取後面真正沒說過的文字
-                    delta = finalText.slice(i).trim();
-                    break;
-                }
-            }
- 
-            const cleanDelta = cleanString(delta);
-            // 如果截取後沒有新字，或只剩標點符號，直接拋棄
-            if (!cleanDelta || cleanDelta.length === 0) return;
- 
-            // 更新防重複歷史記錄
-            lastFinalCleanText = cleanFinal;
-            lastFinalTimestamp = now;
- 
-            // 4. 粵語原文寫入
-            const formatted = delta + "，";
-            rawConfirmedText += delta;
-            fullPunctuatedText += formatted;
-            confirmedPart.innerText = fullPunctuatedText;
-            charCount.innerText = `${cleanString(rawConfirmedText).length} 字`;
-            scrollCantoToBottom();
- 
-            // 5. 普通話建立待續寫 span
-            const targetSpan = document.createElement('span');
-            targetSpan.className = "mandarin-pending";
-            targetSpan.innerText = " ⋯";
-            mandarinContent.appendChild(targetSpan);
-            scrollMandoToBottom();
- 
-            // 發送翻譯請求
-            translateDeltaWithPuter(delta, targetSpan);
-        }
+/* ------------------ 3. 粵語平滑逐字流與識別處理 ------------------ */
+let cantoCurrentDisplay = ""; 
+let cantoTargetText = "";
+let cantoTypingTimer = null;
 
+// 粵語平滑打字定時器：高頻勻速追趕識別結果，產生絲滑打字動畫
+function feedCantoneseStream(newText) {
+    cantoTargetText = newText;
+    if (cantoTypingTimer) return;
+
+    cantoTypingTimer = setInterval(() => {
+        if (cantoCurrentDisplay.length < cantoTargetText.length) {
+            // 如果落後較多則快走，一般情況逐字前進
+            const step = (cantoTargetText.length - cantoCurrentDisplay.length > 4) ? 2 : 1;
+            cantoCurrentDisplay = cantoTargetText.slice(0, cantoCurrentDisplay.length + step);
+            interimPart.textContent = cantoCurrentDisplay;
+            scrollCantoToBottom();
+        } else if (cantoCurrentDisplay.length > cantoTargetText.length) {
+            // 語音引擎修正字詞時無縫覆寫
+            cantoCurrentDisplay = cantoTargetText;
+            interimPart.textContent = cantoCurrentDisplay;
+        } else {
+            clearInterval(cantoTypingTimer);
+            cantoTypingTimer = null;
+        }
+    }, 20); // 20ms 一個字，肉眼極致順滑
+}
+
+function handleSpeechInterim(interim) {
+    if (!interim) return;
+    feedCantoneseStream(interim);
+}
+
+function handleSpeechFinal(finalText) {
+    if (!finalText || !finalText.trim()) return;
+
+    // 清理打字進度
+    if (cantoTypingTimer) {
+        clearInterval(cantoTypingTimer);
+        cantoTypingTimer = null;
+    }
+    cantoCurrentDisplay = "";
+    cantoTargetText = "";
+    interimPart.textContent = "";
+
+    const cleanFinal = cleanString(finalText);
+    const now = Date.now();
+
+    if (cleanFinal === lastFinalCleanText && (now - lastFinalTimestamp < 1500)) return;
+
+    const cleanConfirmed = cleanString(rawConfirmedText);
+    const tailSlice = cleanConfirmed.slice(-Math.max(cleanFinal.length + 5, 40));
+    if (tailSlice.endsWith(cleanFinal)) return;
+
+    let delta = finalText.trim();
+    for (let i = delta.length; i >= 2; i--) {
+        const checkPrefix = cleanString(delta.slice(0, i));
+        if (checkPrefix.length >= 2 && tailSlice.endsWith(checkPrefix)) {
+            delta = delta.slice(i).trim();
+            break;
+        }
+    }
+
+    if (!cleanString(delta)) return;
+
+    lastFinalCleanText = cleanFinal;
+    lastFinalTimestamp = now;
+
+    // 粵語正文落定
+    const formatted = delta + "，";
+    rawConfirmedText += delta;
+    fullPunctuatedText += formatted;
+    
+    confirmedPart.textContent = fullPunctuatedText;
+    charCount.textContent = `${cleanString(rawConfirmedText).length} 字`;
+    scrollCantoToBottom();
+
+    // 觸發普通話翻譯逐字打字機
+    const targetSpan = document.createElement('span');
+    mandarinContent.appendChild(targetSpan);
+    scrollMandoToBottom();
+
+    translateDeltaWithPuter(delta, targetSpan);
+}
         /* ------------------ 4. 語音辨識與防休眠 ------------------ */
         const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
         let recognition = null;
@@ -729,37 +811,40 @@
                 pauseIcon.style.display = 'block';
             };
 
-            recognition.onresult = (event) => {
-                let interim = '';
-                for (let i = event.resultIndex; i < event.results.length; ++i) {
-                    const trans = event.results[i][0].transcript;
-                    if (event.results[i].isFinal) {
-                        handleSpeechFinal(trans);
-                    } else {
-                        interim += trans;
-                    }
-                }
-                if (interim) handleSpeechInterim(interim);
-            };
+         // 【修訂後】
+recognition.onresult = (event) => {
+    let interim = '';
+    for (let i = event.resultIndex; i < event.results.length; ++i) {
+        const trans = event.results[i][0].transcript;
+        if (event.results[i].isFinal) {
+            handleSpeechFinal(trans);
+        } else {
+            interim += trans;
+        }
+    }
+    // 收到即時字串立即渲染，不再等整句結束
+    interimPart.textContent = interim;
+    if (interim) scrollCantoToBottom();
+};
+         // 【修訂後】
+recognition.onerror = (e) => {
+    if (e.error === 'not-allowed') {
+        userWantsListening = false;
+        stopListeningUI();
+        alert("請允許麥克風權限以進行實時識別。");
+    } else {
+        ensureRecognitionActive(); // 移除 setTimeout(..., 60)
+    }
+};
 
-            recognition.onerror = (e) => {
-                if (e.error === 'not-allowed') {
-                    userWantsListening = false;
-                    stopListeningUI();
-                    alert("請允許麥克風權限以進行實時識別。");
-                } else {
-                    setTimeout(ensureRecognitionActive, 60);
-                }
-            };
-
-            recognition.onend = () => {
-                isEngineRunning = false;
-                if (userWantsListening) {
-                    setTimeout(ensureRecognitionActive, 40);
-                } else {
-                    stopListeningUI();
-                }
-            };
+recognition.onend = () => {
+    isEngineRunning = false;
+    if (userWantsListening) {
+        ensureRecognitionActive(); // 移除 setTimeout(..., 40)
+    } else {
+        stopListeningUI();
+    }
+};
         }
 
         /* ------------------ 5. 單鍵授權與啟動 ------------------ */
