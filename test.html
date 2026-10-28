@@ -372,6 +372,22 @@
             justify-content: space-between;
             align-items: center;
         }
+
+/* 逐字輸出時的跟隨光標 */
+.typing-cursor::after {
+    content: " ▍";
+    display: inline-block;
+    color: var(--mandarin);
+    font-size: 0.85em;
+    vertical-align: middle;
+    animation: blinkCursor 0.7s infinite;
+}
+
+@keyframes blinkCursor {
+    0%, 100% { opacity: 0; }
+    50% { opacity: 1; }
+}
+        
     </style>
 </head>
 <body>
@@ -492,8 +508,57 @@
             return (str || '').replace(/[，。？！、\s\.,!\?]/g, '');
         }
 
-     /* ------------------ 2. Puter.js 真正流式語境翻譯 (Stream 模式) ------------------ */
-let recentContextList = []; // 記住最近講過的 2 句，提供上文
+   /* ------------------ 2. 極致平滑「逐字」流式翻譯打字機 ------------------ */
+let recentContextList = []; // 語境記憶
+
+// 逐字平滑打字機引擎
+class TypewriterStream {
+    constructor(targetElement, onChar, onDone) {
+        this.el = targetElement;
+        this.onChar = onChar;
+        this.onDone = onDone;
+        this.queue = [];
+        this.timer = null;
+        this.isFinished = false;
+        this.baseSpeed = 25; // 每個字的基礎打字間隔 (毫秒)，最舒服的節奏
+    }
+
+    push(text) {
+        if (!text) return;
+        for (const char of text) {
+            this.queue.push(char);
+        }
+        if (!this.timer) this.tick();
+    }
+
+    tick() {
+        const step = () => {
+            if (this.queue.length > 0) {
+                // 如果字積累過多（說話太快），自動微調提速，避免掉隊
+                const popCount = this.queue.length > 15 ? 2 : 1;
+                for (let i = 0; i < popCount && this.queue.length > 0; i++) {
+                    const char = this.queue.shift();
+                    this.el.textContent += char;
+                }
+                if (this.onChar) this.onChar();
+                this.timer = setTimeout(step, this.baseSpeed);
+            } else {
+                this.timer = null;
+                if (this.isFinished && this.onDone) {
+                    this.onDone();
+                }
+            }
+        };
+        step();
+    }
+
+    finish() {
+        this.isFinished = true;
+        if (this.queue.length === 0 && !this.timer && this.onDone) {
+            this.onDone();
+        }
+    }
+}
 
 async function translateDeltaWithPuter(newSentence, targetSpan) {
     if (!newSentence || !newSentence.trim()) {
@@ -523,54 +588,52 @@ async function translateDeltaWithPuter(newSentence, targetSpan) {
             }
         ];
 
-        // 核心：開啟 stream: true 流式傳輸
+        // 啟動打字機（帶動態光標 class）
+        targetSpan.className = "typing-cursor";
+        targetSpan.textContent = "";
+
+        let accumulatedFull = "";
+        const writer = new TypewriterStream(
+            targetSpan,
+            () => scrollMandoToBottom(),
+            () => {
+                // 整句打字完全結束時的回調
+                targetSpan.classList.remove("typing-cursor");
+                let finalText = ensureTraditional(sanitizeAiOutput(targetSpan.textContent)).trim();
+                if (finalText && !/[，。？！、]$/.test(finalText)) {
+                    finalText += "，";
+                }
+                targetSpan.textContent = finalText;
+
+                recentContextList.push(newSentence);
+                if (recentContextList.length > 2) recentContextList.shift();
+                scrollMandoToBottom();
+            }
+        );
+
+        // 獲取 AI 流
         const response = await puter.ai.chat(messages, { stream: true });
 
-        let accumulated = "";
-        let isFirstToken = true;
-
-        // 透過 Async Iterator 逐個 Token 實時接收並上屏
         for await (const part of response) {
-            const token = part?.text ?? "";
-            if (!token) continue;
+            const rawToken = part?.text ?? "";
+            if (!rawToken) continue;
 
-            if (isFirstToken) {
-                // 收到第一個字，立即移除等待動畫樣式與點點
-                targetSpan.className = "";
-                targetSpan.textContent = "";
-                isFirstToken = false;
-            }
-
-            accumulated += token;
-            // 實時清洗與即時渲染
-            targetSpan.textContent = ensureTraditional(sanitizeAiOutput(accumulated));
-            scrollMandoToBottom();
+            accumulatedFull += rawToken;
+            // 轉成繁體後推入打字隊列，由隊列逐字吐出
+            const cleanChar = ensureTraditional(rawToken);
+            writer.push(cleanChar);
         }
 
-        // 串流結束後補齊標點並記錄上下文
-        let finalText = ensureTraditional(sanitizeAiOutput(accumulated)).trim();
-        if (finalText) {
-            if (!/[，。？！、]$/.test(finalText)) {
-                finalText += "，";
-            }
-            targetSpan.textContent = finalText;
-
-            recentContextList.push(newSentence);
-            if (recentContextList.length > 2) {
-                recentContextList.shift();
-            }
-        } else {
-            targetSpan.remove();
-        }
+        // 通知打字機 AI 資料已經收完
+        writer.finish();
 
     } catch (err) {
-        console.error("【Puter.js 流式翻譯失敗】：", err);
-        // 若流中途報錯但已有文字，保留已翻譯文字；否則移除
-        if (!targetSpan.textContent.trim() || targetSpan.textContent.includes("⋯")) {
+        console.error("【Puter.js 逐字流式翻譯失敗】：", err);
+        if (!targetSpan.textContent.trim()) {
             targetSpan.remove();
+        } else {
+            targetSpan.classList.remove("typing-cursor");
         }
-    } finally {
-        scrollMandoToBottom();
     }
 }
 
