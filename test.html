@@ -492,75 +492,87 @@
             return (str || '').replace(/[，。？！、\s\.,!\?]/g, '');
         }
 
-       /* ------------------ 2. Puter.js 帶上下文語境翻譯 ------------------ */
-        let recentContextList = []; // 專門記住最近講過的 2 句，提供上文
- 
-        async function translateDeltaWithPuter(newSentence, targetSpan) {
-            if (!newSentence || !newSentence.trim()) {
-                targetSpan.remove();
-                return;
-            }
- 
-            if (!window.puter || !window.puter.ai) {
-                targetSpan.remove();
-                return;
-            }
- 
-            try {
-                // 如果有前文，打包成參考提示給 AI
-                const contextStr = recentContextList.length > 0
-                    ? `【前文參考（僅供理解指代與語境，嚴禁翻譯）】：${recentContextList.join('，')}`
-                    : "【無前文】";
- 
-                const messages = [
-                    {
-                        role: "system",
-                        content: `你是頂級粵語轉現代普通話專家。請參考【前文參考】來理解指代、主語和語境，將【當前句】翻譯為現代流暢的繁體普通話。
+     /* ------------------ 2. Puter.js 真正流式語境翻譯 (Stream 模式) ------------------ */
+let recentContextList = []; // 記住最近講過的 2 句，提供上文
+
+async function translateDeltaWithPuter(newSentence, targetSpan) {
+    if (!newSentence || !newSentence.trim()) {
+        targetSpan.remove();
+        return;
+    }
+
+    if (!window.puter || !window.puter.ai) {
+        targetSpan.remove();
+        return;
+    }
+
+    try {
+        const contextStr = recentContextList.length > 0
+            ? `【前文參考（僅供理解指代與語境，嚴禁翻譯）】：${recentContextList.join('，')}`
+            : "【無前文】";
+
+        const messages = [
+            {
+                role: "system",
+                content: `你是頂級粵語轉現代普通話專家。請參考【前文參考】來理解指代、主語和語境，將【當前句】翻譯為現代流暢的繁體普通話。
 要求：只翻譯【當前句】，嚴禁翻譯前文，只輸出翻譯結果，不要任何前綴或解釋。`
-                    },
-                    {
-                        role: "user",
-                        content: `${contextStr}\n【當前句】：${newSentence}`
-                    }
-                ];
- 
-                const response = await puter.ai.chat(messages);
- 
-                let aiText = "";
-                if (typeof response === 'string') {
-                    aiText = response;
-                } else if (response && response.message && response.message.content) {
-                    aiText = response.message.content;
-                } else if (response && response.text) {
-                    aiText = response.text;
-                } else if (response) {
-                    aiText = String(response);
-                }
- 
-                aiText = ensureTraditional(sanitizeAiOutput(aiText));
- 
-                if (aiText) {
-                    if (!/[，。？！、]$/.test(aiText)) {
-                        aiText += "，";
-                    }
-                    targetSpan.className = "";
-                    targetSpan.innerText = aiText;
- 
-                    // 翻譯成功後，把這句放進記憶庫，只保留最近 2 句
-                    recentContextList.push(newSentence);
-                    if (recentContextList.length > 2) {
-                        recentContextList.shift();
-                    }
-                } else {
-                    targetSpan.remove();
-                }
-            } catch (err) {
-                console.error("【Puter.js 語境翻譯失敗】：", err);
-                targetSpan.remove();
-            } finally {
-                scrollMandoToBottom();
+            },
+            {
+                role: "user",
+                content: `${contextStr}\n【當前句】：${newSentence}`
             }
+        ];
+
+        // 核心：開啟 stream: true 流式傳輸
+        const response = await puter.ai.chat(messages, { stream: true });
+
+        let accumulated = "";
+        let isFirstToken = true;
+
+        // 透過 Async Iterator 逐個 Token 實時接收並上屏
+        for await (const part of response) {
+            const token = part?.text ?? "";
+            if (!token) continue;
+
+            if (isFirstToken) {
+                // 收到第一個字，立即移除等待動畫樣式與點點
+                targetSpan.className = "";
+                targetSpan.textContent = "";
+                isFirstToken = false;
+            }
+
+            accumulated += token;
+            // 實時清洗與即時渲染
+            targetSpan.textContent = ensureTraditional(sanitizeAiOutput(accumulated));
+            scrollMandoToBottom();
         }
+
+        // 串流結束後補齊標點並記錄上下文
+        let finalText = ensureTraditional(sanitizeAiOutput(accumulated)).trim();
+        if (finalText) {
+            if (!/[，。？！、]$/.test(finalText)) {
+                finalText += "，";
+            }
+            targetSpan.textContent = finalText;
+
+            recentContextList.push(newSentence);
+            if (recentContextList.length > 2) {
+                recentContextList.shift();
+            }
+        } else {
+            targetSpan.remove();
+        }
+
+    } catch (err) {
+        console.error("【Puter.js 流式翻譯失敗】：", err);
+        // 若流中途報錯但已有文字，保留已翻譯文字；否則移除
+        if (!targetSpan.textContent.trim() || targetSpan.textContent.includes("⋯")) {
+            targetSpan.remove();
+        }
+    } finally {
+        scrollMandoToBottom();
+    }
+}
 
        /* ------------------ 3. 雙欄精準滾動與文字流 (防鬼畜重複加強版) ------------------ */
         const cantoScroll = document.getElementById('cantoScroll');
