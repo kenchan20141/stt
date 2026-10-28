@@ -523,6 +523,26 @@
         /* ------------------ 2. 極致平滑「逐字」流式翻譯打字機 ------------------ */
         let recentContextList = [];
 
+        // 自動動態探測存活免費模型，杜絕 MODEL NOT FOUND
+        let resolvedFreeModel = 'openrouter/free';
+
+        async function detectAliveFreeModel() {
+            try {
+                if (window.puter && window.puter.ai && typeof window.puter.ai.listModels === 'function') {
+                    const list = await puter.ai.listModels();
+                    // 尋找當前在線、包含 :free 標籤或 openrouter/free 的 0 成本模型
+                    const live = list.find(m => m.id && (m.id === 'openrouter/free' || m.id.endsWith(':free')));
+                    if (live) {
+                        resolvedFreeModel = live.id;
+                        console.log("【Puter AI】已自動鎖定存活免費模型:", resolvedFreeModel);
+                    }
+                }
+            } catch (e) {
+                console.warn("探測線上模型失敗，默認採用 openrouter/free 路由器");
+            }
+        }
+        detectAliveFreeModel();
+
         class TypewriterStream {
             constructor(targetElement, onChar, onDone) {
                 this.el = targetElement;
@@ -617,11 +637,27 @@
                     }
                 );
 
-                // 使用完全不扣除月度額度的永久免費、低延遲模型
-                const response = await puter.ai.chat(messages, {
-                    model: 'qwen/qwen-2.5-72b-instruct:free',
-                    stream: true
-                });
+                // 核心安全調用：優先使用 0 額度消耗的免費模型，帶三級自動容錯回退，保證絕不拋出 MODEL NOT FOUND
+                let response = null;
+                try {
+                    response = await puter.ai.chat(messages, {
+                        model: resolvedFreeModel,
+                        stream: true
+                    });
+                } catch (e1) {
+                    console.warn(`[${resolvedFreeModel}] 無響應，回退到 openrouter/free 官方路由器:`, e1);
+                    try {
+                        response = await puter.ai.chat(messages, {
+                            model: 'openrouter/free',
+                            stream: true
+                        });
+                    } catch (e2) {
+                        console.warn("免費路由器無響應，回退至 Puter 預設通道:", e2);
+                        response = await puter.ai.chat(messages, {
+                            stream: true
+                        });
+                    }
+                }
 
                 for await (const part of response) {
                     const rawToken = part?.text ?? "";
