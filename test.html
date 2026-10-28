@@ -239,10 +239,11 @@
         }
 
         .mandarin-content {
-            font-family: "Noto Sans HK", sans-serif;
+            font-family: "Noto Serif HK", serif;
             font-size: var(--mandarin-size);
-            font-weight: 500;
-            line-height: 1.75;
+            font-weight: 700;
+            line-height: 1.8;
+            letter-spacing: 0.8px;
             color: var(--mandarin-text);
             word-break: break-word;
         }
@@ -373,34 +374,31 @@
             align-items: center;
         }
 
-/* 逐字輸出時的跟隨光標 */
-.typing-cursor::after {
-    content: " ▍";
-    display: inline-block;
-    color: var(--mandarin);
-    font-size: 0.85em;
-    vertical-align: middle;
-    animation: blinkCursor 0.7s infinite;
-}
+        /* 逐字輸出時的跟隨光標 */
+        .typing-cursor::after {
+            content: " ▍";
+            display: inline-block;
+            color: var(--mandarin);
+            font-size: 0.85em;
+            vertical-align: middle;
+            animation: blinkCursor 0.7s infinite;
+        }
 
-@keyframes blinkCursor {
-    0%, 100% { opacity: 0; }
-    50% { opacity: 1; }
-}
+        @keyframes blinkCursor {
+            0%, 100% { opacity: 0; }
+            50% { opacity: 1; }
+        }
 
         /* 讓粵語在未出字或打字時，也能有專屬的閃爍光標 */
-.cantonese-content .typing-cursor::after {
-    color: var(--cantonese); /* 或使用 #f8fafc */
-}
+        .cantonese-content .typing-cursor::after {
+            color: var(--cantonese);
+        }
 
-/* 確保空 span 也能把光標高度撐起來顯示 */
-.typing-cursor {
-    display: inline-block;
-    min-width: 1px;
-}
-
-        
-        
+        /* 確保空 span 也能把光標高度撐起來顯示 */
+        .typing-cursor {
+            display: inline-block;
+            min-width: 1px;
+        }
     </style>
 </head>
 <body>
@@ -509,138 +507,138 @@
             return text;
         }
 
-       function sanitizeAiOutput(text) {
-    if (!text) return "";
-    let cleaned = text;
-    // 只剔除開頭的說明性標籤或前綴，絕不誤殺後續翻譯內容
-    cleaned = cleaned.replace(/^(翻譯結果|譯文|普通話|現代標準中文)[：:\s]*/i, '');
-    cleaned = cleaned.replace(/^[（(][^）)]*[）)]\s*/g, '');
-    cleaned = cleaned.replace(/[`"'“”‘’]/g, '');
-    return cleaned.trim();
-}
+        function sanitizeAiOutput(text) {
+            if (!text) return "";
+            let cleaned = text;
+            cleaned = cleaned.replace(/^(翻譯結果|譯文|普通話|現代標準中文)[：:\s]*/i, '');
+            cleaned = cleaned.replace(/^[（(][^）)]*[）)]\s*/g, '');
+            cleaned = cleaned.replace(/[`"'“”‘’]/g, '');
+            return cleaned.trim();
+        }
 
         function cleanString(str) {
             return (str || '').replace(/[，。？！、\s\.,!\?]/g, '');
         }
 
- /* ------------------ 2. 極致平滑「逐字」流式翻譯打字機 ------------------ */
-let recentContextList = [];
+        /* ------------------ 2. 極致平滑「逐字」流式翻譯打字機 ------------------ */
+        let recentContextList = [];
 
-class TypewriterStream {
-    constructor(targetElement, onChar, onDone) {
-        this.el = targetElement;
-        this.onChar = onChar;
-        this.onDone = onDone;
-        this.queue = [];
-        this.timer = null;
-        this.isFinished = false;
-        this.baseSpeed = 22; // 22ms 逐字輸出速度
-    }
-
-    push(text) {
-        if (!text) return;
-        for (const char of text) {
-            this.queue.push(char);
-        }
-        if (!this.timer) this.tick();
-    }
-
-    tick() {
-        const step = () => {
-            if (this.queue.length > 0) {
-                const popCount = this.queue.length > 12 ? 2 : 1;
-                for (let i = 0; i < popCount && this.queue.length > 0; i++) {
-                    this.el.textContent += this.queue.shift();
-                }
-                if (this.onChar) this.onChar();
-                this.timer = setTimeout(step, this.baseSpeed);
-            } else {
+        class TypewriterStream {
+            constructor(targetElement, onChar, onDone) {
+                this.el = targetElement;
+                this.onChar = onChar;
+                this.onDone = onDone;
+                this.queue = [];
                 this.timer = null;
-                if (this.isFinished && this.onDone) {
+                this.isFinished = false;
+                this.baseSpeed = 22; // 22ms 逐字輸出速度
+            }
+
+            push(text) {
+                if (!text) return;
+                for (const char of text) {
+                    this.queue.push(char);
+                }
+                if (!this.timer) this.tick();
+            }
+
+            tick() {
+                const step = () => {
+                    if (this.queue.length > 0) {
+                        const popCount = this.queue.length > 12 ? 2 : 1;
+                        for (let i = 0; i < popCount && this.queue.length > 0; i++) {
+                            this.el.textContent += this.queue.shift();
+                        }
+                        if (this.onChar) this.onChar();
+                        this.timer = setTimeout(step, this.baseSpeed);
+                    } else {
+                        this.timer = null;
+                        if (this.isFinished && this.onDone) {
+                            this.onDone();
+                        }
+                    }
+                };
+                step();
+            }
+
+            finish() {
+                this.isFinished = true;
+                if (this.queue.length === 0 && !this.timer && this.onDone) {
                     this.onDone();
                 }
             }
-        };
-        step();
-    }
-
-    finish() {
-        this.isFinished = true;
-        if (this.queue.length === 0 && !this.timer && this.onDone) {
-            this.onDone();
         }
-    }
-}
 
-async function translateDeltaWithPuter(newSentence, targetSpan) {
-    if (!newSentence || !newSentence.trim()) {
-        targetSpan.remove();
-        return;
-    }
-
-    if (!window.puter || !window.puter.ai) {
-        targetSpan.remove();
-        return;
-    }
-
-    try {
-        const contextStr = recentContextList.length > 0
-            ? `【前文參考】：${recentContextList.join('，')}`
-            : "【無前文】";
-
-        const messages = [
-            {
-                role: "system",
-                content: `你是頂級粵語轉現代普通話專家。請參考前文理解語境，將當前句翻譯為自然流暢的繁體普通話。
-要求：只翻譯當前句，嚴禁翻譯前文，只輸出譯文內容，禁止任何解釋。`
-            },
-            {
-                role: "user",
-                content: `${contextStr}\n【當前句】：${newSentence}`
+        async function translateDeltaWithPuter(newSentence, targetSpan) {
+            if (!newSentence || !newSentence.trim()) {
+                targetSpan.remove();
+                return;
             }
-        ];
 
-        targetSpan.className = "typing-cursor";
-        targetSpan.textContent = "";
+            if (!window.puter || !window.puter.ai) {
+                targetSpan.remove();
+                return;
+            }
 
-        const writer = new TypewriterStream(
-            targetSpan,
-            () => scrollMandoToBottom(),
-            () => {
-                // 打字完畢後，安全移除光標，保留完整文字
-                targetSpan.classList.remove("typing-cursor");
+            try {
+                const contextStr = recentContextList.length > 0
+                    ? `【前文參考】：${recentContextList.join('，')}`
+                    : "【無前文】";
 
-                let txt = targetSpan.textContent.trim();
-                // 只有結尾沒有標點時才補充逗號
-                if (txt && !/[，。？！、]$/.test(txt)) {
-                    targetSpan.textContent = txt + "，";
+                const messages = [
+                    {
+                        role: "system",
+                        content: `你是頂級粵語轉現代普通話專家。請參考前文理解語境，將當前句翻譯為自然流暢的繁體普通話。
+要求：只翻譯當前句，嚴禁翻譯前文，只輸出譯文內容，禁止任何解釋。`
+                    },
+                    {
+                        role: "user",
+                        content: `${contextStr}\n【當前句】：${newSentence}`
+                    }
+                ];
+
+                targetSpan.className = "typing-cursor";
+                targetSpan.textContent = "";
+
+                const writer = new TypewriterStream(
+                    targetSpan,
+                    () => scrollMandoToBottom(),
+                    () => {
+                        targetSpan.classList.remove("typing-cursor");
+
+                        let txt = targetSpan.textContent.trim();
+                        if (txt && !/[，。？！、]$/.test(txt)) {
+                            targetSpan.textContent = txt + "，";
+                        }
+
+                        recentContextList.push(newSentence);
+                        if (recentContextList.length > 2) recentContextList.shift();
+                        scrollMandoToBottom();
+                    }
+                );
+
+                // 使用完全不扣除月度額度的永久免費、低延遲模型
+                const response = await puter.ai.chat(messages, {
+                    model: 'meta-llama/llama-3.1-8b-instruct:free',
+                    stream: true
+                });
+
+                for await (const part of response) {
+                    const rawToken = part?.text ?? "";
+                    if (!rawToken) continue;
+                    writer.push(ensureTraditional(rawToken));
                 }
 
-                recentContextList.push(newSentence);
-                if (recentContextList.length > 2) recentContextList.shift();
-                scrollMandoToBottom();
+                writer.finish();
+
+            } catch (err) {
+                console.error("【Puter.js 翻譯異常】：", err);
+                targetSpan.classList.remove("typing-cursor");
+                if (!targetSpan.textContent.trim()) targetSpan.remove();
             }
-        );
-
-        const response = await puter.ai.chat(messages, { stream: true });
-
-        for await (const part of response) {
-            const rawToken = part?.text ?? "";
-            if (!rawToken) continue;
-            // 逐字轉繁體並推入打字機
-            writer.push(ensureTraditional(rawToken));
         }
 
-        writer.finish();
-
-    } catch (err) {
-        console.error("【Puter.js 翻譯異常】：", err);
-        targetSpan.classList.remove("typing-cursor");
-        if (!targetSpan.textContent.trim()) targetSpan.remove();
-    }
-}
-
-       /* ------------------ 3. 雙欄精準滾動與文字流 (防鬼畜重複加強版) ------------------ */
+        /* ------------------ 3. 雙欄精準滾動與文字流 ------------------ */
         const cantoScroll = document.getElementById('cantoScroll');
         const mandoScroll = document.getElementById('mandoScroll');
         const confirmedPart = document.getElementById('confirmedPart');
@@ -682,116 +680,100 @@ async function translateDeltaWithPuter(newSentence, targetSpan) {
             }
         }
  
-/* ------------------ 3. 粵語平滑逐字流與識別處理 ------------------ */
-let cantoCurrentDisplay = ""; 
-let cantoTargetText = "";
-let cantoTypingTimer = null;
+        let cantoCurrentDisplay = ""; 
+        let cantoTargetText = "";
+        let cantoTypingTimer = null;
 
-// 粵語平滑打字定時器：高頻勻速追趕識別結果，產生絲滑打字動畫
-function feedCantoneseStream(newText) {
-    cantoTargetText = newText;
-    if (cantoTypingTimer) return;
+        function feedCantoneseStream(newText) {
+            cantoTargetText = newText;
+            if (cantoTypingTimer) return;
 
-    cantoTypingTimer = setInterval(() => {
-        if (cantoCurrentDisplay.length < cantoTargetText.length) {
-            // 如果落後較多則快走，一般情況逐字前進
-            const step = (cantoTargetText.length - cantoCurrentDisplay.length > 4) ? 2 : 1;
-            cantoCurrentDisplay = cantoTargetText.slice(0, cantoCurrentDisplay.length + step);
-            interimPart.textContent = cantoCurrentDisplay;
-            scrollCantoToBottom();
-        } else if (cantoCurrentDisplay.length > cantoTargetText.length) {
-            // 語音引擎修正字詞時無縫覆寫
-            cantoCurrentDisplay = cantoTargetText;
-            interimPart.textContent = cantoCurrentDisplay;
-        } else {
-            clearInterval(cantoTypingTimer);
-            cantoTypingTimer = null;
-        }
-    }, 20); // 20ms 一個字，肉眼極致順滑
-}
-
-/* ------------------ 3. 粵語逐字打字機（帶開頭閃爍光標） ------------------ */
-
-// 說話時：臨時字串後面也跟著閃爍光標
-function handleSpeechInterim(interim) {
-    if (!interim) return;
-    interimPart.className = "interim-text typing-cursor";
-    interimPart.textContent = interim;
-    scrollCantoToBottom();
-}
-
-function handleSpeechFinal(finalText) {
-    if (!finalText || !finalText.trim()) return;
-
-    // 清理臨時輸入區
-    interimPart.className = "interim-text";
-    interimPart.textContent = "";
-
-    const cleanFinal = cleanString(finalText);
-    const now = Date.now();
-
-    // 1. 防短時間內完全相同文本重複觸發 (2秒內)
-    if (cleanFinal === lastFinalCleanText && (now - lastFinalTimestamp < 2000)) return;
-
-    // 2. 檢查尾部重疊
-    const cleanConfirmed = cleanString(rawConfirmedText);
-    const tailSlice = cleanConfirmed.slice(-Math.max(cleanFinal.length + 10, 50));
-    if (tailSlice.endsWith(cleanFinal)) return;
-
-    let delta = finalText.trim();
-    // 扣除重疊前綴
-    for (let i = delta.length; i >= 2; i--) {
-        const checkPrefix = cleanString(delta.slice(0, i));
-        if (checkPrefix.length >= 2 && tailSlice.endsWith(checkPrefix)) {
-            delta = delta.slice(i).trim();
-            break;
-        }
-    }
-
-    if (!cleanString(delta)) return;
-
-    // 🔥【核心修復】：立即登記歷史記錄，絕不等待打字完成！
-    // 這樣下一次辨識進來時，就能100%攔截重複內容
-    lastFinalCleanText = cleanFinal;
-    lastFinalTimestamp = now;
-    rawConfirmedText += delta; 
-    charCount.textContent = `${cleanString(rawConfirmedText).length} 字`;
-
-    // 1. 【粵語區】：先掛載空節點與閃爍光標
-    const cantoSpan = document.createElement('span');
-    cantoSpan.className = "typing-cursor"; // 立即顯示閃爍光標
-    cantoSpan.textContent = "";
-    confirmedPart.appendChild(cantoSpan);
-    scrollCantoToBottom();
-
-    // 2. 【普通話區】：同步掛載空節點與光標
-    const mandoSpan = document.createElement('span');
-    mandarinContent.appendChild(mandoSpan);
-    scrollMandoToBottom();
-
-    // 延時 120ms 展現呼吸加載感，隨後開始打字
-    setTimeout(() => {
-        const cantoWriter = new TypewriterStream(
-            cantoSpan,
-            () => scrollCantoToBottom(),
-            () => {
-                cantoSpan.classList.remove("typing-cursor");
-                let txt = cantoSpan.textContent.trim();
-                if (txt && !/[，。？！、]$/.test(txt)) {
-                    cantoSpan.textContent = txt + "，";
+            cantoTypingTimer = setInterval(() => {
+                if (cantoCurrentDisplay.length < cantoTargetText.length) {
+                    const step = (cantoTargetText.length - cantoCurrentDisplay.length > 4) ? 2 : 1;
+                    cantoCurrentDisplay = cantoTargetText.slice(0, cantoCurrentDisplay.length + step);
+                    interimPart.textContent = cantoCurrentDisplay;
+                    scrollCantoToBottom();
+                } else if (cantoCurrentDisplay.length > cantoTargetText.length) {
+                    cantoCurrentDisplay = cantoTargetText;
+                    interimPart.textContent = cantoCurrentDisplay;
+                } else {
+                    clearInterval(cantoTypingTimer);
+                    cantoTypingTimer = null;
                 }
-                fullPunctuatedText += cantoSpan.textContent;
-                scrollCantoToBottom();
+            }, 20);
+        }
+
+        function handleSpeechInterim(interim) {
+            if (!interim) return;
+            interimPart.className = "interim-text typing-cursor";
+            interimPart.textContent = interim;
+            scrollCantoToBottom();
+        }
+
+        function handleSpeechFinal(finalText) {
+            if (!finalText || !finalText.trim()) return;
+
+            interimPart.className = "interim-text";
+            interimPart.textContent = "";
+
+            const cleanFinal = cleanString(finalText);
+            const now = Date.now();
+
+            if (cleanFinal === lastFinalCleanText && (now - lastFinalTimestamp < 2000)) return;
+
+            const cleanConfirmed = cleanString(rawConfirmedText);
+            const tailSlice = cleanConfirmed.slice(-Math.max(cleanFinal.length + 10, 50));
+            if (tailSlice.endsWith(cleanFinal)) return;
+
+            let delta = finalText.trim();
+            for (let i = delta.length; i >= 2; i--) {
+                const checkPrefix = cleanString(delta.slice(0, i));
+                if (checkPrefix.length >= 2 && tailSlice.endsWith(checkPrefix)) {
+                    delta = delta.slice(i).trim();
+                    break;
+                }
             }
-        );
 
-        cantoWriter.push(delta);
-        cantoWriter.finish();
-    }, 120);
+            if (!cleanString(delta)) return;
 
-    // 啟動普通話翻譯（帶上下文）
-    translateDeltaWithPuter(delta, mandoSpan);
-}
+            lastFinalCleanText = cleanFinal;
+            lastFinalTimestamp = now;
+            rawConfirmedText += delta; 
+            charCount.textContent = `${cleanString(rawConfirmedText).length} 字`;
+
+            const cantoSpan = document.createElement('span');
+            cantoSpan.className = "typing-cursor";
+            cantoSpan.textContent = "";
+            confirmedPart.appendChild(cantoSpan);
+            scrollCantoToBottom();
+
+            const mandoSpan = document.createElement('span');
+            mandarinContent.appendChild(mandoSpan);
+            scrollMandoToBottom();
+
+            setTimeout(() => {
+                const cantoWriter = new TypewriterStream(
+                    cantoSpan,
+                    () => scrollCantoToBottom(),
+                    () => {
+                        cantoSpan.classList.remove("typing-cursor");
+                        let txt = cantoSpan.textContent.trim();
+                        if (txt && !/[，。？！、]$/.test(txt)) {
+                            cantoSpan.textContent = txt + "，";
+                        }
+                        fullPunctuatedText += cantoSpan.textContent;
+                        scrollCantoToBottom();
+                    }
+                );
+
+                cantoWriter.push(delta);
+                cantoWriter.finish();
+            }, 120);
+
+            translateDeltaWithPuter(delta, mandoSpan);
+        }
+
         /* ------------------ 4. 語音辨識與防休眠 ------------------ */
         const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
         let recognition = null;
@@ -848,40 +830,39 @@ function handleSpeechFinal(finalText) {
                 pauseIcon.style.display = 'block';
             };
 
-         // 【修訂後】
-recognition.onresult = (event) => {
-    let interim = '';
-    for (let i = event.resultIndex; i < event.results.length; ++i) {
-        const trans = event.results[i][0].transcript;
-        if (event.results[i].isFinal) {
-            handleSpeechFinal(trans);
-        } else {
-            interim += trans;
-        }
-    }
-    if (interim) {
-        handleSpeechInterim(interim);
-    }
-};
-         // 【修訂後】
-recognition.onerror = (e) => {
-    if (e.error === 'not-allowed') {
-        userWantsListening = false;
-        stopListeningUI();
-        alert("請允許麥克風權限以進行實時識別。");
-    } else {
-        ensureRecognitionActive(); // 移除 setTimeout(..., 60)
-    }
-};
+            recognition.onresult = (event) => {
+                let interim = '';
+                for (let i = event.resultIndex; i < event.results.length; ++i) {
+                    const trans = event.results[i][0].transcript;
+                    if (event.results[i].isFinal) {
+                        handleSpeechFinal(trans);
+                    } else {
+                        interim += trans;
+                    }
+                }
+                if (interim) {
+                    handleSpeechInterim(interim);
+                }
+            };
 
-recognition.onend = () => {
-    isEngineRunning = false;
-    if (userWantsListening) {
-        ensureRecognitionActive(); // 移除 setTimeout(..., 40)
-    } else {
-        stopListeningUI();
-    }
-};
+            recognition.onerror = (e) => {
+                if (e.error === 'not-allowed') {
+                    userWantsListening = false;
+                    stopListeningUI();
+                    alert("請允許麥克風權限以進行實時識別。");
+                } else {
+                    ensureRecognitionActive();
+                }
+            };
+
+            recognition.onend = () => {
+                isEngineRunning = false;
+                if (userWantsListening) {
+                    ensureRecognitionActive();
+                } else {
+                    stopListeningUI();
+                }
+            };
         }
 
         /* ------------------ 5. 單鍵授權與啟動 ------------------ */
