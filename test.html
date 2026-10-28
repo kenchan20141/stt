@@ -604,82 +604,70 @@
             }
         }
  
-        function handleSpeechInterim(interim) {
-            if (!interim || !interim.trim()) return;
-            // 如果臨時結果與剛說完的一模一樣，不重複閃爍
-            if (cleanString(interim) === cleanString(lastFinalCleanText)) return;
-            interimPart.innerText = interim;
-            scrollCantoToBottom();
-        }
+       // 【修訂後】
+function handleSpeechInterim(interim) {
+    if (!interim) return;
+    interimPart.textContent = interim; // 用 textContent 比 innerText 渲染更快
+    scrollCantoToBottom();
+}
  
-        function handleSpeechFinal(finalText) {
-            finalText = ensureTraditional(sanitizeAiOutput(finalText.trim()));
-            if (!finalText) return;
- 
-            interimPart.innerText = "";
- 
-            const cleanFinal = cleanString(finalText);
-            const cleanConfirmed = cleanString(rawConfirmedText);
-            const now = Date.now();
- 
-            // 1. 【防重複核心過濾 1】：時間過短且字詞完全相同（手機引擎常見的重複回調）
-            if (cleanFinal === lastFinalCleanText && (now - lastFinalTimestamp < 2500)) {
-                return;
-            }
- 
-            // 2. 【防重複核心過濾 2】：尾部完全包含檢查
-            // 檢查已確認內容的最後 40 個字，是否已經以這段文字結尾
-            const tailSlice = cleanConfirmed.slice(-Math.max(cleanFinal.length + 5, 40));
-            if (tailSlice.endsWith(cleanFinal)) {
-                return;
-            }
- 
-            // 3. 【防重複核心過濾 3】：滑動窗口尋找真正的新增量 (Delta)
-            // 手機有時會把「上一句的後半截 + 這一句」黏在一起回傳，例如回傳「頭先我開發出嚟嘅就係舒服啲」
-            let delta = finalText;
-            for (let i = finalText.length; i >= 2; i--) {
-                const checkPrefix = cleanString(finalText.slice(0, i));
-                if (checkPrefix.length >= 2 && tailSlice.endsWith(checkPrefix)) {
-                    // 找到了重疊的前綴，只取後面真正沒說過的文字
-                    delta = finalText.slice(i).trim();
-                    break;
-                }
-            }
- 
-            const cleanDelta = cleanString(delta);
-            // 如果截取後沒有新字，或只剩標點符號，直接拋棄
-            if (!cleanDelta || cleanDelta.length === 0) return;
- 
-            // 更新防重複歷史記錄
-            lastFinalCleanText = cleanFinal;
-            lastFinalTimestamp = now;
- 
-            // 4. 粵語原文寫入
-            const formatted = delta + "，";
-            rawConfirmedText += delta;
-            fullPunctuatedText += formatted;
-            confirmedPart.innerText = fullPunctuatedText;
-            charCount.innerText = `${cleanString(rawConfirmedText).length} 字`;
-            scrollCantoToBottom();
- 
-            // 5. 普通話建立待續寫 span
-            const targetSpan = document.createElement('span');
-            targetSpan.className = "mandarin-pending";
-            targetSpan.innerText = " ⋯";
-            mandarinContent.appendChild(targetSpan);
-            scrollMandoToBottom();
- 
-            // 發送翻譯請求
-            translateDeltaWithPuter(delta, targetSpan);
-        }
+    // 【修訂後】
+function handleSpeechFinal(finalText) {
+    if (!finalText || !finalText.trim()) return;
 
-      /* ------------------ 4. 語音辨識與防休眠（電腦/手機防卡死優化版） ------------------ */
+    // 1. 立即清空臨時區，防止視覺延遲
+    interimPart.textContent = "";
+
+    const cleanFinal = cleanString(finalText);
+    const now = Date.now();
+
+    // 防手機引擎短時間重複回傳
+    if (cleanFinal === lastFinalCleanText && (now - lastFinalTimestamp < 1500)) {
+        return;
+    }
+
+    const cleanConfirmed = cleanString(rawConfirmedText);
+    const tailSlice = cleanConfirmed.slice(-Math.max(cleanFinal.length + 5, 40));
+    if (tailSlice.endsWith(cleanFinal)) return;
+
+    let delta = finalText.trim();
+    for (let i = delta.length; i >= 2; i--) {
+        const checkPrefix = cleanString(delta.slice(0, i));
+        if (checkPrefix.length >= 2 && tailSlice.endsWith(checkPrefix)) {
+            delta = delta.slice(i).trim();
+            break;
+        }
+    }
+
+    if (!cleanString(delta)) return;
+
+    lastFinalCleanText = cleanFinal;
+    lastFinalTimestamp = now;
+
+    // 2. 【核心提速】：不等任何 AI/繁體轉換，直接把當前字瞬時插入 DOM
+    const formatted = delta + "，";
+    rawConfirmedText += delta;
+    fullPunctuatedText += formatted;
+    
+    // 直接 appendTextNode 或 textContent，避免重構整個長文本的 innerText
+    confirmedPart.textContent = fullPunctuatedText;
+    charCount.textContent = `${cleanConfirmed.length + cleanString(delta).length} 字`;
+    scrollCantoToBottom();
+
+    // 3. 異步派發普通話翻譯（完全不卡住上方粵語的即時呈現）
+    const targetSpan = document.createElement('span');
+    targetSpan.className = "mandarin-pending";
+    targetSpan.textContent = " ⋯";
+    mandarinContent.appendChild(targetSpan);
+    scrollMandoToBottom();
+
+    translateDeltaWithPuter(delta, targetSpan);
+}
+        /* ------------------ 4. 語音辨識與防休眠 ------------------ */
         const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
         let recognition = null;
         let userWantsListening = false;
         let isEngineRunning = false;
-        let isStarting = false;        // 新增：啟動互斥鎖，防止異步重複調用 start()
-        let restartTimer = null;       // 統一重啟定時器
         let wakeLock = null;
 
         const toggleBtn = document.getElementById('toggleBtn');
@@ -700,24 +688,15 @@
             if (wakeLock) { wakeLock.release().catch(() => {}); wakeLock = null; }
         }
 
-        // 安全啟動函數：嚴格防抖防重入
         function ensureRecognitionActive() {
-            if (userWantsListening && !isEngineRunning && !isStarting && recognition) {
-                isStarting = true;
-                try { 
-                    recognition.start(); 
-                } catch (e) {
-                    isStarting = false; // 若拋錯立即釋放鎖
-                }
+            if (userWantsListening && !isEngineRunning && recognition) {
+                try { recognition.start(); } catch (e) {}
             }
         }
 
-        // 定時保活輪詢：由 400ms 放寬至 1200ms，減輕電腦端壓力，同時足夠維持手機端後台運行
         setInterval(() => {
-            if (userWantsListening && !isEngineRunning && !isStarting) {
-                ensureRecognitionActive();
-            }
-        }, 1200);
+            if (userWantsListening) ensureRecognitionActive();
+        }, 400);
 
         document.addEventListener('visibilitychange', () => {
             if (document.visibilityState === 'visible' && userWantsListening) {
@@ -735,55 +714,48 @@
 
             recognition.onstart = () => {
                 isEngineRunning = true;
-                isStarting = false;
                 toggleBtn.classList.add('active');
                 playIcon.style.display = 'none';
                 pauseIcon.style.display = 'block';
             };
 
-            recognition.onresult = (event) => {
-                let interim = '';
-                for (let i = event.resultIndex; i < event.results.length; ++i) {
-                    const trans = event.results[i][0].transcript;
-                    if (event.results[i].isFinal) {
-                        handleSpeechFinal(trans);
-                    } else {
-                        interim += trans;
-                    }
-                }
-                if (interim) handleSpeechInterim(interim);
-            };
+         // 【修訂後】
+recognition.onresult = (event) => {
+    let interim = '';
+    for (let i = event.resultIndex; i < event.results.length; ++i) {
+        const trans = event.results[i][0].transcript;
+        if (event.results[i].isFinal) {
+            handleSpeechFinal(trans);
+        } else {
+            interim += trans;
+        }
+    }
+    // 收到即時字串立即渲染，不再等整句結束
+    interimPart.textContent = interim;
+    if (interim) scrollCantoToBottom();
+};
+         // 【修訂後】
+recognition.onerror = (e) => {
+    if (e.error === 'not-allowed') {
+        userWantsListening = false;
+        stopListeningUI();
+        alert("請允許麥克風權限以進行實時識別。");
+    } else {
+        ensureRecognitionActive(); // 移除 setTimeout(..., 60)
+    }
+};
 
-            recognition.onerror = (e) => {
-                isStarting = false;
-                // 針對電腦端常見的致命錯誤（沒插麥克風、權限阻擋）立即中止，防止無限死循環
-                if (e.error === 'not-allowed' || e.error === 'audio-capture' || e.error === 'service-not-allowed') {
-                    userWantsListening = false;
-                    stopListeningUI();
-                    if (e.error === 'audio-capture') {
-                        alert("未檢測到可用麥克風，請檢查電腦麥克風設置。");
-                    } else {
-                        alert("請允許麥克風權限以進行實時識別。");
-                    }
-                }
-                // 重要：onerror 內嚴禁調用 setTimeout 重啟！重啟統一交由 onend 管理，避免雙重回調觸發死循環。
-            };
-
-            recognition.onend = () => {
-                isEngineRunning = false;
-                isStarting = false;
-                clearTimeout(restartTimer);
-                
-                if (userWantsListening) {
-                    // 給底層音訊通道 300ms 冷卻緩衝期（原先 40ms 太短，是電腦崩潰的主因）
-                    restartTimer = setTimeout(ensureRecognitionActive, 300);
-                } else {
-                    stopListeningUI();
-                }
-            };
+recognition.onend = () => {
+    isEngineRunning = false;
+    if (userWantsListening) {
+        ensureRecognitionActive(); // 移除 setTimeout(..., 40)
+    } else {
+        stopListeningUI();
+    }
+};
         }
 
-       /* ------------------ 5. 單鍵授權與啟動（移除阻塞彈窗） ------------------ */
+        /* ------------------ 5. 單鍵授權與啟動 ------------------ */
         async function toggleSpeech() {
             if (!recognition) {
                 alert("當前瀏覽器不支援語音辨識，請使用 Chrome、Edge 或 Safari。");
@@ -792,14 +764,20 @@
 
             if (userWantsListening) {
                 userWantsListening = false;
-                clearTimeout(restartTimer);
                 releaseWakeLock();
                 try { keepAliveAudio.pause(); } catch(e) {}
                 try { recognition.stop(); } catch(e) {}
                 stopListeningUI();
             } else {
-                // 關鍵改動：移除了會被電腦攔截並導致死鎖的 await puter.auth.signIn(...)
-                // Puter.js 調用 puter.ai.chat 時會在後台自動進行免登入授權，無需阻礙主線程
+                if (window.puter && window.puter.auth && !puter.auth.isSignedIn()) {
+                    try {
+                        await puter.auth.signIn({ attempt_temp_user_creation: true });
+                    } catch (e) {
+                        alert("Puter AI 授權未完成，請允許授權視窗以開啟翻譯。");
+                        return;
+                    }
+                }
+
                 userWantsListening = true;
                 acquireWakeLock();
                 try { keepAliveAudio.play(); } catch(e) {}
@@ -808,15 +786,11 @@
         }
 
         function stopListeningUI() {
-            isStarting = false;
-            isEngineRunning = false;
             toggleBtn.classList.remove('active');
             playIcon.style.display = 'block';
             pauseIcon.style.display = 'none';
             interimPart.innerText = "";
         }
-
-   
 
         /* ------------------ 6. 字體調節 ------------------ */
         const fontScales = [
