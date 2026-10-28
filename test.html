@@ -699,26 +699,24 @@ function feedCantoneseStream(newText) {
     }, 20); // 20ms 一個字，肉眼極致順滑
 }
 
+/* ------------------ 3. 粵語平滑逐字流與識別處理 (與普通話同款打字機) ------------------ */
 function handleSpeechInterim(interim) {
     if (!interim) return;
-    feedCantoneseStream(interim);
+    // 說話進行中時，在 interimPart 顯示藍色臨時提示
+    interimPart.textContent = interim;
+    scrollCantoToBottom();
 }
 
 function handleSpeechFinal(finalText) {
     if (!finalText || !finalText.trim()) return;
 
-    // 清理打字進度
-    if (cantoTypingTimer) {
-        clearInterval(cantoTypingTimer);
-        cantoTypingTimer = null;
-    }
-    cantoCurrentDisplay = "";
-    cantoTargetText = "";
+    // 清空未結算的臨時文字
     interimPart.textContent = "";
 
     const cleanFinal = cleanString(finalText);
     const now = Date.now();
 
+    // 防重複與抖動
     if (cleanFinal === lastFinalCleanText && (now - lastFinalTimestamp < 1500)) return;
 
     const cleanConfirmed = cleanString(rawConfirmedText);
@@ -739,21 +737,40 @@ function handleSpeechFinal(finalText) {
     lastFinalCleanText = cleanFinal;
     lastFinalTimestamp = now;
 
-    // 粵語正文落定
-    const formatted = delta + "，";
-    rawConfirmedText += delta;
-    fullPunctuatedText += formatted;
-    
-    confirmedPart.textContent = fullPunctuatedText;
-    charCount.textContent = `${cleanString(rawConfirmedText).length} 字`;
+    // 1. 【粵語逐字打字機】：完全比照普通話
+    const cantoSpan = document.createElement('span');
+    cantoSpan.className = "typing-cursor"; // 帶上同款閃爍光標 ▍
+    confirmedPart.appendChild(cantoSpan);
     scrollCantoToBottom();
 
-    // 觸發普通話翻譯逐字打字機
-    const targetSpan = document.createElement('span');
-    mandarinContent.appendChild(targetSpan);
+    const cantoWriter = new TypewriterStream(
+        cantoSpan,
+        () => {
+            scrollCantoToBottom();
+        },
+        () => {
+            // 打字完成後，移除光標，補上標點符號
+            cantoSpan.classList.remove("typing-cursor");
+            let txt = cantoSpan.textContent.trim();
+            if (txt && !/[，。？！、]$/.test(txt)) {
+                cantoSpan.textContent = txt + "，";
+            }
+            rawConfirmedText += txt;
+            fullPunctuatedText += cantoSpan.textContent;
+            charCount.textContent = `${cleanString(rawConfirmedText).length} 字`;
+            scrollCantoToBottom();
+        }
+    );
+    // 將粵語文字推入打字隊列（一個字一個字敲出來）
+    cantoWriter.push(delta);
+    cantoWriter.finish();
+
+    // 2. 【普通話逐字打字機】：同步啟動翻譯
+    const mandoSpan = document.createElement('span');
+    mandarinContent.appendChild(mandoSpan);
     scrollMandoToBottom();
 
-    translateDeltaWithPuter(delta, targetSpan);
+    translateDeltaWithPuter(delta, mandoSpan);
 }
         /* ------------------ 4. 語音辨識與防休眠 ------------------ */
         const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -822,9 +839,9 @@ recognition.onresult = (event) => {
             interim += trans;
         }
     }
-    // 收到即時字串立即渲染，不再等整句結束
-    interimPart.textContent = interim;
-    if (interim) scrollCantoToBottom();
+    if (interim) {
+        handleSpeechInterim(interim);
+    }
 };
          // 【修訂後】
 recognition.onerror = (e) => {
