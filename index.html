@@ -3,9 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>實時粵語課堂字幕機（Puter AI 整合版）</title>
+    <title>實時粵語課堂字幕機</title>
 
-    <!-- 香港教育標準字型：Noto Serif HK (明體) 與 Noto Sans HK (無襯線) -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+HK:wght@400;500;600;700&family=Noto+Serif+HK:wght@500;600;700;900&display=swap" rel="stylesheet">
@@ -16,16 +15,9 @@
         window.ToJyutping = ToJyutping;
     </script>
 
-    <!-- 2. 外部庫：OpenCC-js (香港標準繁體轉換與正字標準化) -->
+    <!-- 2. 外部輔助庫 -->
     <script src="https://cdn.jsdelivr.net/npm/opencc-js@1.0.5/dist/umd/full.min.js"></script>
-
-    <!-- 3. 外部庫：Fuse.js (中文專題/範文名詞音近語義模糊校正引擎) -->
     <script src="https://cdn.jsdelivr.net/npm/fuse.js@7.0.0/dist/fuse.basic.min.js"></script>
-
-    <!-- 4. 外部庫：Diff-Match-Patch (ASR 語音識別流式重疊字消除與平滑拼接) -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/diff-match-patch/20121119/diff_match_patch.js"></script>
-
-    <!-- 5. 外部庫：Puter.js (深度粵普大模型轉譯) -->
     <script src="https://js.puter.com/v2/"></script>
 
     <style>
@@ -157,7 +149,7 @@
             display: flex;
             flex-direction: column;
             gap: 12px;
-            animation: fadeIn 0.3s ease;
+            animation: fadeIn 0.25s ease;
             position: relative;
             box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
         }
@@ -199,9 +191,10 @@
         }
 
         .cantonese-text .interim-preview {
-            color: #64748b;
-            font-style: italic;
-            margin-left: 6px;
+            color: #38bdf8;
+            opacity: 0.85;
+            margin-left: 4px;
+            border-bottom: 1px dashed rgba(56, 189, 248, 0.4);
         }
 
         .mandarin-box {
@@ -223,7 +216,7 @@
             margin-top: 4px;
             flex-shrink: 0;
             font-family: "Noto Sans HK", sans-serif;
-            transition: all 0.25s ease;
+            transition: all 0.2s ease;
         }
 
         .mandarin-tag.ai-loading {
@@ -244,7 +237,7 @@
             color: #7dd3fc;
             word-break: break-word;
             font-weight: 400;
-            transition: font-size 0.2s ease, color 0.3s ease;
+            transition: font-size 0.2s ease, color 0.2s ease;
         }
 
         #fontToast {
@@ -378,7 +371,7 @@
             font-family: "Noto Sans HK", sans-serif;
         }
 
-        @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
         @keyframes modalPop { from { opacity: 0; transform: scale(0.95); } to { opacity: 1; transform: scale(1); } }
         @keyframes pulse { 0% { transform: scale(0.95); opacity: 0.7; } 50% { transform: scale(1.2); opacity: 1; } 100% { transform: scale(0.95); opacity: 0.7; } }
         @keyframes redPulse { 0% { box-shadow: 0 0 10px rgba(225, 29, 72, 0.4); } 50% { box-shadow: 0 0 22px rgba(225, 29, 72, 0.85); } 100% { box-shadow: 0 0 10px rgba(225, 29, 72, 0.4); } }
@@ -391,7 +384,7 @@
     <header>
         <div class="status-container">
             <div id="statusDot" class="status-dot"></div>
-            <span id="statusText" class="status-text">課堂語音引擎準備就緒</span>
+            <span id="statusText" class="status-text">語音引擎準備就緒</span>
         </div>
         <div class="btn-group">
             <button class="svg-btn" title="調節字體大小" onclick="cycleFontSize()">
@@ -409,7 +402,6 @@
                 </svg>
             </button>
 
-            <!-- 核心啟動按鈕：首次點擊即會自動觸發 Puter AI 免密授權並開始語音識別 -->
             <button id="toggleBtn" class="svg-btn play-btn-red" title="開始/暫停識別" onclick="toggleSpeech()">
                 <svg id="playIcon" viewBox="0 0 24 24" fill="currentColor">
                     <path d="M8 5.14v13.72a1 1 0 0 0 1.5.86l11-6.86a1 1 0 0 0 0-1.72l-11-6.86a1 1 0 0 0-1.5.86z"></path>
@@ -455,7 +447,7 @@
     </div>
 
     <script>
-        /* ------------------ 1. 外部輔助庫初始化 (OpenCC + DMP + Fuse.js) ------------------ */
+        /* ------------------ 1. 外部輔助庫初始化 ------------------ */
         let hkConverter = null;
         try {
             if (window.OpenCC) {
@@ -463,37 +455,25 @@
             }
         } catch (e) {}
 
-        const dmp = window.diff_match_patch ? new window.diff_match_patch() : null;
-
         const CLASSROOM_CORE_VOCAB = [
             "出師表", "六國論", "岳陽樓記", "醉翁亭記", "始得西山宴遊記", "前赤壁賦",
             "念奴嬌", "赤壁懷古", "聲聲慢", "青玉案", "逍遙遊", "庖丁解牛",
             "廉頗藺相如列傳", "師說", "勸學", "魚我所欲也", "鴻門會", "項莊舞劍",
             "中道崩殂", "陟罰臧否", "裨補闕漏", "猥自枉屈", "咨諏善道", "臨表涕零",
             "弊在賂秦", "抱薪救火", "檣傾楫摧", "浩浩湯湯", "岸芷汀蘭", "政通人和",
-            "百廢具興", "傴僂提攜", "宴酣之樂", "觥籌交錯", "餘音嫋嫋", "正襟危坐",
-            "舳艫千里", "橫槊賦詩", "寄蜉蝣於天地", "渺滄海之一粟", "木直中繩",
-            "輮以為輪", "金石可鏤", "不龜手之藥", "舍生取義", "完璧歸趙", "澠池之會",
-            "負荊請罪", "商鞅變法", "焚書坑儒", "分封制", "宗法制", "郡縣制",
-            "推恩令", "罷黜百家", "獨尊儒術", "鹽鐵官營", "張騫通西域", "司馬遷",
-            "光武中興", "黨錮之禍", "黃巾之亂", "九品中正制", "孝文帝漢化", "三省六部制",
-            "房謀杜斷", "貞觀之治", "開元盛世", "安史之亂", "藩鎮割據", "黃巢之亂",
-            "杯酒釋兵權", "強幹弱枝", "重文輕武", "澶淵之盟", "靖康之禍", "王安石變法",
-            "四等人制", "朱元璋", "靖難之變", "土木之變", "鄭和下西洋", "張居正改革",
-            "一條鞭法", "攤丁入畝", "虎門銷煙", "鴉片戰爭", "戊戌變法", "辛丑條約",
-            "辛亥革命", "武昌起義"
+            "百廢具興", "傴僂提攜", "宴酣之樂", "觥籌交錯", "餘音嫋嫋", "正襟危坐"
         ];
 
         let vocabFuse = null;
         if (window.Fuse) {
             vocabFuse = new window.Fuse(CLASSROOM_CORE_VOCAB, {
                 includeScore: true,
-                threshold: 0.36,
+                threshold: 0.32,
                 minMatchCharLength: 2
             });
         }
 
-        /* ------------------ 2. 結合正則 + Fuse.js + OpenCC 文本校正 ------------------ */
+        /* ------------------ 2. 定稿專用校正庫（僅在定稿時執行 1 次，零消耗） ------------------ */
         const CHINESE_SUBJECT_RULES = [
             [/出[屍尸]表/g, "出師表"],
             [/六國[亂爛]/g, "六國論"],
@@ -530,21 +510,10 @@
             [/百廢[具俱]興/g, "百廢具興"],
             [/傴[樓僂]提攜/g, "傴僂提攜"],
             [/燕[堪酣]之樂/g, "宴酣之樂"],
-            [/光籌交錯/g, "觥籌交錯"],
-            [/竹[路舳]千里/g, "舳艫千里"],
-            [/橫[索槊]賦詩/g, "橫槊賦詩"],
-            [/木直[中仲]繩/g, "木直中繩"],
-            [/輮以為[輪倫]/g, "輮以為輪"],
-            [/金石可[鏤漏]/g, "金石可鏤"],
-            [/不[龜貴]手之藥/g, "不龜手之藥"],
-            [/完[避璧]歸趙/g, "完璧歸趙"],
-            [/澠池之[會位]/g, "澠池之會"],
-            [/負[經荊]請罪/g, "負荊請罪"],
-            [/商[央養]變法/g, "商鞅變法"],
-            [/張[騫簽]通西域/g, "張騫通西域"]
+            [/光籌交錯/g, "觥籌交錯"]
         ];
 
-        function optimizeChineseSubjectText(text) {
+        function optimizeFinalText(text) {
             if (!text) return "";
             let res = text;
 
@@ -552,90 +521,22 @@
                 try { res = hkConverter(res); } catch (e) {}
             }
 
-            for (const [regex, rep] of CHINESE_SUBJECT_RULES) {
-                res = res.replace(regex, rep);
-            }
-
-            if (vocabFuse && res.length >= 3) {
-                for (let len = 4; len >= 3; len--) {
-                    for (let i = 0; i <= res.length - len; i++) {
-                        const slice = res.slice(i, i + len);
-                        if (/[，。？！、\s]/.test(slice)) continue;
-                        const match = vocabFuse.search(slice);
-                        if (match.length > 0 && match[0].score < 0.25) {
-                            const correctedWord = match[0].item;
-                            if (correctedWord.length === len && slice !== correctedWord) {
-                                res = res.slice(0, i) + correctedWord + res.slice(i + len);
-                            }
-                        }
-                    }
-                }
+            for (let i = 0; i < CHINESE_SUBJECT_RULES.length; i++) {
+                res = res.replace(CHINESE_SUBJECT_RULES[i][0], CHINESE_SUBJECT_RULES[i][1]);
             }
             return res;
         }
 
-        /* ------------------ 3. 每字精準粵語注音 ------------------ */
-        const CLASSICAL_SPECIAL_JYUTPING = {
-            "屬": "zuk1", "湯": "soeng1", "具": "keoi1", "殂": "cou4", "長": "zoeng2",
-            "藏": "zong6", "說": "seoi3", "裨": "bei1", "否": "fau2", "罷": "baa6",
-            "賈": "gaa2", "數": "sou3", "石": "daan3", "龜": "gwan1", "鬻": "zuk1",
-            "擁": "jung2", "遺": "wai6", "率": "seot1", "暴": "puk1", "當": "dong1",
-            "輮": "jau4", "挺": "ting5", "知": "zi3", "生": "sing3", "惡": "wu1",
-            "幾": "gei1", "食": "zi6", "弗": "fat1", "嘑": "fu1", "蹴": "cuk1",
-            "辯": "bin6", "得": "dak1", "與": "jyu4", "鄉": "hoeng3", "籍": "zik6"
-        };
-
-        async function fetchJyutpingRubyHTML(text) {
-            if (!text) return "";
-            if (!window.ToJyutping) {
-                try {
-                    const mod = await import('https://cdn.jsdelivr.net/npm/to-jyutping@3.1.1/+esm');
-                    window.ToJyutping = mod.default || mod;
-                } catch (e) {}
-            }
-
-            let htmlResult = "";
-            if (window.ToJyutping && typeof window.ToJyutping.getJyutpingList === 'function') {
-                try {
-                    const list = window.ToJyutping.getJyutpingList(text);
-                    for (const [char, rawJp] of list) {
-                        if (char === '\n') {
-                            htmlResult += '<div style="flex-basis: 100%; height: 8px;"></div>';
-                            continue;
-                        }
-                        const jp = CLASSICAL_SPECIAL_JYUTPING[char] || rawJp;
-                        if (jp) {
-                            htmlResult += `<ruby class="jp-ruby"><span class="c-char">${char}</span><rt class="c-rt">${jp}</rt></ruby>`;
-                        } else {
-                            htmlResult += `<span class="jp-punct">${char}</span>`;
-                        }
-                    }
-                    return htmlResult;
-                } catch (err) {}
-            }
-
-            for (const char of text) {
-                if (/[\u4e00-\u9fa5]/.test(char)) {
-                    const jp = CLASSICAL_SPECIAL_JYUTPING[char] || "zi6";
-                    htmlResult += `<ruby class="jp-ruby"><span class="c-char">${char}</span><rt class="c-rt">${jp}</rt></ruby>`;
-                } else {
-                    htmlResult += `<span class="jp-punct">${char}</span>`;
-                }
-            }
-            return htmlResult;
-        }
-
-        /* ------------------ 4. 第一軌：本地快速語法轉譯（0 延遲保底） ------------------ */
-        function translateCantoneseToMandarinFast(text) {
+        /* ------------------ 3. 毫秒級極速本地粵普轉譯（0 延遲，支持倒裝） ------------------ */
+        function translateFast(text) {
             if (!text || !text.trim()) return "";
             let res = text;
 
             res = res.replace(/([\u4e00-\u9fa5]{1,2})先([，。？！、\s]|$)/g, "先$1$2");
             res = res.replace(/([\u4e00-\u9fa5]{1,2})得滯/g, "太$1了");
             res = res.replace(/畀([\u4e00-\u9fa5]{1,4})我/g, "把$1給我");
-            res = res.replace(/睇陣/g, "看一會兒").replace(/坐陣/g, "坐一會兒").replace(/等陣/g, "等一會兒");
 
-            const CANTO_GRAMMAR_TRANSFORMS = [
+            const FAST_MAP = [
                 [/都唔好肯定/g, "也不太敢確定"],
                 [/唔好肯定/g, "不太敢確定"],
                 [/唔係幾好/g, "不太好"],
@@ -648,15 +549,9 @@
                 [/點樣/g, "怎樣"],
                 [/冇乜/g, "沒什麼"],
                 [/冇咩/g, "沒什麼"],
-                [/有冇得/g, "能不能"],
                 [/有冇/g, "有沒有"],
                 [/好似/g, "好像"],
                 [/睇下/g, "看一下"],
-                [/睇唔到/g, "看不到"],
-                [/聽唔到/g, "聽不到"],
-                [/諗緊/g, "在想"],
-                [/做緊/g, "在做"],
-                [/講緊/g, "在說"],
                 [/屋企/g, "家裡"],
                 [/返工/g, "上班"],
                 [/佢哋/g, "他們"],
@@ -676,14 +571,9 @@
                 [/咗/g, "了"],
                 [/緊/g, "正在"],
                 [/過嚟/g, "過來"],
-                [/過去/g, "過去"],
-                [/出嚟/g, "出來"],
-                [/仲未/g, "還沒"],
-                [/仲/g, "還"],
                 [/啱啱/g, "剛剛"],
                 [/啱/g, "對"],
                 [/真係/g, "真是"],
-                [/好耐/g, "很久"],
                 [/買咗/g, "買了"],
                 [/畀/g, "給"],
                 [/話/g, "說"],
@@ -691,107 +581,59 @@
                 [/睇/g, "看"],
                 [/講/g, "說"],
                 [/㗎喇[。，！]/g, "的了。"],
-                [/㗎啦[。，！]/g, "的了。"],
                 [/㗎[。，！]/g, "的。"],
                 [/啦[。，！]/g, "吧。"],
                 [/囉[。，！]/g, "呢。"],
-                [/喎[。，！]/g, "呀。"],
                 [/嘅/g, "的"]
             ];
 
-            for (const [regex, repl] of CANTO_GRAMMAR_TRANSFORMS) {
-                res = res.replace(regex, repl);
+            for (let i = 0; i < FAST_MAP.length; i++) {
+                res = res.replace(FAST_MAP[i][0], FAST_MAP[i][1]);
             }
             return res;
         }
 
-        /* ------------------ 5. 第二軌：Puter.js 神經網絡 AI 深度精修 ------------------ */
+        /* ------------------ 4. 第二軌：Puter AI 靜默潤色（背景非阻塞） ------------------ */
         async function requestPuterAIRefinement(cardObj) {
             const textToTranslate = cardObj.fullPunctuatedText;
             if (!textToTranslate || !textToTranslate.trim()) return;
 
-            // 確保已登入 Puter，未授權不執行
             if (!window.puter || !window.puter.auth || !puter.auth.isSignedIn() || !window.puter.ai) {
                 return;
             }
 
-            // 即時響應：標註正在 AI 思考中
             if (cardObj.mandarinTagEl) {
                 cardObj.mandarinTagEl.innerText = "普通話 (AI 潤色中...)";
-                cardObj.mandarinTagEl.classList.remove('ai-active');
-                cardObj.mandarinTagEl.classList.add('ai-loading');
+                cardObj.mandarinTagEl.className = "mandarin-tag ai-loading";
             }
 
             try {
-                const prompt = `你是粵普翻譯專家。請將以下粵語口語轉換為標準、流暢、規範的現代漢語普通話書面語：
-1. 嚴格調整語法倒裝（如「行先」改「先走」、「畀本書我」改「給我一本書」）。
-2. 保留文言詞彙、名篇詩句與專有名詞原文。
-3. 嚴禁任何解釋或拼音，只輸出翻譯後的文字結果。
-
-粵語：${textToTranslate}`;
-
-                // 直接調用 Puter 默認模型，若失敗自動重試，確保 100% 響應
-                let response;
-                try {
-                    response = await puter.ai.chat(prompt);
-                } catch (e1) {
-                    response = await puter.ai.chat(prompt, { model: 'gpt-4o-mini' });
-                }
+                const prompt = `你是粵普翻譯專家。請將以下粵語轉換為規範普通話書面語，修正倒裝，保留文言詞彙與詩句。只輸出結果：\n${textToTranslate}`;
+                const response = await puter.ai.chat(prompt);
 
                 let aiText = "";
-                if (typeof response === 'string') {
-                    aiText = response;
-                } else if (response && response.message && response.message.content) {
-                    aiText = response.message.content;
-                } else if (response && response.text) {
-                    aiText = response.text;
-                } else if (response) {
-                    aiText = String(response);
-                }
+                if (typeof response === 'string') aiText = response;
+                else if (response && response.message) aiText = response.message.content;
+                else if (response) aiText = String(response);
 
                 aiText = aiText.replace(/^["'「『](.*)["'」』]$/s, '$1').trim();
 
-                // 成功獲取結果，立即覆蓋更新顯示
                 if (aiText) {
                     cardObj.mandarinEl.innerText = aiText;
                     if (cardObj.mandarinTagEl) {
                         cardObj.mandarinTagEl.innerText = "普通話・AI 精修";
-                        cardObj.mandarinTagEl.classList.remove('ai-loading');
-                        cardObj.mandarinTagEl.classList.add('ai-active');
+                        cardObj.mandarinTagEl.className = "mandarin-tag ai-active";
                     }
                 }
             } catch (err) {
-                console.error("Puter AI 呼叫出錯：", err);
                 if (cardObj.mandarinTagEl) {
                     cardObj.mandarinTagEl.innerText = "普通話";
-                    cardObj.mandarinTagEl.classList.remove('ai-loading', 'ai-active');
+                    cardObj.mandarinTagEl.className = "mandarin-tag";
                 }
             }
         }
 
-        // 雙軌分流控制器
-        function updateDualTrackTranslation(cardObj) {
-            const targetText = cardObj.fullPunctuatedText;
-            if (!targetText) return;
-
-            // [第一軌] 本地 0 延遲先行渲染（避免空白等待）
-            const fastTranslated = translateCantoneseToMandarinFast(targetText);
-            cardObj.mandarinEl.innerText = fastTranslated;
-            if (cardObj.mandarinTagEl && !cardObj.mandarinTagEl.classList.contains('ai-loading')) {
-                cardObj.mandarinTagEl.innerText = "普通話";
-                cardObj.mandarinTagEl.classList.remove('ai-active');
-            }
-
-            // [第二軌] 若已連線 Puter AI，防抖 500ms 後發起精修
-            if (window.puter && window.puter.auth && puter.auth.isSignedIn()) {
-                if (cardObj.aiTimer) clearTimeout(cardObj.aiTimer);
-                cardObj.aiTimer = setTimeout(() => {
-                    requestPuterAIRefinement(cardObj);
-                }, 500);
-            }
-        }
-
-        /* ------------------ 6. 字幕串流管理器 ------------------ */
+        /* ------------------ 5. 字幕串流管理器 ------------------ */
         const streamContainer = document.getElementById('subtitle-stream');
         const statusDot = document.getElementById('statusDot');
         const statusText = document.getElementById('statusText');
@@ -801,28 +643,15 @@
 
         let autoScroll = true;
         let currentCardObj = null;
-        const MAX_CHAR_PER_CARD = 200;
+        const MAX_CHAR_PER_CARD = 160;
 
         streamContainer.addEventListener('scroll', () => {
             const threshold = 80;
-            const atBottom = streamContainer.scrollHeight - streamContainer.scrollTop - streamContainer.clientHeight < threshold;
-            autoScroll = atBottom;
+            autoScroll = streamContainer.scrollHeight - streamContainer.scrollTop - streamContainer.clientHeight < threshold;
         });
 
         function cleanString(str) {
             return (str || '').replace(/[，。？！、\s\.,!\?]/g, '');
-        }
-
-        function countPureChars(str) {
-            return cleanString(str).length;
-        }
-
-        function formatSentence(text) {
-            text = text.trim();
-            if (!text) return "";
-            if (/(咩|嗎|點解|邊度|邊個|幾時|點樣|係咪|係唔係|何哉|歟)$/.test(text)) return text + "？";
-            if (/(呀|啦|喎|哇|㗎|乎|矣|哉)$/.test(text)) return text + "！";
-            return text + "，";
         }
 
         function createNewCard() {
@@ -835,7 +664,7 @@
                 <div class="caption-card-header">
                     <div class="caption-meta-info">
                         <span class="caption-time">${timeStr}</span>
-                        <span class="char-counter">0 / ${MAX_CHAR_PER_CARD} 字</span>
+                        <span class="char-counter">0 字</span>
                     </div>
                     <button class="svg-btn" style="width:32px; height:32px;" title="查看每字粵拼與發音" onclick="openPhoneticModal(this)">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
@@ -847,7 +676,7 @@
                 <div class="cantonese-text"><span class="confirmed-content"></span><span class="interim-preview"></span></div>
                 <div class="mandarin-box">
                     <span class="mandarin-tag">普通話</span>
-                    <div class="mandarin-text">等待翻譯...</div>
+                    <div class="mandarin-text">聆聽中...</div>
                 </div>
             `;
             streamContainer.appendChild(card);
@@ -868,126 +697,82 @@
             return currentCardObj;
         }
 
-        function computeSmartSpeechDelta(existingText, incomingText) {
-            const cleanExist = cleanString(existingText);
-            const cleanIncoming = cleanString(incomingText);
+        // 毫秒級臨時渲染：邊說邊出字，完全不卡頓
+        function handleInterimSpeech(interimRaw) {
+            if (!interimRaw || !interimRaw.trim()) return;
+            if (!currentCardObj) createNewCard();
 
-            if (!cleanExist) return incomingText;
-            if (cleanExist.endsWith(cleanIncoming) || cleanExist === cleanIncoming) {
-                return "";
-            }
+            // 臨時字直接上屏（0 延遲，絕不跑重型運算）
+            currentCardObj.interimSpan.innerText = interimRaw;
 
-            if (dmp) {
-                const diffs = dmp.diff_main(cleanExist, cleanIncoming);
-                dmp.diff_cleanupSemantic(diffs);
-                let delta = "";
-                for (let i = 0; i < diffs.length; i++) {
-                    const [op, data] = diffs[i];
-                    if (op === 1) { delta += data; }
-                }
-                if (delta) return delta;
-            }
-
-            for (let i = incomingText.length; i >= 1; i--) {
-                const prefix = incomingText.slice(0, i);
-                if (cleanExist.endsWith(cleanString(prefix))) {
-                    return incomingText.slice(i).trim();
-                }
-            }
-            return incomingText;
+            // 同步快速預覽普通話（讓用戶看到即時反應）
+            const combinedPreview = currentCardObj.fullPunctuatedText + interimRaw;
+            currentCardObj.mandarinEl.innerText = translateFast(combinedPreview);
+            scrollToBottom();
         }
 
-        function appendSpeechText(incomingRaw) {
-            incomingRaw = incomingRaw.trim();
-            if (!incomingRaw) return;
+        // 定稿上屏：停頓時觸發
+        function handleFinalSpeech(finalRaw) {
+            finalRaw = finalRaw.trim();
+            if (!finalRaw) return;
 
-            const corrected = optimizeChineseSubjectText(incomingRaw);
+            if (!currentCardObj) createNewCard();
+            currentCardObj.interimSpan.innerText = "";
 
-            if (currentCardObj && currentCardObj.interimSpan) {
-                currentCardObj.interimSpan.innerText = "";
+            // 僅在定稿時做輕量正字修正
+            const corrected = optimizeFinalText(finalRaw);
+            const cleanFinal = cleanString(corrected);
+            const cleanConfirmed = cleanString(currentCardObj.rawConfirmedText);
+
+            if (cleanConfirmed.endsWith(cleanFinal)) return;
+
+            let deltaText = corrected;
+            for (let i = corrected.length; i >= 1; i--) {
+                const prefix = corrected.slice(0, i);
+                if (cleanConfirmed.endsWith(cleanString(prefix))) {
+                    deltaText = corrected.slice(i).trim();
+                    break;
+                }
             }
-
-            if (!currentCardObj) {
-                createNewCard();
-            }
-
-            const deltaText = computeSmartSpeechDelta(currentCardObj.rawConfirmedText, corrected);
             if (!deltaText) return;
 
-            const currentCount = countPureChars(currentCardObj.rawConfirmedText);
-            const deltaCount = countPureChars(deltaText);
-
-            if (currentCount + deltaCount > MAX_CHAR_PER_CARD) {
-                if (currentCardObj.fullPunctuatedText && !/[。？！]$/.test(currentCardObj.fullPunctuatedText)) {
-                    currentCardObj.fullPunctuatedText = currentCardObj.fullPunctuatedText.replace(/，$/, '。');
-                    currentCardObj.confirmedSpan.innerText = currentCardObj.fullPunctuatedText;
-                }
+            if (cleanString(currentCardObj.rawConfirmedText).length > MAX_CHAR_PER_CARD) {
                 createNewCard();
             }
 
-            const formattedDelta = formatSentence(deltaText);
+            const formattedDelta = deltaText + "，";
             currentCardObj.rawConfirmedText += deltaText;
             currentCardObj.fullPunctuatedText += formattedDelta;
 
             currentCardObj.confirmedSpan.innerText = currentCardObj.fullPunctuatedText;
-            currentCardObj.counterEl.innerText = `${countPureChars(currentCardObj.rawConfirmedText)} / ${MAX_CHAR_PER_CARD} 字`;
+            currentCardObj.counterEl.innerText = `${cleanString(currentCardObj.rawConfirmedText).length} 字`;
 
-            updateDualTrackTranslation(currentCardObj);
-            scrollToBottom();
-        }
+            // 即時本機普通話
+            currentCardObj.mandarinEl.innerText = translateFast(currentCardObj.fullPunctuatedText);
 
-        function updateInterimPreview(interimText) {
-            if (!interimText.trim()) return;
-            if (!currentCardObj) {
-                createNewCard();
+            // 觸發 Puter AI 防抖潤色
+            if (window.puter && window.puter.auth && puter.auth.isSignedIn()) {
+                if (currentCardObj.aiTimer) clearTimeout(currentCardObj.aiTimer);
+                currentCardObj.aiTimer = setTimeout(() => {
+                    requestPuterAIRefinement(currentCardObj);
+                }, 400);
             }
-            const optimized = optimizeChineseSubjectText(interimText);
-            currentCardObj.interimSpan.innerText = " " + optimized;
+
             scrollToBottom();
         }
 
-        /* ------------------ 7. 語音辨識核心與保活機制 ------------------ */
+        function scrollToBottom() {
+            if (autoScroll) {
+                streamContainer.scrollTop = streamContainer.scrollHeight;
+            }
+        }
+
+        /* ------------------ 6. Web Speech 語音識別核心（輕量流暢） ------------------ */
         const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
         let recognition = null;
         let userWantsListening = false;
         let isEngineRunning = false;
-        let isRestarting = false;
         let wakeLock = null;
-
-        let warmAudioCtx = null;
-        let warmOscillator = null;
-
-        function startHardwareWarmKeepAlive() {
-            try {
-                const AudioCtxClass = window.AudioContext || window.webkitAudioContext;
-                if (!AudioCtxClass) return;
-                if (!warmAudioCtx || warmAudioCtx.state === 'closed') {
-                    warmAudioCtx = new AudioCtxClass();
-                }
-                if (warmAudioCtx.state === 'suspended') {
-                    warmAudioCtx.resume();
-                }
-                if (!warmOscillator) {
-                    warmOscillator = warmAudioCtx.createOscillator();
-                    const silentGain = warmAudioCtx.createGain();
-                    silentGain.gain.value = 0.00001;
-                    warmOscillator.connect(silentGain);
-                    silentGain.connect(warmAudioCtx.destination);
-                    warmOscillator.start();
-                }
-            } catch (e) {}
-        }
-
-        function stopHardwareWarmKeepAlive() {
-            if (warmOscillator) {
-                try { warmOscillator.stop(); warmOscillator.disconnect(); } catch (e) {}
-                warmOscillator = null;
-            }
-            if (warmAudioCtx && warmAudioCtx.state !== 'closed') {
-                try { warmAudioCtx.close(); } catch (e) {}
-                warmAudioCtx = null;
-            }
-        }
 
         async function acquireWakeLock() {
             try {
@@ -1004,84 +789,60 @@
             }
         }
 
-        function triggerImmediateRestart() {
-            if (!userWantsListening || isEngineRunning || isRestarting) return;
-            isRestarting = true;
-            try {
-                recognition.start();
-                isRestarting = false;
-            } catch (err) {
-                setTimeout(() => {
-                    isRestarting = false;
-                    if (userWantsListening && !isEngineRunning) {
-                        try { recognition.start(); } catch (e) {}
-                    }
-                }, 40);
-            }
-        }
-
         if (SpeechRecognition) {
             recognition = new SpeechRecognition();
             recognition.continuous = true;
             recognition.interimResults = true;
             recognition.lang = 'zh-HK';
+            recognition.maxAlternatives = 1;
 
             recognition.onstart = () => {
                 isEngineRunning = true;
-                isRestarting = false;
                 statusDot.classList.add('active');
-                statusText.innerText = "課堂持續聆聽中...";
+                statusText.innerText = "極速識別中（即講即出）...";
                 toggleBtn.classList.add('active');
                 playIcon.style.display = 'none';
                 pauseIcon.style.display = 'block';
             };
 
             recognition.onresult = (event) => {
-                let finalTranscript = '';
-                let interimTranscript = '';
-
+                let interim = '';
                 for (let i = event.resultIndex; i < event.results.length; ++i) {
-                    const trans = event.results[i][0].transcript.trim();
+                    const trans = event.results[i][0].transcript;
                     if (event.results[i].isFinal) {
-                        finalTranscript += trans;
+                        handleFinalSpeech(trans);
                     } else {
-                        interimTranscript += trans;
+                        interim += trans;
                     }
                 }
-
-                if (finalTranscript) {
-                    appendSpeechText(finalTranscript);
-                } else if (interimTranscript) {
-                    updateInterimPreview(interimTranscript);
+                if (interim) {
+                    handleInterimSpeech(interim);
                 }
             };
 
             recognition.onerror = (e) => {
                 if (e.error === 'not-allowed') {
                     userWantsListening = false;
-                    stopHardwareWarmKeepAlive();
                     stopListeningUI();
-                    alert("請允許麥克風權限以持續識別。");
+                    alert("請允許麥克風權限以進行課堂識別。");
                 }
             };
 
             recognition.onend = () => {
                 isEngineRunning = false;
                 if (userWantsListening) {
-                    triggerImmediateRestart();
+                    setTimeout(() => {
+                        if (userWantsListening && !isEngineRunning) {
+                            try { recognition.start(); } catch (e) {}
+                        }
+                    }, 50);
                 } else {
                     stopListeningUI();
                 }
             };
-
-            setInterval(() => {
-                if (userWantsListening && !isEngineRunning) {
-                    triggerImmediateRestart();
-                }
-            }, 400);
         }
 
-        /* ------------------ 8. 核心啟動按鈕整合 ------------------ */
+        /* ------------------ 7. 啟動按鈕（單擊紅鍵一體化授權） ------------------ */
         async function toggleSpeech() {
             if (!recognition) {
                 alert("當前瀏覽器不支援 Web Speech 語音辨識，請使用 Chrome、Edge 或 Safari。");
@@ -1091,28 +852,24 @@
             if (userWantsListening) {
                 userWantsListening = false;
                 releaseWakeLock();
-                stopHardwareWarmKeepAlive();
                 try { recognition.stop(); } catch(e) {}
                 stopListeningUI();
             } else {
                 userWantsListening = true;
                 acquireWakeLock();
-                startHardwareWarmKeepAlive();
-                triggerImmediateRestart();
+                try { recognition.start(); } catch(e) {}
 
-                // 【第一次按下紅色按鈕即自動啟用 Puter AI】
+                // 首次使用紅色按鈕時，靜默啟用 Puter AI
                 if (window.puter && window.puter.auth && !puter.auth.isSignedIn()) {
-                    statusText.innerText = "正在啟用 Puter AI 引擎...";
                     puter.auth.signIn({ attempt_temp_user_creation: true })
                         .then(() => {
-                            statusText.innerText = "課堂持續聆聽中（Puter AI 已連線）";
+                            statusText.innerText = "極速識別中（Puter AI 已連線）";
                             if (currentCardObj && currentCardObj.fullPunctuatedText) {
                                 requestPuterAIRefinement(currentCardObj);
                             }
                         })
-                        .catch(err => {
-                            console.warn("Puter 授權跳過，先行使用本地引擎", err);
-                            statusText.innerText = "課堂持續聆聽中（本地雙引擎運作）";
+                        .catch(() => {
+                            statusText.innerText = "極速識別中（本地極速引擎）";
                         });
                 }
             }
@@ -1129,13 +886,7 @@
             }
         }
 
-        function scrollToBottom() {
-            if (autoScroll) {
-                streamContainer.scrollTop = streamContainer.scrollHeight;
-            }
-        }
-
-        /* ------------------ 9. 字體大小調節 ------------------ */
+        /* ------------------ 8. 字體調節 ------------------ */
         const fontScales = [
             { name: "標準", canto: "1.45rem", mando: "1.05rem" },
             { name: "放大", canto: "1.75rem", mando: "1.25rem" },
@@ -1158,17 +909,49 @@
             scrollToBottom();
         }
 
-        /* ------------------ 10. 粵拼彈窗與朗讀 TTS ------------------ */
+        /* ------------------ 9. 粵拼彈窗與朗讀 TTS ------------------ */
         const modal = document.getElementById('phoneticModal');
         const modalContent = document.getElementById('modalContent');
         const ttsStatus = document.getElementById('ttsStatus');
         let currentSectionPureText = "";
 
+        const CLASSICAL_SPECIAL_JYUTPING = {
+            "屬": "zuk1", "湯": "soeng1", "具": "keoi1", "殂": "cou4", "長": "zoeng2",
+            "藏": "zong6", "說": "seoi3", "裨": "bei1", "否": "fau2", "罷": "baa6",
+            "賈": "gaa2", "數": "sou3", "石": "daan3", "龜": "gwan1", "鬻": "zuk1",
+            "擁": "jung2", "遺": "wai6", "率": "seot1", "暴": "puk1", "當": "dong1",
+            "輮": "jau4", "挺": "ting5", "知": "zi3", "生": "sing3", "惡": "wu1"
+        };
+
+        async function fetchJyutpingRubyHTML(text) {
+            if (!text) return "";
+            let htmlResult = "";
+            if (window.ToJyutping && typeof window.ToJyutping.getJyutpingList === 'function') {
+                try {
+                    const list = window.ToJyutping.getJyutpingList(text);
+                    for (const [char, rawJp] of list) {
+                        if (char === '\n') {
+                            htmlResult += '<div style="flex-basis: 100%; height: 8px;"></div>';
+                            continue;
+                        }
+                        const jp = CLASSICAL_SPECIAL_JYUTPING[char] || rawJp;
+                        if (jp) {
+                            htmlResult += `<ruby class="jp-ruby"><span class="c-char">${char}</span><rt class="c-rt">${jp}</rt></ruby>`;
+                        } else {
+                            htmlResult += `<span class="jp-punct">${char}</span>`;
+                        }
+                    }
+                    return htmlResult;
+                } catch (err) {}
+            }
+            return text;
+        }
+
         async function openPhoneticModal(btn) {
             const card = btn.closest('.caption-card');
             const cantoneseEl = card.querySelector('.confirmed-content');
             const fullText = (cantoneseEl.innerText || "").trim();
-            currentSectionPureText = fullText.replace(/[，。？！、\s\.,!\?]/g, "");
+            currentSectionPureText = cleanString(fullText);
 
             if (!fullText) {
                 modalContent.innerHTML = "<div style='color:#64748b; font-size:1rem; padding:10px;'>暫未有已確認錄入的文字。</div>";
@@ -1209,7 +992,7 @@
             window.speechSynthesis.speak(utter);
         }
 
-        /* ------------------ 11. 課堂範例示範 ------------------ */
+        /* ------------------ 10. 測試示範 ------------------ */
         const demoSentences = [
             "其實我都唔好肯定㗎不過唔知，等陣你行先啦，訂製嗰面教練可能似冇乜經驗啦",
             "我覺得佢大的時候呢，個底稿寫得唔係幾好，畀本書我睇下先",
@@ -1222,9 +1005,8 @@
         function playDemoSentence() {
             const text = demoSentences[demoIdx % demoSentences.length];
             demoIdx++;
-            appendSpeechText(text);
+            handleFinalSpeech(text);
 
-            // 若點擊示範句時未授權，亦順暢喚起一次性連線
             if (window.puter && window.puter.auth && !puter.auth.isSignedIn()) {
                 puter.auth.signIn({ attempt_temp_user_creation: true })
                     .then(() => {
