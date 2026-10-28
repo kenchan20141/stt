@@ -492,32 +492,40 @@
             return (str || '').replace(/[，。？！、\s\.,!\?]/g, '');
         }
 
-        /* ------------------ 2. Puter.js 角色分離翻譯 ------------------ */
+       /* ------------------ 2. Puter.js 帶上下文語境翻譯 ------------------ */
+        let recentContextList = []; // 專門記住最近講過的 2 句，提供上文
+ 
         async function translateDeltaWithPuter(newSentence, targetSpan) {
             if (!newSentence || !newSentence.trim()) {
                 targetSpan.remove();
                 return;
             }
-
+ 
             if (!window.puter || !window.puter.ai) {
                 targetSpan.remove();
                 return;
             }
-
+ 
             try {
+                // 如果有前文，打包成參考提示給 AI
+                const contextStr = recentContextList.length > 0
+                    ? `【前文參考（僅供理解指代與語境，嚴禁翻譯）】：${recentContextList.join('，')}`
+                    : "【無前文】";
+ 
                 const messages = [
                     {
                         role: "system",
-                        content: "你是最精確的粵語轉現代普通話專家。將用戶發送的粵語口語直接翻譯為現代繁體普通話白話文。只輸出翻譯結果本身，嚴禁任何前綴、解釋、說明或重復指示。"
+                        content: `你是頂級粵語轉現代普通話專家。請參考【前文參考】來理解指代、主語和語境，將【當前句】翻譯為現代流暢的繁體普通話。
+要求：只翻譯【當前句】，嚴禁翻譯前文，只輸出翻譯結果，不要任何前綴或解釋。`
                     },
                     {
                         role: "user",
-                        content: newSentence
+                        content: `${contextStr}\n【當前句】：${newSentence}`
                     }
                 ];
-
+ 
                 const response = await puter.ai.chat(messages);
-
+ 
                 let aiText = "";
                 if (typeof response === 'string') {
                     aiText = response;
@@ -528,20 +536,26 @@
                 } else if (response) {
                     aiText = String(response);
                 }
-
+ 
                 aiText = ensureTraditional(sanitizeAiOutput(aiText));
-
+ 
                 if (aiText) {
                     if (!/[，。？！、]$/.test(aiText)) {
                         aiText += "，";
                     }
                     targetSpan.className = "";
                     targetSpan.innerText = aiText;
+ 
+                    // 翻譯成功後，把這句放進記憶庫，只保留最近 2 句
+                    recentContextList.push(newSentence);
+                    if (recentContextList.length > 2) {
+                        recentContextList.shift();
+                    }
                 } else {
                     targetSpan.remove();
                 }
             } catch (err) {
-                console.error("【Puter.js 增量翻譯失敗】：", err);
+                console.error("【Puter.js 語境翻譯失敗】：", err);
                 targetSpan.remove();
             } finally {
                 scrollMandoToBottom();
