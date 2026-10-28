@@ -45,7 +45,7 @@
             user-select: none;
         }
 
-        /* 解決手機瀏覽器導航列遮擋問題，採用 100dvh */
+        /* 解決手機瀏覽器導航列問題，支援 100dvh 與安全邊界 */
         body {
             background-color: var(--bg);
             color: var(--cantonese);
@@ -64,9 +64,8 @@
             justify-content: space-between;
             align-items: center;
             border-bottom: 1px solid var(--card-border);
-            background: rgba(9, 10, 15, 0.98);
-            backdrop-filter: blur(12px);
-            z-index: 20;
+            background: #090a0f; /* 實色防透光 */
+            z-index: 30;
             flex-shrink: 0;
         }
 
@@ -118,21 +117,23 @@
             box-shadow: 0 0 16px rgba(16, 185, 129, 0.5);
         }
 
-        /* 雙欄主視圖容器 */
+        /* 雙欄主視圖容器：加入 min-height: 0 防止字多撐破父容器 */
         .viewport-container {
             flex: 1;
             display: flex;
             flex-direction: column;
             overflow: hidden;
             width: 100%;
+            min-height: 0; 
         }
 
-        /* 欄位封裝（固定標籤 + 獨立滾動體） */
+        /* 欄位封裝：min-height: 0 是 flex 滾動裁切關鍵 */
         .column-box {
             display: flex;
             flex-direction: column;
             overflow: hidden;
             position: relative;
+            min-height: 0;
         }
 
         .canto-column {
@@ -146,23 +147,30 @@
             background-color: var(--mando-bg);
         }
 
-        /* 固定標籤欄，絕不蓋到文字 */
+        /* 標籤欄：採用實體不透光背景與高層級，文字往上滑動絕對不會重疊穿透 */
         .column-header {
             padding: 8px 18px;
             display: flex;
             justify-content: space-between;
             align-items: center;
-            background: rgba(0, 0, 0, 0.25);
-            border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.08);
             flex-shrink: 0;
-            z-index: 5;
+            z-index: 10;
+        }
+
+        .canto-column .column-header {
+            background: #090a0f; /* 與粵語區純黑背景融為一體但不透光 */
+        }
+
+        .mando-column .column-header {
+            background: #0d1117; /* 與普通話區背景一致但不透光 */
         }
 
         .pane-tag {
             font-family: "Noto Sans HK", sans-serif;
             font-size: 0.72rem;
             font-weight: 700;
-            padding: 2px 8px;
+            padding: 3px 8px;
             border-radius: 4px;
             letter-spacing: 0.5px;
         }
@@ -170,7 +178,7 @@
         .tag-canto {
             color: #cbd5e1;
             background: rgba(255, 255, 255, 0.08);
-            border: 1px solid rgba(255, 255, 255, 0.12);
+            border: 1px solid rgba(255, 255, 255, 0.15);
         }
 
         .tag-mando {
@@ -185,20 +193,31 @@
             color: #64748b;
         }
 
-        /* 獨立滾動區域：底部留足 padding，徹底解決擋字與滾動不下去 */
+        /* 獨立滾動區域：底部留足 padding 與 safe-area-inset */
         .scroll-body {
             flex: 1;
             overflow-y: auto;
             scroll-behavior: smooth;
             -webkit-overflow-scrolling: touch;
+            position: relative;
+            z-index: 1;
         }
 
         .canto-scroll-body {
-            padding: 16px 20px 60px 20px;
+            padding: 16px 20px 40px 20px;
         }
 
+        /* 底部增加 safe-area-inset 安全空間，保證功能鍵不遮擋 */
         .mando-scroll-body {
-            padding: 16px 20px 90px 20px; /* 留出充分的底部安全區 */
+            padding: 16px 20px 20px 20px;
+        }
+
+        /* 底部安全緩衝墊片：物理撐開最底行文字 */
+        .bottom-safe-spacer {
+            height: calc(80px + env(safe-area-inset-bottom, 24px));
+            width: 100%;
+            pointer-events: none;
+            flex-shrink: 0;
         }
 
         /* 文字排版 */
@@ -254,7 +273,7 @@
             opacity: 0;
             transform: translateY(-4px);
             transition: all 0.2s ease;
-            z-index: 30;
+            z-index: 40;
             font-family: "Noto Sans HK", sans-serif;
         }
 
@@ -385,7 +404,7 @@
     <!-- 上下獨立視口 -->
     <div class="viewport-container">
         
-        <!-- 上欄：粵語區 (主要視覺) -->
+        <!-- 上欄：粵語區 -->
         <section class="column-box canto-column">
             <div class="column-header">
                 <span class="pane-tag tag-canto">粵語原文</span>
@@ -413,6 +432,8 @@
             </div>
             <div id="mandoScroll" class="scroll-body mando-scroll-body">
                 <div id="mandarinContent" class="mandarin-content"></div>
+                <!-- 防手機功能鍵/手勢條遮擋墊片 -->
+                <div class="bottom-safe-spacer"></div>
             </div>
         </section>
 
@@ -459,14 +480,10 @@
             return text;
         }
 
-        // 強力清洗：清除括號、引號，以及任何意外流出的 AI 提示詞
         function sanitizeAiOutput(text) {
             if (!text) return "";
             let cleaned = text;
-
-            // 過濾掉所有模型可能鸚鵡學舌的指令特徵詞
             cleaned = cleaned.replace(/(請把|請將|這句粵語|翻譯成|繁體中文|普通話|嚴禁|要求|粵語：|譯文：|白話文|現代標準).*/g, '');
-            // 清理括號及引號
             cleaned = cleaned.replace(/[()（）\[\]【】{}《》「」『』〈〉"'“”‘’]/g, '');
             return cleaned.trim();
         }
@@ -475,7 +492,7 @@
             return (str || '').replace(/[，。？！、\s\.,!\?]/g, '');
         }
 
-        /* ------------------ 2. Puter.js 角色分離翻譯 (絕不外洩提示詞) ------------------ */
+        /* ------------------ 2. Puter.js 角色分離翻譯 ------------------ */
         async function translateDeltaWithPuter(newSentence, targetSpan) {
             if (!newSentence || !newSentence.trim()) {
                 targetSpan.remove();
@@ -488,7 +505,6 @@
             }
 
             try {
-                // 使用 messages 結構區分 system 與 user，徹底阻斷模型學舌
                 const messages = [
                     {
                         role: "system",
@@ -552,7 +568,7 @@
         });
 
         mandoScroll.addEventListener('scroll', () => {
-            const threshold = 80;
+            const threshold = 120;
             autoScrollMando = (mandoScroll.scrollHeight - mandoScroll.scrollTop - mandoScroll.clientHeight) < threshold;
         });
 
