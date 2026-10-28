@@ -814,7 +814,10 @@
                     }
                 );
 
-                const response = await puter.ai.chat(messages, { stream: true });
+              const response = await puter.ai.chat(messages, {
+    model: "qwen/qwen3.8-27b:free",  // 指定免費且中文翻譯優秀的 Qwen 模型
+    stream: true
+});
 
                 for await (const part of response) {
                     const rawToken = part?.text ?? "";
