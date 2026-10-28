@@ -387,6 +387,8 @@
     0%, 100% { opacity: 0; }
     50% { opacity: 1; }
 }
+
+        
         
     </style>
 </head>
@@ -496,22 +498,23 @@
             return text;
         }
 
-        function sanitizeAiOutput(text) {
-            if (!text) return "";
-            let cleaned = text;
-            cleaned = cleaned.replace(/(請把|請將|這句粵語|翻譯成|繁體中文|普通話|嚴禁|要求|粵語：|譯文：|白話文|現代標準).*/g, '');
-            cleaned = cleaned.replace(/[()（）\[\]【】{}《》「」『』〈〉"'“”‘’]/g, '');
-            return cleaned.trim();
-        }
+       function sanitizeAiOutput(text) {
+    if (!text) return "";
+    let cleaned = text;
+    // 只剔除開頭的說明性標籤或前綴，絕不誤殺後續翻譯內容
+    cleaned = cleaned.replace(/^(翻譯結果|譯文|普通話|現代標準中文)[：:\s]*/i, '');
+    cleaned = cleaned.replace(/^[（(][^）)]*[）)]\s*/g, '');
+    cleaned = cleaned.replace(/[`"'“”‘’]/g, '');
+    return cleaned.trim();
+}
 
         function cleanString(str) {
             return (str || '').replace(/[，。？！、\s\.,!\?]/g, '');
         }
 
-   /* ------------------ 2. 極致平滑「逐字」流式翻譯打字機 ------------------ */
-let recentContextList = []; // 語境記憶
+ /* ------------------ 2. 極致平滑「逐字」流式翻譯打字機 ------------------ */
+let recentContextList = [];
 
-// 逐字平滑打字機引擎
 class TypewriterStream {
     constructor(targetElement, onChar, onDone) {
         this.el = targetElement;
@@ -520,7 +523,7 @@ class TypewriterStream {
         this.queue = [];
         this.timer = null;
         this.isFinished = false;
-        this.baseSpeed = 25; // 每個字的基礎打字間隔 (毫秒)，最舒服的節奏
+        this.baseSpeed = 22; // 22ms 逐字輸出速度
     }
 
     push(text) {
@@ -534,11 +537,9 @@ class TypewriterStream {
     tick() {
         const step = () => {
             if (this.queue.length > 0) {
-                // 如果字積累過多（說話太快），自動微調提速，避免掉隊
-                const popCount = this.queue.length > 15 ? 2 : 1;
+                const popCount = this.queue.length > 12 ? 2 : 1;
                 for (let i = 0; i < popCount && this.queue.length > 0; i++) {
-                    const char = this.queue.shift();
-                    this.el.textContent += char;
+                    this.el.textContent += this.queue.shift();
                 }
                 if (this.onChar) this.onChar();
                 this.timer = setTimeout(step, this.baseSpeed);
@@ -573,14 +574,14 @@ async function translateDeltaWithPuter(newSentence, targetSpan) {
 
     try {
         const contextStr = recentContextList.length > 0
-            ? `【前文參考（僅供理解指代與語境，嚴禁翻譯）】：${recentContextList.join('，')}`
+            ? `【前文參考】：${recentContextList.join('，')}`
             : "【無前文】";
 
         const messages = [
             {
                 role: "system",
-                content: `你是頂級粵語轉現代普通話專家。請參考【前文參考】來理解指代、主語和語境，將【當前句】翻譯為現代流暢的繁體普通話。
-要求：只翻譯【當前句】，嚴禁翻譯前文，只輸出翻譯結果，不要任何前綴或解釋。`
+                content: `你是頂級粵語轉現代普通話專家。請參考前文理解語境，將當前句翻譯為自然流暢的繁體普通話。
+要求：只翻譯當前句，嚴禁翻譯前文，只輸出譯文內容，禁止任何解釋。`
             },
             {
                 role: "user",
@@ -588,22 +589,21 @@ async function translateDeltaWithPuter(newSentence, targetSpan) {
             }
         ];
 
-        // 啟動打字機（帶動態光標 class）
         targetSpan.className = "typing-cursor";
         targetSpan.textContent = "";
 
-        let accumulatedFull = "";
         const writer = new TypewriterStream(
             targetSpan,
             () => scrollMandoToBottom(),
             () => {
-                // 整句打字完全結束時的回調
+                // 打字完畢後，安全移除光標，保留完整文字
                 targetSpan.classList.remove("typing-cursor");
-                let finalText = ensureTraditional(sanitizeAiOutput(targetSpan.textContent)).trim();
-                if (finalText && !/[，。？！、]$/.test(finalText)) {
-                    finalText += "，";
+
+                let txt = targetSpan.textContent.trim();
+                // 只有結尾沒有標點時才補充逗號
+                if (txt && !/[，。？！、]$/.test(txt)) {
+                    targetSpan.textContent = txt + "，";
                 }
-                targetSpan.textContent = finalText;
 
                 recentContextList.push(newSentence);
                 if (recentContextList.length > 2) recentContextList.shift();
@@ -611,29 +611,21 @@ async function translateDeltaWithPuter(newSentence, targetSpan) {
             }
         );
 
-        // 獲取 AI 流
         const response = await puter.ai.chat(messages, { stream: true });
 
         for await (const part of response) {
             const rawToken = part?.text ?? "";
             if (!rawToken) continue;
-
-            accumulatedFull += rawToken;
-            // 轉成繁體後推入打字隊列，由隊列逐字吐出
-            const cleanChar = ensureTraditional(rawToken);
-            writer.push(cleanChar);
+            // 逐字轉繁體並推入打字機
+            writer.push(ensureTraditional(rawToken));
         }
 
-        // 通知打字機 AI 資料已經收完
         writer.finish();
 
     } catch (err) {
-        console.error("【Puter.js 逐字流式翻譯失敗】：", err);
-        if (!targetSpan.textContent.trim()) {
-            targetSpan.remove();
-        } else {
-            targetSpan.classList.remove("typing-cursor");
-        }
+        console.error("【Puter.js 翻譯異常】：", err);
+        targetSpan.classList.remove("typing-cursor");
+        if (!targetSpan.textContent.trim()) targetSpan.remove();
     }
 }
 
@@ -679,27 +671,55 @@ async function translateDeltaWithPuter(newSentence, targetSpan) {
             }
         }
  
-       // 【修訂後】
+/* ------------------ 3. 粵語平滑逐字流與識別處理 ------------------ */
+let cantoCurrentDisplay = ""; 
+let cantoTargetText = "";
+let cantoTypingTimer = null;
+
+// 粵語平滑打字定時器：高頻勻速追趕識別結果，產生絲滑打字動畫
+function feedCantoneseStream(newText) {
+    cantoTargetText = newText;
+    if (cantoTypingTimer) return;
+
+    cantoTypingTimer = setInterval(() => {
+        if (cantoCurrentDisplay.length < cantoTargetText.length) {
+            // 如果落後較多則快走，一般情況逐字前進
+            const step = (cantoTargetText.length - cantoCurrentDisplay.length > 4) ? 2 : 1;
+            cantoCurrentDisplay = cantoTargetText.slice(0, cantoCurrentDisplay.length + step);
+            interimPart.textContent = cantoCurrentDisplay;
+            scrollCantoToBottom();
+        } else if (cantoCurrentDisplay.length > cantoTargetText.length) {
+            // 語音引擎修正字詞時無縫覆寫
+            cantoCurrentDisplay = cantoTargetText;
+            interimPart.textContent = cantoCurrentDisplay;
+        } else {
+            clearInterval(cantoTypingTimer);
+            cantoTypingTimer = null;
+        }
+    }, 20); // 20ms 一個字，肉眼極致順滑
+}
+
 function handleSpeechInterim(interim) {
     if (!interim) return;
-    interimPart.textContent = interim; // 用 textContent 比 innerText 渲染更快
-    scrollCantoToBottom();
+    feedCantoneseStream(interim);
 }
- 
-    // 【修訂後】
+
 function handleSpeechFinal(finalText) {
     if (!finalText || !finalText.trim()) return;
 
-    // 1. 立即清空臨時區，防止視覺延遲
+    // 清理打字進度
+    if (cantoTypingTimer) {
+        clearInterval(cantoTypingTimer);
+        cantoTypingTimer = null;
+    }
+    cantoCurrentDisplay = "";
+    cantoTargetText = "";
     interimPart.textContent = "";
 
     const cleanFinal = cleanString(finalText);
     const now = Date.now();
 
-    // 防手機引擎短時間重複回傳
-    if (cleanFinal === lastFinalCleanText && (now - lastFinalTimestamp < 1500)) {
-        return;
-    }
+    if (cleanFinal === lastFinalCleanText && (now - lastFinalTimestamp < 1500)) return;
 
     const cleanConfirmed = cleanString(rawConfirmedText);
     const tailSlice = cleanConfirmed.slice(-Math.max(cleanFinal.length + 5, 40));
@@ -719,20 +739,17 @@ function handleSpeechFinal(finalText) {
     lastFinalCleanText = cleanFinal;
     lastFinalTimestamp = now;
 
-    // 2. 【核心提速】：不等任何 AI/繁體轉換，直接把當前字瞬時插入 DOM
+    // 粵語正文落定
     const formatted = delta + "，";
     rawConfirmedText += delta;
     fullPunctuatedText += formatted;
     
-    // 直接 appendTextNode 或 textContent，避免重構整個長文本的 innerText
     confirmedPart.textContent = fullPunctuatedText;
-    charCount.textContent = `${cleanConfirmed.length + cleanString(delta).length} 字`;
+    charCount.textContent = `${cleanString(rawConfirmedText).length} 字`;
     scrollCantoToBottom();
 
-    // 3. 異步派發普通話翻譯（完全不卡住上方粵語的即時呈現）
+    // 觸發普通話翻譯逐字打字機
     const targetSpan = document.createElement('span');
-    targetSpan.className = "mandarin-pending";
-    targetSpan.textContent = " ⋯";
     mandarinContent.appendChild(targetSpan);
     scrollMandoToBottom();
 
