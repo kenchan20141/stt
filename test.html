@@ -524,9 +524,7 @@
                     }
                 ];
  
-            const response = await puter.ai.chat(messages, {
-    model: 'infron:deepseek/deepseek-v4.1-flash:free'
-});
+                const response = await puter.ai.chat(messages);
  
                 let aiText = "";
                 if (typeof response === 'string') {
@@ -675,11 +673,13 @@
             translateDeltaWithPuter(delta, targetSpan);
         }
 
-        /* ------------------ 4. 語音辨識與防休眠 ------------------ */
+      /* ------------------ 4. 語音辨識與防休眠（電腦/手機防卡死優化版） ------------------ */
         const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
         let recognition = null;
         let userWantsListening = false;
         let isEngineRunning = false;
+        let isStarting = false;        // 新增：啟動互斥鎖，防止異步重複調用 start()
+        let restartTimer = null;       // 統一重啟定時器
         let wakeLock = null;
 
         const toggleBtn = document.getElementById('toggleBtn');
@@ -700,15 +700,24 @@
             if (wakeLock) { wakeLock.release().catch(() => {}); wakeLock = null; }
         }
 
+        // 安全啟動函數：嚴格防抖防重入
         function ensureRecognitionActive() {
-            if (userWantsListening && !isEngineRunning && recognition) {
-                try { recognition.start(); } catch (e) {}
+            if (userWantsListening && !isEngineRunning && !isStarting && recognition) {
+                isStarting = true;
+                try { 
+                    recognition.start(); 
+                } catch (e) {
+                    isStarting = false; // 若拋錯立即釋放鎖
+                }
             }
         }
 
+        // 定時保活輪詢：由 400ms 放寬至 1200ms，減輕電腦端壓力，同時足夠維持手機端後台運行
         setInterval(() => {
-            if (userWantsListening) ensureRecognitionActive();
-        }, 400);
+            if (userWantsListening && !isEngineRunning && !isStarting) {
+                ensureRecognitionActive();
+            }
+        }, 1200);
 
         document.addEventListener('visibilitychange', () => {
             if (document.visibilityState === 'visible' && userWantsListening) {
@@ -726,6 +735,7 @@
 
             recognition.onstart = () => {
                 isEngineRunning = true;
+                isStarting = false;
                 toggleBtn.classList.add('active');
                 playIcon.style.display = 'none';
                 pauseIcon.style.display = 'block';
@@ -745,26 +755,35 @@
             };
 
             recognition.onerror = (e) => {
-                if (e.error === 'not-allowed') {
+                isStarting = false;
+                // 針對電腦端常見的致命錯誤（沒插麥克風、權限阻擋）立即中止，防止無限死循環
+                if (e.error === 'not-allowed' || e.error === 'audio-capture' || e.error === 'service-not-allowed') {
                     userWantsListening = false;
                     stopListeningUI();
-                    alert("請允許麥克風權限以進行實時識別。");
-                } else {
-                    setTimeout(ensureRecognitionActive, 60);
+                    if (e.error === 'audio-capture') {
+                        alert("未檢測到可用麥克風，請檢查電腦麥克風設置。");
+                    } else {
+                        alert("請允許麥克風權限以進行實時識別。");
+                    }
                 }
+                // 重要：onerror 內嚴禁調用 setTimeout 重啟！重啟統一交由 onend 管理，避免雙重回調觸發死循環。
             };
 
             recognition.onend = () => {
                 isEngineRunning = false;
+                isStarting = false;
+                clearTimeout(restartTimer);
+                
                 if (userWantsListening) {
-                    setTimeout(ensureRecognitionActive, 40);
+                    // 給底層音訊通道 300ms 冷卻緩衝期（原先 40ms 太短，是電腦崩潰的主因）
+                    restartTimer = setTimeout(ensureRecognitionActive, 300);
                 } else {
                     stopListeningUI();
                 }
             };
         }
 
-        /* ------------------ 5. 單鍵授權與啟動 ------------------ */
+       /* ------------------ 5. 單鍵授權與啟動（移除阻塞彈窗） ------------------ */
         async function toggleSpeech() {
             if (!recognition) {
                 alert("當前瀏覽器不支援語音辨識，請使用 Chrome、Edge 或 Safari。");
@@ -773,20 +792,14 @@
 
             if (userWantsListening) {
                 userWantsListening = false;
+                clearTimeout(restartTimer);
                 releaseWakeLock();
                 try { keepAliveAudio.pause(); } catch(e) {}
                 try { recognition.stop(); } catch(e) {}
                 stopListeningUI();
             } else {
-                if (window.puter && window.puter.auth && !puter.auth.isSignedIn()) {
-                    try {
-                        await puter.auth.signIn({ attempt_temp_user_creation: true });
-                    } catch (e) {
-                        alert("Puter AI 授權未完成，請允許授權視窗以開啟翻譯。");
-                        return;
-                    }
-                }
-
+                // 關鍵改動：移除了會被電腦攔截並導致死鎖的 await puter.auth.signIn(...)
+                // Puter.js 調用 puter.ai.chat 時會在後台自動進行免登入授權，無需阻礙主線程
                 userWantsListening = true;
                 acquireWakeLock();
                 try { keepAliveAudio.play(); } catch(e) {}
@@ -795,11 +808,15 @@
         }
 
         function stopListeningUI() {
+            isStarting = false;
+            isEngineRunning = false;
             toggleBtn.classList.remove('active');
             playIcon.style.display = 'block';
             pauseIcon.style.display = 'none';
             interimPart.innerText = "";
         }
+
+   
 
         /* ------------------ 6. 字體調節 ------------------ */
         const fontScales = [
