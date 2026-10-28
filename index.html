@@ -238,14 +238,16 @@
             border-bottom: 2px dashed rgba(56, 189, 248, 0.4);
         }
 
-        .mandarin-content {
-            font-family: "Noto Sans HK", sans-serif;
-            font-size: var(--mandarin-size);
-            font-weight: 500;
-            line-height: 1.75;
-            color: var(--mandarin-text);
-            word-break: break-word;
-        }
+       .mandarin-content {
+    /* 改用與粵語區相同的字體 */
+    font-family: "Noto Serif HK", serif;
+    font-size: var(--mandarin-size);
+    font-weight: 700;                 /* 與粵語一致的粗度 */
+    line-height: 1.8;                 /* 與粵語一致的行高 */
+    letter-spacing: 0.8px;            /* 與粵語一致的字距 */
+    color: var(--mandarin-text);
+    word-break: break-word;
+}
 
         .mandarin-pending {
             color: #64748b;
