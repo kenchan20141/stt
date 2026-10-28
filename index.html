@@ -15,15 +15,15 @@
         window.ToJyutping = ToJyutping;
     </script>
 
-    <!-- OpenCC 繁體中文標準化庫 -->
+    <!-- 繁體字強制校準庫 -->
     <script src="https://cdn.jsdelivr.net/npm/opencc-js@1.0.5/dist/umd/full.min.js"></script>
 
-    <!-- Puter.js 免密大模型 -->
+    <!-- 核心 Puter.js AI 引擎 -->
     <script src="https://js.puter.com/v2/"></script>
 
     <style>
         :root {
-            --bg: #090a0f;
+            --bg: #08090d;
             --card-bg: rgba(255, 255, 255, 0.03);
             --card-border: rgba(255, 255, 255, 0.07);
             --cantonese: #f8fafc;
@@ -60,7 +60,7 @@
             justify-content: space-between;
             align-items: center;
             border-bottom: 1px solid var(--card-border);
-            background: rgba(9, 10, 15, 0.9);
+            background: rgba(8, 9, 13, 0.95);
             backdrop-filter: blur(12px);
             z-index: 20;
         }
@@ -99,15 +99,8 @@
             color: #ffffff;
         }
 
-        .icon-btn:active {
-            transform: scale(0.92);
-        }
-
-        .icon-btn svg {
-            width: 18px;
-            height: 18px;
-            stroke-width: 2;
-        }
+        .icon-btn:active { transform: scale(0.92); }
+        .icon-btn svg { width: 18px; height: 18px; stroke-width: 2; }
 
         .power-btn {
             background: #ef4444;
@@ -124,7 +117,7 @@
             box-shadow: 0 0 16px rgba(16, 185, 129, 0.5);
         }
 
-        /* 字幕流視窗 */
+        /* 字幕視窗 */
         #subtitle-stream {
             flex: 1;
             overflow-y: auto;
@@ -367,11 +360,10 @@
     </div>
 
     <script>
-        /* ------------------ 1. 繁體中文標準化與清洗 ------------------ */
+        /* ------------------ 1. 繁體字校準與括號過濾器 ------------------ */
         let hkConverter = null;
         try {
             if (window.OpenCC) {
-                // 強制轉換為香港標準繁體中文
                 hkConverter = window.OpenCC.Converter({ from: 'cn', to: 'hk' });
             }
         } catch (e) {}
@@ -384,114 +376,60 @@
             return text;
         }
 
-        // 清理所有括號與引號
         function stripAllBrackets(text) {
             if (!text) return "";
             return text.replace(/[()（）\[\]【】{}《》「」『』〈〉"'“”‘’]/g, '').trim();
         }
 
-        // 本地現代繁體白話快速對譯
-        function translateFastTraditional(text) {
-            if (!text || !text.trim()) return "";
-            let res = text;
-
-            res = res.replace(/([\u4e00-\u9fa5]{1,2})先([，。？！、\s]|$)/g, "先$1$2");
-            res = res.replace(/([\u4e00-\u9fa5]{1,2})得滯/g, "太$1了");
-            res = res.replace(/畀([\u4e00-\u9fa5]{1,4})我/g, "把$1給我");
-
-            const FAST_MAP = [
-                [/都唔好肯定/g, "也不太敢確定"],
-                [/唔好肯定/g, "不太敢確定"],
-                [/唔係幾好/g, "不太好"],
-                [/唔係咁/g, "不是這樣"],
-                [/係咪/g, "是不是"],
-                [/點解/g, "為什麼"],
-                [/邊度/g, "哪裡"],
-                [/邊個/g, "誰"],
-                [/幾時/g, "什麼時候"],
-                [/點樣/g, "怎樣"],
-                [/冇乜/g, "沒什麼"],
-                [/冇咩/g, "沒什麼"],
-                [/有冇/g, "有沒有"],
-                [/好似/g, "好像"],
-                [/睇下/g, "看一下"],
-                [/屋企/g, "家裡"],
-                [/返工/g, "上班"],
-                [/收工/g, "下班"],
-                [/返學/g, "上學"],
-                [/佢哋/g, "他們"],
-                [/我哋/g, "我們"],
-                [/你哋/g, "你們"],
-                [/佢/g, "他"],
-                [/喺度/g, "正在"],
-                [/喺/g, "在"],
-                [/呢個/g, "這個"],
-                [/呢啲/g, "這些"],
-                [/嗰個/g, "那個"],
-                [/嗰啲/g, "那些"],
-                [/咁樣/g, "這樣"],
-                [/唔好/g, "不要"],
-                [/唔/g, "不"],
-                [/冇/g, "沒有"],
-                [/咗/g, "了"],
-                [/緊/g, "正在"],
-                [/過嚟/g, "過來"],
-                [/啱啱/g, "剛剛"],
-                [/真係/g, "真是"],
-                [/買咗/g, "買了"],
-                [/畀/g, "給"],
-                [/話/g, "說"],
-                [/諗/g, "想"],
-                [/睇/g, "看"],
-                [/講/g, "說"],
-                [/㗎喇/g, "的了"],
-                [/㗎/g, "的"],
-                [/啦/g, "吧"],
-                [/囉/g, "呢"],
-                [/嘅/g, "的"]
-            ];
-
-            for (let i = 0; i < FAST_MAP.length; i++) {
-                res = res.replace(FAST_MAP[i][0], FAST_MAP[i][1]);
-            }
-
-            return ensureTraditional(stripAllBrackets(res));
-        }
-
-        /* ------------------ 2. Puter AI 深度繁體白話翻譯 ------------------ */
-        async function requestPuterTranslation(cardObj) {
+        /* ------------------ 2. 100% 純 Puter.js 白話大模型翻譯（無本地速譯） ------------------ */
+        async function translatePurelyWithPuter(cardObj) {
             const rawCanto = cardObj.fullPunctuatedText;
             if (!rawCanto || !rawCanto.trim()) return;
 
-            if (!window.puter || !window.puter.auth || !puter.auth.isSignedIn() || !window.puter.ai) {
+            // 狀態直接標記為翻譯中
+            cardObj.mandarinEl.innerText = "翻譯中...";
+
+            if (!window.puter || !window.puter.ai) {
+                cardObj.mandarinEl.innerText = "Puter SDK 未載入";
                 return;
             }
 
             try {
                 const prompt = `請將以下粵語口語直接翻譯成清晰、通俗、現代標準的白話文普通話。
 要求：
-1. 必須全部使用繁體中文輸出，嚴禁出現任何簡體字。
+1. 必須全部使用繁體中文，嚴禁出現任何簡體字。
 2. 必須是通俗日常的現代白話文，絕不能使用文言文、半文言或古漢語句式。
 3. 徹底理順所有粵語倒裝句式。
-4. 嚴禁任何括號，如圓括號、方括號、引號等。
-5. 直接輸出繁體白話譯文本身，不得包含任何說明或附加文字。
+4. 嚴禁任何括號、引號或附加解釋，直接輸出譯文本身。
 
 粵語：${rawCanto}`;
 
+                console.log("【100% Puter.js 請求中】：", rawCanto);
                 const response = await puter.ai.chat(prompt);
 
                 let aiText = "";
-                if (typeof response === 'string') aiText = response;
-                else if (response && response.message) aiText = response.message.content;
-                else if (response) aiText = String(response);
+                if (typeof response === 'string') {
+                    aiText = response;
+                } else if (response && response.message && response.message.content) {
+                    aiText = response.message.content;
+                } else if (response && response.text) {
+                    aiText = response.text;
+                } else if (response) {
+                    aiText = String(response);
+                }
 
-                // 雙重保證繁體中文並清除括號
                 aiText = ensureTraditional(stripAllBrackets(aiText));
 
                 if (aiText) {
+                    console.log("【100% Puter.js 回傳成功】：", aiText);
                     cardObj.mandarinEl.innerText = aiText;
+                } else {
+                    cardObj.mandarinEl.innerText = "無譯文回傳";
                 }
-            } catch (err) {}
+            } catch (err) {
+                console.error("【Puter.js 調用失敗】：", err);
+                cardObj.mandarinEl.innerText = "Puter AI 連線異常";
+            }
         }
 
         /* ------------------ 3. 字幕流管理器 ------------------ */
@@ -534,7 +472,7 @@
                 <div class="cantonese-text"><span class="confirmed-part"></span><span class="interim-text"></span></div>
                 <div class="mandarin-box">
                     <span class="mandarin-label">普通話</span>
-                    <div class="mandarin-text">聆聽中...</div>
+                    <div class="mandarin-text">等待講話...</div>
                 </div>
             `;
             streamContainer.appendChild(card);
@@ -554,16 +492,16 @@
             return currentCardObj;
         }
 
+        // 說話時僅實時更新粵語，普通話不執行任何本地偽翻譯
         function handleSpeechInterim(interim) {
             if (!interim || !interim.trim()) return;
             if (!currentCardObj) createNewCard();
 
             currentCardObj.interimSpan.innerText = interim;
-            const preview = currentCardObj.fullPunctuatedText + interim;
-            currentCardObj.mandarinEl.innerText = translateFastTraditional(preview);
             scrollToBottom();
         }
 
+        // 說完停頓：由 Puter.js 100% 獨立翻譯
         function handleSpeechFinal(finalText) {
             finalText = ensureTraditional(stripAllBrackets(finalText.trim()));
             if (!finalText) return;
@@ -596,15 +534,11 @@
             currentCardObj.confirmedSpan.innerText = currentCardObj.fullPunctuatedText;
             currentCardObj.counterEl.innerText = `${cleanString(currentCardObj.rawConfirmedText).length} 字`;
 
-            currentCardObj.mandarinEl.innerText = translateFastTraditional(currentCardObj.fullPunctuatedText);
-
-            // 停頓 0.35 秒後直接替換為 Puter AI 繁體白話版本
-            if (window.puter && window.puter.auth && puter.auth.isSignedIn()) {
-                if (currentCardObj.aiTimer) clearTimeout(currentCardObj.aiTimer);
-                currentCardObj.aiTimer = setTimeout(() => {
-                    requestPuterTranslation(currentCardObj);
-                }, 350);
-            }
+            // 純 Puter.js 翻譯通道（停頓 0.3 秒觸發）
+            if (currentCardObj.aiTimer) clearTimeout(currentCardObj.aiTimer);
+            currentCardObj.aiTimer = setTimeout(() => {
+                translatePurelyWithPuter(currentCardObj);
+            }, 300);
 
             scrollToBottom();
         }
@@ -622,7 +556,7 @@
         let isEngineRunning = false;
         let wakeLock = null;
 
-        // HTML5 靜音音頻防休眠
+        // HTML5 靜音音訊防休眠
         const SILENT_AUDIO_URI = "data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA=";
         const keepAliveAudio = new Audio(SILENT_AUDIO_URI);
         keepAliveAudio.loop = true;
@@ -702,7 +636,7 @@
             };
         }
 
-        /* ------------------ 5. 單鍵授權啟動 ------------------ */
+        /* ------------------ 5. 單鍵授權與啟動 ------------------ */
         async function toggleSpeech() {
             if (!recognition) {
                 alert("當前瀏覽器不支援語音辨識，請使用 Chrome、Edge 或 Safari。");
@@ -716,21 +650,21 @@
                 try { recognition.stop(); } catch(e) {}
                 stopListeningUI();
             } else {
+                // 強制檢查並登入 Puter，確保 100% 調用 AI
+                if (window.puter && window.puter.auth && !puter.auth.isSignedIn()) {
+                    try {
+                        console.log("【Puter】正在進行免註冊快速連線...");
+                        await puter.auth.signIn({ attempt_temp_user_creation: true });
+                    } catch (e) {
+                        alert("Puter AI 授權未完成，請允許授權視窗以開啟翻譯。");
+                        return;
+                    }
+                }
+
                 userWantsListening = true;
                 acquireWakeLock();
                 try { keepAliveAudio.play(); } catch(e) {}
                 ensureRecognitionActive();
-
-                // 首次點擊時自動免密授權 Puter AI
-                if (window.puter && window.puter.auth && !puter.auth.isSignedIn()) {
-                    puter.auth.signIn({ attempt_temp_user_creation: true })
-                        .then(() => {
-                            if (currentCardObj && currentCardObj.fullPunctuatedText) {
-                                requestPuterTranslation(currentCardObj);
-                            }
-                        })
-                        .catch(() => {});
-                }
             }
         }
 
@@ -848,4 +782,4 @@
         }
     </script>
 </body>
-    </html>
+</html>
