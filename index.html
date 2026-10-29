@@ -21,12 +21,16 @@
     <!-- 繁體字強制校準庫 -->
     <script src="https://cdn.jsdelivr.net/npm/opencc-js@1.0.5/dist/umd/full.min.js"></script>
 
+    <!-- 雲端穿透傳輸庫 (MQTT over WSS) -->
+    <script src="https://unpkg.com/mqtt@5.3.5/dist/mqtt.min.js"></script>
+    <!-- QRCode 生成庫 -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+
     <style>
         :root {
             --bg: #05070a;
             --canto-bg: #090a0f;
             --card-border: rgba(255, 255, 255, 0.08);
-            
             --ruby: #f59e0b;
             --accent: #38bdf8;
             --cantonese-size: 2.15rem;
@@ -52,7 +56,6 @@
             -webkit-font-smoothing: antialiased;
         }
 
-        /* 靜態演播室 3D 底座背景 */
         #threeCanvas {
             position: fixed;
             top: 0;
@@ -76,14 +79,12 @@
             padding: 20px 24px 28px 24px;
             box-sizing: border-box;
             pointer-events: auto;
-            transform: none !important;
         }
 
         @media (max-width: 768px) {
             .teleprompter-rig {
                 max-width: 100%;
                 height: 100dvh;
-                max-height: none;
                 padding: 10px 8px 16px 8px;
             }
         }
@@ -129,14 +130,30 @@
             font-family: "Noto Sans HK", sans-serif;
         }
 
-        .char-counter {
-            font-family: "Noto Sans HK", sans-serif;
-            font-size: 0.76rem;
-            color: #64748b;
-            background: rgba(255, 255, 255, 0.05);
-            padding: 2px 8px;
-            border-radius: 4px;
-            border: 1px solid rgba(255, 255, 255, 0.08);
+        /* 極簡狀態呼吸指示燈 */
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #334155;
+            transition: all 0.3s ease;
+        }
+
+        .status-dot.broadcast {
+            background: #10b981;
+            box-shadow: 0 0 10px #10b981;
+            animation: pulseDot 1.8s infinite;
+        }
+
+        .status-dot.receive {
+            background: #38bdf8;
+            box-shadow: 0 0 10px #38bdf8;
+            animation: pulseDot 1.8s infinite;
+        }
+
+        @keyframes pulseDot {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.45; transform: scale(0.85); }
         }
 
         .btn-group {
@@ -158,11 +175,19 @@
             cursor: pointer;
             transition: all 0.2s ease;
             outline: none;
+            position: relative;
         }
 
         .icon-btn:hover { background: rgba(255, 255, 255, 0.12); color: #ffffff; }
         .icon-btn:active { transform: scale(0.94); }
         .icon-btn svg { width: 18px; height: 18px; stroke-width: 2; }
+
+        /* 模式切換高亮 */
+        .icon-btn.mode-active {
+            background: rgba(56, 189, 248, 0.15);
+            border-color: rgba(56, 189, 248, 0.45);
+            color: #38bdf8;
+        }
 
         .power-btn {
             background: #ef4444;
@@ -179,7 +204,6 @@
             box-shadow: 0 0 16px rgba(16, 185, 129, 0.45);
         }
 
-        /* 視圖區域 */
         .viewport-container {
             flex: 1;
             display: flex;
@@ -211,7 +235,6 @@
             z-index: 1;
         }
 
-        /* 提詞流容器 */
         .cantonese-stream {
             font-family: "Noto Serif HK", serif;
             font-size: var(--cantonese-size);
@@ -223,7 +246,6 @@
             word-break: break-word;
         }
 
-        /* 句組塊 */
         .phrase-group {
             display: block;
             position: relative;
@@ -232,14 +254,13 @@
             transition: color 0.4s ease, opacity 0.4s ease;
         }
 
-        /* 歷史句組：暗淡灰色，退居背景 */
         .phrase-group.past {
             color: #475569;
             font-weight: 500;
             opacity: 0.42;
         }
 
-        /* 只有最新的一個句組：純白高光聚焦，成為目光第一落點 */
+        /* 最新句組：純白高光聚焦 */
         .phrase-group.active-latest {
             color: #ffffff;
             font-weight: 700;
@@ -248,18 +269,17 @@
             animation: phrasePop 0.22s cubic-bezier(0.16, 1, 0.3, 1) forwards;
         }
 
-        /* 即時語音流（說話進行中） */
+        /* 移除任何藍色條柱或背景塊，保持乾淨純文字 */
         .phrase-item.interim {
-            color: #38bdf8;
-            font-weight: 600;
-            background: rgba(56, 189, 248, 0.08);
-            border-left: 3px solid #38bdf8;
-            padding: 2px 10px;
-            border-radius: 0 6px 6px 0;
-            display: inline-block;
-            margin-top: 4px;
-            align-self: flex-start;
-            animation: fadeIn 0.15s ease forwards;
+            color: #f8fafc;
+            font-weight: 700;
+            opacity: 0.9;
+            text-shadow: 0 0 16px rgba(255, 255, 255, 0.28);
+            display: inline;
+            background: transparent;
+            border: none;
+            padding: 0;
+            margin: 0;
         }
 
         .phrase-item.interim:empty {
@@ -269,11 +289,6 @@
         @keyframes phrasePop {
             0% { opacity: 0; transform: translateY(6px); }
             100% { opacity: 1; transform: translateY(0); }
-        }
-
-        @keyframes fadeIn {
-            0% { opacity: 0; }
-            100% { opacity: 1; }
         }
 
         .bottom-safe-spacer {
@@ -303,13 +318,6 @@
 
         #fontToast.show { opacity: 1; transform: translateY(0); }
 
-        .scroll-body::-webkit-scrollbar, .modal-body::-webkit-scrollbar { width: 4px; }
-        .scroll-body::-webkit-scrollbar-thumb, .modal-body::-webkit-scrollbar-thumb {
-            background: rgba(255, 255, 255, 0.12);
-            border-radius: 4px;
-        }
-
-        /* 粵拼注音彈窗 */
         .modal-overlay {
             position: fixed;
             top: 0; left: 0; width: 100vw; height: 100vh;
@@ -396,6 +404,31 @@
             justify-content: space-between;
             align-items: center;
         }
+
+        /* 極簡 QR 視窗樣式 */
+        #qrContainer {
+            background: #ffffff;
+            padding: 14px;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto;
+        }
+
+        #roomLinkText {
+            font-family: monospace;
+            font-size: 0.8rem;
+            color: #38bdf8;
+            word-break: break-all;
+            cursor: pointer;
+            background: rgba(255, 255, 255, 0.04);
+            padding: 8px 12px;
+            border-radius: 6px;
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            width: 100%;
+            text-align: center;
+        }
     </style>
 </head>
 <body>
@@ -407,16 +440,35 @@
             <header>
                 <div class="brand-meta">
                     <span class="brand-title">實時粵語提詞</span>
-                    <span id="charCount" class="char-counter">0 字</span>
+                    <span id="statusDot" class="status-dot"></span>
                 </div>
                 <div class="btn-group">
-                    <button class="icon-btn" title="粵拼注音與朗讀" onclick="openPhoneticModal()">
+                    <!-- 按鈕 1：個人版 -->
+                    <button id="btnSolo" class="icon-btn mode-active" title="個人版" onclick="switchToSoloMode()">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+                            <circle cx="12" cy="7" r="4"></circle>
+                        </svg>
+                    </button>
+                    <!-- 按鈕 2：廣播版 (老師用) -->
+                    <button id="btnBroadcast" class="icon-btn" title="廣播版" onclick="switchToBroadcastMode()">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M4.9 19.1C1 15.2 1 8.8 4.9 4.9"></path>
+                            <path d="M7.8 16.2c-2.3-2.3-2.3-6.1 0-8.5"></path>
+                            <circle cx="12" cy="12" r="2"></circle>
+                            <path d="M16.2 7.8c2.3 2.3 2.3 6.1 0 8.5"></path>
+                            <path d="M19.1 4.9C23 8.8 23 15.1 19.1 19"></path>
+                        </svg>
+                    </button>
+                    <!-- 粵拼注音與朗讀 -->
+                    <button class="icon-btn" title="粵拼注音" onclick="openPhoneticModal()">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
                             <path d="M3 18v-6a9 9 0 0 1 18 0v6"></path>
                             <path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z"></path>
                         </svg>
                     </button>
-                    <button class="icon-btn" title="切換字體大小" onclick="cycleFontSize()">
+                    <!-- 字體大小 -->
+                    <button class="icon-btn" title="字體大小" onclick="cycleFontSize()">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
                             <path d="M3.5 17.5L6.5 9.5L9.5 17.5"></path>
                             <path d="M4.8 14.5H8.2"></path>
@@ -424,7 +476,8 @@
                             <path d="M14 13.5H19"></path>
                         </svg>
                     </button>
-                    <button id="toggleBtn" class="icon-btn power-btn" title="啟動提詞" onclick="toggleSpeech()">
+                    <!-- 麥克風開關 -->
+                    <button id="toggleBtn" class="icon-btn power-btn" title="開關" onclick="toggleSpeech()">
                         <svg id="playIcon" viewBox="0 0 24 24" fill="currentColor">
                             <path d="M8 5.14v13.72a1 1 0 0 0 1.5.86l11-6.86a1 1 0 0 0 0-1.72l-11-6.86a1 1 0 0 0-1.5.86z"></path>
                         </svg>
@@ -438,7 +491,6 @@
 
             <div id="fontToast">字體 標準</div>
 
-            <!-- 自然提詞主視圖 -->
             <div class="viewport-container">
                 <div id="cantoScroll" class="scroll-body">
                     <div id="cantoStream" class="cantonese-stream">
@@ -450,32 +502,126 @@
         </div>
     </main>
 
+    <!-- 極簡 QR 彈窗 (僅保留 CODE 與 網址) -->
+    <div id="qrModal" class="modal-overlay" onclick="closeModalOnBackdrop(event)">
+        <div class="modal-window" style="max-width: 340px; text-align: center;">
+            <div class="modal-header" style="justify-content: flex-end; border: none; padding-bottom: 0;">
+                <button class="icon-btn" style="width:28px; height:28px;" onclick="closeQrModal()">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                </button>
+            </div>
+            <div class="modal-body" style="display:flex; flex-direction:column; align-items:center; gap:16px; padding-top: 8px;">
+                <div id="qrContainer"></div>
+                <div id="roomLinkText" onclick="copyShareLink()" title="點擊複製"></div>
+            </div>
+        </div>
+    </div>
+
     <!-- 粵拼彈窗 -->
     <div id="phoneticModal" class="modal-overlay" onclick="closeModalOnBackdrop(event)">
         <div class="modal-window">
             <div class="modal-header">
                 <span>粵拼注音與朗讀</span>
                 <button class="icon-btn" style="width:28px; height:28px;" onclick="closePhoneticModal()">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
-                        <line x1="18" y1="6" x2="6" y2="18"></line>
-                        <line x1="6" y1="6" x2="18" y2="18"></line>
-                    </svg>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
                 </button>
             </div>
             <div id="modalContent" class="modal-body"></div>
             <div class="modal-footer">
-                <span id="ttsStatus" style="font-size: 0.82rem; color: #94a3b8; font-family: 'Noto Sans HK', sans-serif;">就緒</span>
+                <span id="ttsStatus" style="font-size: 0.82rem; color: #94a3b8;">就緒</span>
                 <button id="ttsPlayBtn" class="icon-btn" style="background:#0284c7; color:#fff;" onclick="speakCurrentText()">
-                    <svg viewBox="0 0 24 24" fill="currentColor">
-                        <polygon points="6 3 20 12 6 21 6 3"></polygon>
-                    </svg>
+                    <svg viewBox="0 0 24 24" fill="currentColor"><polygon points="6 3 20 12 6 21 6 3"></polygon></svg>
                 </button>
             </div>
         </div>
     </div>
 
     <script>
-        /* ------------------ 0. 靜態 3D 背景 ------------------ */
+        /* ------------------ 0. 端到端加密引擎 (AES-256-GCM) ------------------ */
+        let cryptoKey = null;
+
+        async function initEncryptionKey(keyString) {
+            const enc = new TextEncoder();
+            const keyHash = await crypto.subtle.digest('SHA-256', enc.encode(keyString));
+            cryptoKey = await crypto.subtle.importKey(
+                'raw',
+                keyHash,
+                { name: 'AES-GCM' },
+                false,
+                ['encrypt', 'decrypt']
+            );
+        }
+
+        async function encryptPayload(plainObj) {
+            if (!cryptoKey) return JSON.stringify(plainObj);
+            const iv = crypto.getRandomValues(new Uint8Array(12));
+            const enc = new TextEncoder();
+            const cipherBuffer = await crypto.subtle.encrypt(
+                { name: 'AES-GCM', iv },
+                cryptoKey,
+                enc.encode(JSON.stringify(plainObj))
+            );
+            return JSON.stringify({
+                iv: Array.from(iv).map(b => b.toString(16).padStart(2, '0')).join(''),
+                cipher: btoa(String.fromCharCode(...new Uint8Array(cipherBuffer)))
+            });
+        }
+
+        async function decryptPayload(rawMsgString) {
+            try {
+                const packet = JSON.parse(rawMsgString);
+                if (!cryptoKey || !packet.iv || !packet.cipher) return packet;
+                const iv = new Uint8Array(packet.iv.match(/.{1,2}/g).map(b => parseInt(b, 16)));
+                const cipherBytes = Uint8Array.from(atob(packet.cipher), c => c.charCodeAt(0));
+                const decryptedBuffer = await crypto.subtle.decrypt(
+                    { name: 'AES-GCM', iv },
+                    cryptoKey,
+                    cipherBytes
+                );
+                return JSON.parse(new TextDecoder().decode(decryptedBuffer));
+            } catch (err) {
+                return null;
+            }
+        }
+
+        /* ------------------ 1. 運行模式設定 (個人 / 廣播 / 接收) ------------------ */
+        const urlParams = new URLSearchParams(window.location.search);
+        const joinRoom = urlParams.get('room');
+        const joinKey = window.location.hash.replace('#', '');
+        const isReceiverMode = Boolean(joinRoom && joinKey);
+
+        let currentMode = isReceiverMode ? 'receive' : 'solo'; // solo, broadcast, receive
+        let currentRoomId = joinRoom || '';
+        let currentSecretKey = joinKey || '';
+
+        const statusDot = document.getElementById('statusDot');
+        const btnSolo = document.getElementById('btnSolo');
+        const btnBroadcast = document.getElementById('btnBroadcast');
+        const toggleBtn = document.getElementById('toggleBtn');
+
+        let mqttClient = null;
+
+        function updateUIState() {
+            btnSolo.classList.remove('mode-active');
+            btnBroadcast.classList.remove('mode-active');
+            statusDot.className = 'status-dot';
+
+            if (currentMode === 'solo') {
+                btnSolo.classList.add('mode-active');
+                toggleBtn.style.display = 'flex';
+            } else if (currentMode === 'broadcast') {
+                btnBroadcast.classList.add('mode-active');
+                statusDot.classList.add('broadcast');
+                toggleBtn.style.display = 'flex';
+            } else if (currentMode === 'receive') {
+                btnSolo.style.display = 'none';
+                btnBroadcast.style.display = 'none';
+                toggleBtn.style.display = 'none'; // 接收端純觀看
+                statusDot.classList.add('receive');
+            }
+        }
+
+        /* ------------------ 2. 靜態 3D 背景 ------------------ */
         const canvas = document.getElementById('threeCanvas');
         const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
         renderer.setSize(window.innerWidth, window.innerHeight);
@@ -515,20 +661,16 @@
         keyLight.position.set(10, 15, 18);
         scene.add(keyLight);
 
-        function renderStatic3D() {
-            renderer.render(scene, camera);
-        }
-
+        function renderStatic3D() { renderer.render(scene, camera); }
         window.addEventListener('resize', () => {
             camera.aspect = window.innerWidth / window.innerHeight;
             camera.updateProjectionMatrix();
             renderer.setSize(window.innerWidth, window.innerHeight);
             renderStatic3D();
         });
-
         renderStatic3D();
 
-        /* ------------------ 1. 繁體字校準 ------------------ */
+        /* ------------------ 3. 繁體字校準 ------------------ */
         let hkConverter = null;
         try {
             if (window.OpenCC) {
@@ -557,34 +699,25 @@
             toastTimer = setTimeout(() => fontToast.classList.remove('show'), 1500);
         }
 
-        /* ------------------ 2. 粵語句組與智能斷句引擎 ------------------ */
-
-     // 1. 只有包含真正的疑問詞、反問結構、或專門疑問語氣詞時，才加「？」
-const QUESTION_ENDINGS = /(點解|係咪|係唔係|係未|得唔得|好唔好|幾時|邊個|邊度|邊處|點樣|點做|點算|成點|做咩|做乜|做乜嘢|嗎|下話|得未|好未|係咪呀|係唔係呀|點樣呀|做咩呀|邊個呀|幾時呀)$/;
-
-// 2. 感嘆句結尾，加「！」
-const EXCLAMATION_ENDINGS = /(太好喇|好犀利|超勁|正呀|好正|利害|搞錯|痴線|唔係卦|救命|嘩|哇|好嘢|真係誇張|真係正|勁呀|正話|好痛呀|好正呀)$/;
-
-// 3. 常規陳述語氣助詞（把「呀」回歸到這裡，正常句末加「。」，組內加「，」）
-const TERMINAL_PARTICLES = /(啦|喇|㗎|喎|囉|啫|咋|添|嘅|之嘛|喇喎|㗎啦|㗎喇|㗎咋|罷了|唔知呢|呀|阿)$/;
+        /* ------------------ 4. 粵語句組引擎 (純白高光聚焦) ------------------ */
+        const QUESTION_ENDINGS = /(點解|係咪|係唔係|係未|得唔得|好唔好|幾時|邊個|邊度|邊處|點樣|點做|點算|成點|做咩|做乜|做乜嘢|嗎|下話|得未|好未|係咪呀|係唔係呀|點樣呀|做咩呀|邊個呀|幾時呀)$/;
+        const EXCLAMATION_ENDINGS = /(太好喇|好犀利|超勁|正呀|好正|利害|搞錯|痴線|唔係卦|救命|嘩|哇|好嘢|真係誇張|真係正|勁呀|正話|好痛呀|好正呀)$/;
 
         const cantoScroll = document.getElementById('cantoScroll');
         const cantoStream = document.getElementById('cantoStream');
         const interimPart = document.getElementById('interimPart');
-        const charCount = document.getElementById('charCount');
 
         let autoScrollCanto = true;
         let confirmedPlainHistory = "";
         let lastFinalCleanText = "";
         let lastFinalTimestamp = 0;
 
-        // 句組歷史管理
         const groupList = [];
-        let currentGroup = null; // 當前正在聚裝的句組
+        let currentGroup = null;
         let longPauseTimer = null;
 
-        const MAX_VALID_SENTENCES_PER_GROUP = 3; // 規則：3 句完整句子（大於5字）成一組
-        const LONG_PAUSE_THRESHOLD = 1400; // 1.4秒無聲視為長停頓，結算當前句組
+        const MAX_VALID_SENTENCES_PER_GROUP = 3;
+        const LONG_PAUSE_THRESHOLD = 1400;
 
         cantoScroll.addEventListener('scroll', () => {
             autoScrollCanto = (cantoScroll.scrollHeight - cantoScroll.scrollTop - cantoScroll.clientHeight) < 120;
@@ -598,240 +731,125 @@ const TERMINAL_PARTICLES = /(啦|喇|㗎|喎|囉|啫|咋|添|嘅|之嘛|喇喎|�
             }
         }
 
-        /**
-         * 前綴滑動去重算法：防止瀏覽器連續語音重複拋出舊字
-         */
-       /**
- * 前綴滑動與子串去重算法（強化版：徹底攔截歷史回流重複）
- */
-function extractNonOverlappingDelta(incomingText) {
-    if (!incomingText) return "";
-    const cleanIncoming = cleanString(incomingText);
-    if (!cleanIncoming) return "";
-    if (!confirmedPlainHistory) return incomingText.trim();
+        function extractNonOverlappingDelta(incomingText) {
+            if (!incomingText) return "";
+            const cleanIncoming = cleanString(incomingText);
+            if (!cleanIncoming) return "";
+            if (!confirmedPlainHistory) return incomingText.trim();
 
-    // 1. 如果收到的文字（大於 3 字）已經完全出現在最近歷史中，100% 是引擎重複回拋，直接丟棄！
-    const recentHistory = confirmedPlainHistory.slice(-200);
-    if (cleanIncoming.length >= 3 && recentHistory.includes(cleanIncoming)) {
-        return "";
-    }
+            const recentHistory = confirmedPlainHistory.slice(-200);
+            if (cleanIncoming.length >= 3 && recentHistory.includes(cleanIncoming)) return "";
+            if (recentHistory.endsWith(cleanIncoming)) return "";
 
-    // 2. 如果歷史尾端完全等於即時輸入，直接丟棄
-    if (recentHistory.endsWith(cleanIncoming)) {
-        return "";
-    }
-
-    // 3. 滑動窗口比對尾端重疊
-    const maxLen = Math.min(recentHistory.length, cleanIncoming.length);
-    let overlapLen = 0;
-    for (let len = maxLen; len >= 1; len--) {
-        if (recentHistory.endsWith(cleanIncoming.slice(0, len))) {
-            overlapLen = len;
-            break;
-        }
-    }
-
-    if (overlapLen === cleanIncoming.length) {
-        return "";
-    }
-
-    if (overlapLen > 0) {
-        let cleanCount = 0;
-        let cutIndex = 0;
-        for (let i = 0; i < incomingText.length; i++) {
-            if (!/[，。？！、\s\.,!\?…—]/.test(incomingText[i])) {
-                cleanCount++;
+            const maxLen = Math.min(recentHistory.length, cleanIncoming.length);
+            let overlapLen = 0;
+            for (let len = maxLen; len >= 1; len--) {
+                if (recentHistory.endsWith(cleanIncoming.slice(0, len))) {
+                    overlapLen = len;
+                    break;
+                }
             }
-            if (cleanCount === overlapLen) {
-                cutIndex = i + 1;
-                break;
+            if (overlapLen === cleanIncoming.length) return "";
+
+            if (overlapLen > 0) {
+                let cleanCount = 0;
+                let cutIndex = 0;
+                for (let i = 0; i < incomingText.length; i++) {
+                    if (!/[，。？！、\s\.,!\?…—]/.test(incomingText[i])) cleanCount++;
+                    if (cleanCount === overlapLen) {
+                        cutIndex = i + 1;
+                        break;
+                    }
+                }
+                return incomingText.slice(cutIndex).trim();
             }
-        }
-        return incomingText.slice(cutIndex).trim();
-    }
-
-    return incomingText.trim();
-}
-        /**
-         * 即使沒有語音停頓，亦依據粵語連詞與語氣助詞智能切分（杜絕一大坨無標點文字）
-         */
-       /* ==================== 升級版：智慧語意與呼吸節奏斷句引擎 ==================== */
-
-// 1. 建立瀏覽器原生分詞器 (零依賴，精準命中粵語/繁體詞界)
-const wordSegmenter = (typeof Intl !== 'undefined' && Intl.Segmenter)
-    ? new Intl.Segmenter('zh-HK', { granularity: 'word' })
-    : null;
-
-// 2. 粵語語法詞典庫
-const LEXICON = {
-    // 強句尾語氣助詞 (說完這個詞，大概率是一句話的落腳點)
-    strongParticles: new Set([
-        '啦', '喇', '㗎', '喎', '囉', '啫', '咋', '添', '之嘛', '喇喎', 
-        '㗎啦', '㗎喇', '㗎咋', '咩', '呢', '呀嘛', '嗎', '下話', '嘅'
-    ]),
-    
-    // 強句首連接詞 (這個詞前面極度適合斷開)
-    connectives: new Set([
-        '但係', '不過', '然而', '跟住', '然後', '所以', '因此', '而且', 
-        '即係話', '另外', '總之', '事實上', '仲有', '反之', '換言之', '其實'
-    ]),
-
-    // 句首代詞 / 開頭標誌 (若句子已具備長度，可在此處斷開)
-    starters: new Set([
-        '我哋', '你哋', '佢哋', '大家', '其實我', '如果', '因為', '咁樣'
-    ]),
-
-    // 緊密黏合詞 (強烈建議不要在這些詞後面立刻切斷)
-    glueWords: new Set([
-        '緊', '咗', '過', '嘅', '同埋', '一齊', '喺', '去', '想', '要'
-    ])
-};
-
-/**
- * 智慧切分：結合語法詞界與播報呼吸節奏
- */
-function splitIntoSemanticClauses(rawText) {
-    if (!rawText) return [];
-    // 先把開頭與結尾的標點剝乾淨
-    const text = rawText.trim().replace(/^[，。？！、\.,!\?\s…—]+|[，。？！、\.,!\?\s…—]+$/g, '');
-    if (!text) return [];
-
-    // 若短句小於等於 7 字，直接返回已剝除標點的乾淨文字
-    if (cleanString(text).length <= 7) return [text];
-
-    // 第一步：先按既有的標點初切
-    const rawBlocks = text.split(/[，。？！、\.,!\?\n\r]+/);
-    const finalClauses = [];
-
-    for (let block of rawBlocks) {
-        block = block.trim();
-        const blockClean = cleanString(block);
-        if (!blockClean) continue;
-
-        // 若短語本身很短（<= 8 字），保留整句
-        if (blockClean.length <= 8) {
-            finalClauses.push(block);
-            continue;
+            return incomingText.trim();
         }
 
-        // 第二步：利用 Intl.Segmenter 進行專業分詞
-        let words = [];
-        if (wordSegmenter) {
-            words = Array.from(wordSegmenter.segment(block)).map(s => s.segment);
-        } else {
-            // 降級兼容：無 Segmenter 時簡易拆分
-            words = block.split('');
+        const wordSegmenter = (typeof Intl !== 'undefined' && Intl.Segmenter)
+            ? new Intl.Segmenter('zh-HK', { granularity: 'word' }) : null;
+
+        const LEXICON = {
+            strongParticles: new Set(['啦', '喇', '㗎', '喎', '囉', '啫', '咋', '添', '之嘛', '喇喎', '㗎啦', '㗎喇', '㗎咋', '咩', '呢', '呀嘛', '嗎', '下話', '嘅']),
+            connectives: new Set(['但係', '不過', '然而', '跟住', '然後', '所以', '因此', '而且', '即係話', '另外', '總之', '事實上', '仲有', '反之', '換言之', '其實']),
+            starters: new Set(['我哋', '你哋', '佢哋', '大家', '其實我', '如果', '因為', '咁樣']),
+            glueWords: new Set(['緊', '咗', '過', '嘅', '同埋', '一齊', '喺', '去', '想', '要'])
+        };
+
+        function splitIntoSemanticClauses(rawText) {
+            if (!rawText) return [];
+            const text = rawText.trim().replace(/^[，。？！、\.,!\?\s…—]+|[，。？！、\.,!\?\s…—]+$/g, '');
+            if (!text) return [];
+            if (cleanString(text).length <= 7) return [text];
+
+            const rawBlocks = text.split(/[，。？！、\.,!\?\n\r]+/);
+            const finalClauses = [];
+
+            for (let block of rawBlocks) {
+                block = block.trim();
+                const blockClean = cleanString(block);
+                if (!blockClean) continue;
+                if (blockClean.length <= 8) {
+                    finalClauses.push(block);
+                    continue;
+                }
+
+                let words = wordSegmenter ? Array.from(wordSegmenter.segment(block)).map(s => s.segment) : block.split('');
+                let currentClause = "";
+                let splitScore = 0;
+
+                for (let i = 0; i < words.length; i++) {
+                    const word = words[i];
+                    const nextWord = words[i + 1] || "";
+                    currentClause += word;
+
+                    const curLen = cleanString(currentClause).length;
+                    const remainingLen = cleanString(words.slice(i + 1).join('')).length;
+
+                    if (remainingLen < 3) continue;
+
+                    splitScore = 0;
+                    if (curLen >= 6) splitScore += (curLen - 5) * 6;
+                    if (LEXICON.strongParticles.has(word)) splitScore += 40;
+                    if (LEXICON.connectives.has(nextWord)) splitScore += 45;
+                    if (LEXICON.starters.has(nextWord) && curLen >= 6) splitScore += 30;
+                    if (LEXICON.glueWords.has(word)) splitScore -= 40;
+
+                    if (splitScore >= 65 || curLen >= 13) {
+                        finalClauses.push(currentClause.trim());
+                        currentClause = "";
+                    }
+                }
+                if (currentClause.trim()) finalClauses.push(currentClause.trim());
+            }
+            return finalClauses.filter(c => cleanString(c).length > 0);
         }
 
-        let currentClause = "";
-        let splitScore = 0; // 呼吸切分意願評分
-
-        for (let i = 0; i < words.length; i++) {
-            const word = words[i];
-            const nextWord = words[i + 1] || "";
-            currentClause += word;
-
-            const curLen = cleanString(currentClause).length;
-            const remainingLen = cleanString(words.slice(i + 1).join('')).length;
-
-            // 如果後續剩餘字數極少（< 3 字），不再切分，直接併入當前句避免落單字
-            if (remainingLen < 3) continue;
-
-            // ---------------- 動態計分機制 ----------------
-            splitScore = 0;
-
-            // 1. 彈簧長度壓力（6字起計分，越長越想切）
-            if (curLen >= 6) {
-                splitScore += (curLen - 5) * 6; // 6字=6分, 8字=18分, 11字=36分
-            }
-
-            // 2. 詞尾語氣詞獎勵
-            if (LEXICON.strongParticles.has(word)) {
-                splitScore += 40;
-            }
-
-            // 3. 下一個詞是句首連接詞獎勵
-            if (LEXICON.connectives.has(nextWord)) {
-                splitScore += 45;
-            }
-
-            // 4. 下一個詞是新主語獎勵
-            if (LEXICON.starters.has(nextWord) && curLen >= 6) {
-                splitScore += 30;
-            }
-
-            // 5. 語義黏性懲罰（若當前是黏性詞，盡量不切）
-            if (LEXICON.glueWords.has(word)) {
-                splitScore -= 40;
-            }
-
-            // ---------------- 觸發斷句 ----------------
-            // 閥值設為 65 分，或超過 13 字強制安全切斷
-            if (splitScore >= 65 || curLen >= 13) {
-                finalClauses.push(currentClause.trim());
-                currentClause = "";
-                splitScore = 0;
-            }
-        }
-
-        if (currentClause.trim()) {
-            finalClauses.push(currentClause.trim());
-        }
-    }
-
-    return finalClauses.filter(c => cleanString(c).length > 0);
-}
-        /**
-         * 判定子句的標點符號：
-         * - 組內中間子句：一律以逗號「，」（或問號「？」、感嘆號「！」）分隔開上下句
-         * - 句組落句結算：最後一句以句號「。」或「？」/「！」圓滿落幕
-         */
         function getClausePunctuation(rawClauseText, isGroupFinalClause = false) {
             const clean = cleanString(rawClauseText);
-            if (QUESTION_ENDINGS.test(clean)) {
-                return '？';
-            }
-            if (EXCLAMATION_ENDINGS.test(clean)) {
-                return '！';
-            }
-            if (isGroupFinalClause) {
-                return '。';
-            }
-            // 短停頓相連：必須有適當標點符號分隔，絕不直接黏合
+            if (QUESTION_ENDINGS.test(clean)) return '？';
+            if (EXCLAMATION_ENDINGS.test(clean)) return '！';
+            if (isGroupFinalClause) return '。';
             return '，';
         }
 
-        /**
-         * 渲染句組文本：精確保障每句之間都有合適標點分隔
-         */
-      /**
- * 渲染句組文本：強制過濾掉文字原有的尾端標點，徹底杜絕「。？」或「，，」重複出現
- */
-function renderGroupText(group, isFinalized = false) {
-    const clauses = group.clauses;
-    if (clauses.length === 0) return "";
+        function renderGroupText(group, isFinalized = false) {
+            const clauses = group.clauses;
+            if (clauses.length === 0) return "";
+            let fullStr = "";
+            for (let i = 0; i < clauses.length; i++) {
+                const pureText = clauses[i].replace(/[，。？！、\.,!\?\s…—]+$/g, '').trim();
+                if (!pureText) continue;
+                const isLast = (i === clauses.length - 1);
+                const punct = getClausePunctuation(pureText, isLast && isFinalized);
+                fullStr += pureText + punct;
+            }
+            return fullStr;
+        }
 
-    let fullStr = "";
-    for (let i = 0; i < clauses.length; i++) {
-        // 先將句子原本自帶的尾端標點（不論中英文）全部剔除
-        const pureText = clauses[i].replace(/[，。？！、\.,!\?\s…—]+$/g, '').trim();
-        if (!pureText) continue;
-
-        const isLast = (i === clauses.length - 1);
-        // 重新由提詞器統一決定最合適的標點
-        const punct = getClausePunctuation(pureText, isLast && isFinalized);
-        fullStr += pureText + punct;
-    }
-    return fullStr;
-}
-
-        /**
-         * 核心高光控制：只有最新一個句組才高光！其餘全部暗淡退居背景
-         */
         function refreshGroupHighlights() {
             const total = groupList.length;
             groupList.forEach((group, index) => {
-                // 僅有最新的一個 (index === total - 1) 才賦予 active-latest
                 if (index === total - 1) {
                     group.elem.classList.remove('past');
                     group.elem.classList.add('active-latest');
@@ -840,146 +858,110 @@ function renderGroupText(group, isFinalized = false) {
                     group.elem.classList.add('past');
                 }
             });
-
-            // 實時統計字數
-            const totalChars = groupList.reduce((acc, g) => acc + cleanString(g.fullText).length, 0);
-            charCount.textContent = `${totalChars} 字`;
         }
 
-        /**
-         * 建立新句組
-         */
         function createNewGroup() {
             const groupElem = document.createElement('div');
             groupElem.className = 'phrase-group active-latest';
-            
             cantoStream.insertBefore(groupElem, interimPart);
 
-            const newGroup = {
-                elem: groupElem,
-                clauses: [],      // 保存該組包含的所有短停頓句子
-                validCount: 0,    // 超過 5 字的有效句子數量
-                fullText: ""
-            };
+            const newGroup = { elem: groupElem, clauses: [], validCount: 0, fullText: "" };
             groupList.push(newGroup);
 
             if (groupList.length > 50) {
                 const old = groupList.shift();
-                if (old && old.elem && old.elem.parentNode) {
-                    old.elem.parentNode.removeChild(old.elem);
-                }
+                if (old?.elem?.parentNode) old.elem.parentNode.removeChild(old.elem);
             }
-
             refreshGroupHighlights();
             return newGroup;
         }
 
-        /**
-         * 句組定稿封閉（集滿 3 句有效句子，或觸發 1.4 秒長停頓）
-         */
         function finalizeCurrentGroup() {
             clearTimeout(longPauseTimer);
             longPauseTimer = null;
             if (!currentGroup) return;
 
-            // 定稿：最後一句自動轉為正式結算標點（句號/問號/感嘆號）
             currentGroup.fullText = renderGroupText(currentGroup, true);
             currentGroup.elem.textContent = currentGroup.fullText;
 
-            currentGroup = null; // 釋放句組，下一句開口將正式開啟新句組！
+            if (currentMode === 'broadcast') {
+                broadcastSecurePayload({ type: 'finalize', fullText: currentGroup.fullText });
+            }
+
+            currentGroup = null;
             refreshGroupHighlights();
         }
 
-        /**
-         * 提交說話片段（嚴格執行：短停頓同組用標點分開、五字以下不計數、每三句成一組、只有最新一個高光）
-         */
-      function commitSpeechDelta(rawText) {
-    clearTimeout(longPauseTimer);
+        function commitSpeechDelta(rawText) {
+            clearTimeout(longPauseTimer);
+            let delta = convertToHK(rawText).trim();
+            delta = extractNonOverlappingDelta(delta);
+            if (!delta) return;
 
-    let delta = convertToHK(rawText).trim();
-    delta = extractNonOverlappingDelta(delta);
-    if (!delta) return;
+            const semanticClauses = splitIntoSemanticClauses(delta);
+            if (semanticClauses.length === 0) return;
 
-    // 智能斷句分析
-    const semanticClauses = splitIntoSemanticClauses(delta);
-    if (semanticClauses.length === 0) return;
+            for (const clause of semanticClauses) {
+                const cleanLen = cleanString(clause).length;
+                if (cleanLen === 0) continue;
+                const cleanClause = cleanString(clause);
+                if (confirmedPlainHistory.endsWith(cleanClause)) continue;
 
-    for (const clause of semanticClauses) {
-        const cleanLen = cleanString(clause).length;
-        if (cleanLen === 0) continue;
+                const isValidSentence = cleanLen > 5;
+                if (!currentGroup) currentGroup = createNewGroup();
 
-        const cleanClause = cleanString(clause);
-        // 【雙重防護】：若該小句已經出現在最近的歷史結尾，不重複寫入
-        if (confirmedPlainHistory.endsWith(cleanClause)) {
-            continue;
+                currentGroup.clauses.push(clause);
+                if (isValidSentence) currentGroup.validCount++;
+
+                currentGroup.fullText = renderGroupText(currentGroup, false);
+                currentGroup.elem.textContent = currentGroup.fullText;
+
+                confirmedPlainHistory += cleanClause;
+                if (confirmedPlainHistory.length > 1000) confirmedPlainHistory = confirmedPlainHistory.slice(-600);
+
+                if (currentMode === 'broadcast') {
+                    broadcastSecurePayload({ type: 'update_group', fullText: currentGroup.fullText });
+                }
+
+                if (currentGroup.validCount >= MAX_VALID_SENTENCES_PER_GROUP) {
+                    finalizeCurrentGroup();
+                }
+            }
+
+            refreshGroupHighlights();
+            scrollCantoToBottom();
+
+            if (currentGroup) {
+                longPauseTimer = setTimeout(() => { finalizeCurrentGroup(); }, LONG_PAUSE_THRESHOLD);
+            }
         }
 
-        const isValidSentence = cleanLen > 5;
-
-        if (!currentGroup) {
-            currentGroup = createNewGroup();
-        }
-
-        currentGroup.clauses.push(clause);
-        if (isValidSentence) {
-            currentGroup.validCount++;
-        }
-
-        currentGroup.fullText = renderGroupText(currentGroup, false);
-        currentGroup.elem.textContent = currentGroup.fullText;
-
-        // 加大歷史記錄長度，由原本的 350 改為 1000，確保長篇提詞不會遺忘已說過的字
-        confirmedPlainHistory += cleanClause;
-        if (confirmedPlainHistory.length > 1000) {
-            confirmedPlainHistory = confirmedPlainHistory.slice(-600);
-        }
-
-        if (currentGroup.validCount >= MAX_VALID_SENTENCES_PER_GROUP) {
-            finalizeCurrentGroup();
-        }
-    }
-
-    refreshGroupHighlights();
-    scrollCantoToBottom();
-
-    if (currentGroup) {
-        longPauseTimer = setTimeout(() => {
-            finalizeCurrentGroup();
-        }, LONG_PAUSE_THRESHOLD);
-    }
-}
-
-        /* ------------------ 3. 語音辨識機制（Web Speech API） ------------------ */
-
+        /* ------------------ 5. 語音辨識機制 ------------------ */
         function handleSpeechInterim(interim) {
             if (!interim || !interim.trim()) {
                 interimPart.textContent = "";
+                if (currentMode === 'broadcast') broadcastSecurePayload({ type: 'interim', text: "" });
                 return;
             }
             let delta = extractNonOverlappingDelta(convertToHK(interim.trim()));
-            if (delta) {
-                interimPart.textContent = delta;
-                scrollCantoToBottom();
-            } else {
-                interimPart.textContent = "";
-            }
+            interimPart.textContent = delta || "";
+            if (currentMode === 'broadcast') broadcastSecurePayload({ type: 'interim', text: delta || "" });
+            if (delta) scrollCantoToBottom();
         }
 
         function handleSpeechFinal(finalText) {
             if (!finalText || !finalText.trim()) return;
-
             const cleanFinal = cleanString(finalText);
             const now = Date.now();
-
             if (cleanFinal === lastFinalCleanText && (now - lastFinalTimestamp < 1800)) {
                 interimPart.textContent = "";
+                if (currentMode === 'broadcast') broadcastSecurePayload({ type: 'interim', text: "" });
                 return;
             }
-
             lastFinalCleanText = cleanFinal;
             lastFinalTimestamp = now;
             interimPart.textContent = "";
-
+            if (currentMode === 'broadcast') broadcastSecurePayload({ type: 'interim', text: "" });
             commitSpeechDelta(finalText);
         }
 
@@ -990,7 +972,6 @@ function renderGroupText(group, isFinalized = false) {
         let wakeLock = null;
         let restartDebounce = null;
 
-        const toggleBtn = document.getElementById('toggleBtn');
         const playIcon = document.getElementById('playIcon');
         const pauseIcon = document.getElementById('pauseIcon');
 
@@ -1015,27 +996,12 @@ function renderGroupText(group, isFinalized = false) {
             clearTimeout(restartDebounce);
             restartDebounce = setTimeout(() => {
                 if (userWantsListening && !isEngineRunning && recognition) {
-                    try {
-                        recognition.start();
-                    } catch (e) {
-                        setTimeout(() => {
-                            if (userWantsListening && !isEngineRunning && recognition) {
-                                try { recognition.start(); } catch(err) {}
-                            }
-                        }, 120);
-                    }
+                    try { recognition.start(); } catch (e) {}
                 }
             }, 80);
         }
 
-        document.addEventListener('visibilitychange', () => {
-            if (document.visibilityState === 'visible' && userWantsListening) {
-                acquireWakeLock();
-                scheduleSafeRestart();
-            }
-        });
-
-        if (SpeechRecognition) {
+        if (SpeechRecognition && !isReceiverMode) {
             recognition = new SpeechRecognition();
             recognition.continuous = true;
             recognition.interimResults = true;
@@ -1054,67 +1020,40 @@ function renderGroupText(group, isFinalized = false) {
                 for (let i = event.resultIndex; i < event.results.length; ++i) {
                     const res = event.results[i];
                     if (!res || !res[0]) continue;
-                    const trans = res[0].transcript;
-
-                    if (res.isFinal) {
-                        handleSpeechFinal(trans);
-                    } else {
-                        interim += trans;
-                    }
+                    if (res.isFinal) handleSpeechFinal(res[0].transcript);
+                    else interim += res[0].transcript;
                 }
-                if (interim) {
-                    handleSpeechInterim(interim);
-                }
+                if (interim) handleSpeechInterim(interim);
             };
 
             recognition.onerror = (e) => {
                 if (e.error === 'not-allowed') {
                     userWantsListening = false;
                     stopListeningUI();
-                    alert("請允許麥克風權限以進行提詞。");
-                } else if (e.error === 'no-speech') {
-                    if (userWantsListening) scheduleSafeRestart();
-                } else {
-                    scheduleSafeRestart();
-                }
+                } else scheduleSafeRestart();
             };
 
-          recognition.onend = () => {
-    isEngineRunning = false;
-    // 斷開時直接清空未定稿的暫存區，絕不強行寫入主提詞流，避免無標點重複文字湧現
-    interimPart.textContent = "";
-
-    if (userWantsListening) {
-        scheduleSafeRestart();
-    } else {
-        stopListeningUI();
-    }
-};
-        }
-
-        function stopListeningSession() {
-            userWantsListening = false;
-            if (restartDebounce) clearTimeout(restartDebounce);
-            finalizeCurrentGroup();
-            releaseWakeLock();
-            try { recognition.stop(); } catch(e) {}
-            stopListeningUI();
+            recognition.onend = () => {
+                isEngineRunning = false;
+                interimPart.textContent = "";
+                if (userWantsListening) scheduleSafeRestart();
+                else stopListeningUI();
+            };
         }
 
         function toggleSpeech() {
-            if (!recognition) {
-                alert("此瀏覽器不支援 Web Speech API，建議使用 Safari、Edge 或 Chrome。");
-                return;
-            }
-
+            if (!recognition) return alert("瀏覽器不支援語音辨識。");
             if (userWantsListening) {
-                stopListeningSession();
-                showToast("已停止提詞");
+                userWantsListening = false;
+                if (restartDebounce) clearTimeout(restartDebounce);
+                finalizeCurrentGroup();
+                releaseWakeLock();
+                try { recognition.stop(); } catch(e) {}
+                stopListeningUI();
             } else {
                 userWantsListening = true;
                 acquireWakeLock();
                 scheduleSafeRestart();
-                showToast("提詞已啟動");
             }
         }
 
@@ -1125,7 +1064,115 @@ function renderGroupText(group, isFinalized = false) {
             interimPart.textContent = "";
         }
 
-        /* ------------------ 4. 字體調節 ------------------ */
+        /* ------------------ 6. 端到端加密雲端廣播連線 ------------------ */
+        async function broadcastSecurePayload(payload) {
+            if (mqttClient && mqttClient.connected && currentMode === 'broadcast') {
+                const encryptedString = await encryptPayload(payload);
+                mqttClient.publish(`canto/${currentRoomId}`, encryptedString);
+            }
+        }
+
+        async function initReceiverCloud() {
+            await initEncryptionKey(currentSecretKey);
+            mqttClient = mqtt.connect('wss://broker.emqx.io:8084/mqtt', { clean: true });
+            
+            mqttClient.on('connect', () => {
+                mqttClient.subscribe(`canto/${currentRoomId}`);
+            });
+
+            mqttClient.on('message', async (topic, msg) => {
+                const data = await decryptPayload(msg.toString());
+                if (!data) return;
+
+                if (data.type === 'interim') {
+                    interimPart.textContent = data.text;
+                    if (data.text) scrollCantoToBottom();
+                } else if (data.type === 'update_group') {
+                    interimPart.textContent = ""; 
+
+                    if (!currentGroup) currentGroup = createNewGroup();
+                    currentGroup.fullText = data.fullText;
+                    currentGroup.elem.textContent = data.fullText;
+                    refreshGroupHighlights();
+                    scrollCantoToBottom();
+                } else if (data.type === 'finalize') {
+                    interimPart.textContent = ""; 
+
+                    if (currentGroup) {
+                        currentGroup.fullText = data.fullText;
+                        currentGroup.elem.textContent = data.fullText;
+                        currentGroup = null;
+                        refreshGroupHighlights();
+                    }
+                }
+            });
+        }
+
+        async function switchToBroadcastMode() {
+            if (currentMode === 'broadcast') {
+                openQrModal();
+                return;
+            }
+            currentMode = 'broadcast';
+
+            if (!currentRoomId) currentRoomId = 'r_' + Math.floor(100000 + Math.random() * 900000);
+            if (!currentSecretKey) currentSecretKey = Math.random().toString(36).substring(2, 12);
+
+            await initEncryptionKey(currentSecretKey);
+
+            if (!mqttClient) {
+                mqttClient = mqtt.connect('wss://broker.emqx.io:8084/mqtt', { clean: true });
+            }
+
+            updateUIState();
+            setupMinimalQR();
+            openQrModal();
+        }
+
+        function switchToSoloMode() {
+            currentMode = 'solo';
+            if (mqttClient) {
+                try { mqttClient.end(); } catch(e) {}
+                mqttClient = null;
+            }
+            updateUIState();
+        }
+
+        function setupMinimalQR() {
+            const currentUrl = `${window.location.origin}${window.location.pathname}?room=${currentRoomId}#${currentSecretKey}`;
+            const linkElem = document.getElementById('roomLinkText');
+            linkElem.innerText = currentUrl;
+
+            const qrContainer = document.getElementById('qrContainer');
+            qrContainer.innerHTML = "";
+            new QRCode(qrContainer, {
+                text: currentUrl,
+                width: 190,
+                height: 190,
+                colorDark: "#000000",
+                colorLight: "#ffffff",
+                correctLevel: QRCode.CorrectLevel.M
+            });
+        }
+
+        function copyShareLink() {
+            const text = document.getElementById('roomLinkText').innerText;
+            navigator.clipboard.writeText(text).then(() => {
+                showToast("已複製連結");
+            });
+        }
+
+        const qrModal = document.getElementById('qrModal');
+        function openQrModal() { qrModal.classList.add('active'); }
+        function closeQrModal() { qrModal.classList.remove('active'); }
+
+        // 初始化
+        updateUIState();
+        if (isReceiverMode) {
+            initReceiverCloud();
+        }
+
+        /* ------------------ 7. 字體調節 ------------------ */
         const fontScales = [
             { name: "標準", canto: "2.15rem" },
             { name: "放大", canto: "2.60rem" },
@@ -1141,7 +1188,7 @@ function renderGroupText(group, isFinalized = false) {
             scrollCantoToBottom();
         }
 
-        /* ------------------ 5. 粵拼注音彈窗與朗讀 ------------------ */
+        /* ------------------ 8. 粵拼注音與朗讀 ------------------ */
         const modal = document.getElementById('phoneticModal');
         const modalContent = document.getElementById('modalContent');
         const ttsStatus = document.getElementById('ttsStatus');
@@ -1207,6 +1254,7 @@ function renderGroupText(group, isFinalized = false) {
 
         function closeModalOnBackdrop(event) {
             if (event.target === modal) closePhoneticModal();
+            if (event.target === qrModal) closeQrModal();
         }
 
         function speakCurrentText() {
