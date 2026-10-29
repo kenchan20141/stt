@@ -963,19 +963,23 @@
             if (delta) scrollCantoToBottom();
         }
 
-        function handleSpeechFinal(finalText) {
-            if (!finalText || !finalText.trim()) return;
-            const cleanFinal = cleanString(finalText);
-            const now = Date.now();
-            if (cleanFinal === lastFinalCleanText && (now - lastFinalTimestamp < 1800)) {
-                interimPart.textContent = "";
-                return;
-            }
-            lastFinalCleanText = cleanFinal;
-            lastFinalTimestamp = now;
-            interimPart.textContent = "";
-            commitSpeechDelta(finalText);
-        }
+       function handleSpeechFinal(finalText) {
+    if (!finalText || !finalText.trim()) return;
+    const cleanFinal = cleanString(finalText);
+    const now = Date.now();
+    if (cleanFinal === lastFinalCleanText && (now - lastFinalTimestamp < 1800)) {
+        interimPart.textContent = "";
+        // 【修復】通知接收端清空 interim
+        if (currentMode === 'broadcast') broadcastSecurePayload({ type: 'interim', text: "" });
+        return;
+    }
+    lastFinalCleanText = cleanFinal;
+    lastFinalTimestamp = now;
+    interimPart.textContent = "";
+    // 【修復】通知接收端清空 interim
+    if (currentMode === 'broadcast') broadcastSecurePayload({ type: 'interim', text: "" });
+    commitSpeechDelta(finalText);
+}
 
         const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
         let recognition = null;
@@ -1092,28 +1096,34 @@
                 mqttClient.subscribe(`canto/${currentRoomId}`);
             });
 
-            mqttClient.on('message', async (topic, msg) => {
-                const data = await decryptPayload(msg.toString());
-                if (!data) return;
+           mqttClient.on('message', async (topic, msg) => {
+    const data = await decryptPayload(msg.toString());
+    if (!data) return;
 
-                if (data.type === 'interim') {
-                    interimPart.textContent = data.text;
-                    if (data.text) scrollCantoToBottom();
-                } else if (data.type === 'update_group') {
-                    if (!currentGroup) currentGroup = createNewGroup();
-                    currentGroup.fullText = data.fullText;
-                    currentGroup.elem.textContent = data.fullText;
-                    refreshGroupHighlights();
-                    scrollCantoToBottom();
-                } else if (data.type === 'finalize') {
-                    if (currentGroup) {
-                        currentGroup.fullText = data.fullText;
-                        currentGroup.elem.textContent = data.fullText;
-                        currentGroup = null;
-                        refreshGroupHighlights();
-                    }
-                }
-            });
+    if (data.type === 'interim') {
+        interimPart.textContent = data.text;
+        if (data.text) scrollCantoToBottom();
+    } else if (data.type === 'update_group') {
+        // 【修復】接收到正式文字時，立即清空臨時暫存區
+        interimPart.textContent = ""; 
+
+        if (!currentGroup) currentGroup = createNewGroup();
+        currentGroup.fullText = data.fullText;
+        currentGroup.elem.textContent = data.fullText;
+        refreshGroupHighlights();
+        scrollCantoToBottom();
+    } else if (data.type === 'finalize') {
+        // 【修復】結束句組時也確保清空臨時暫存區
+        interimPart.textContent = ""; 
+
+        if (currentGroup) {
+            currentGroup.fullText = data.fullText;
+            currentGroup.elem.textContent = data.fullText;
+            currentGroup = null;
+            refreshGroupHighlights();
+        }
+    }
+});
         }
 
         async function switchToBroadcastMode() {
