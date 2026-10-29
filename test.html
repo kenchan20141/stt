@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>3D 實時粵普字幕機</title>
+    <title>3D 實時粵普字幕機 (Qwen 旗艦版)</title>
 
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -48,7 +48,6 @@
             user-select: none;
         }
 
-        /* 3D 演播室環境背景 */
         body {
             background-color: var(--bg);
             color: var(--cantonese);
@@ -62,7 +61,7 @@
             perspective: 1200px;
         }
 
-        /* Three.js 3D 機體全屏畫布 */
+        /* Three.js 全屏底層畫布 */
         #threeCanvas {
             position: fixed;
             top: 0;
@@ -73,7 +72,7 @@
             pointer-events: none;
         }
 
-        /* 3D 字幕機主殼容器：立體金屬提詞機結構 */
+        /* 3D 物理提詞機外殼 */
         .teleprompter-rig {
             position: relative;
             z-index: 10;
@@ -88,7 +87,7 @@
             box-sizing: border-box;
             pointer-events: auto;
             transform-style: preserve-3d;
-            transition: transform 0.15s ease-out;
+            will-change: transform;
         }
 
         @media (max-width: 768px) {
@@ -100,7 +99,6 @@
             }
         }
 
-        /* 嵌入式高解析提詞屏機體 */
         .rig-screen-enclosure {
             flex: 1;
             display: flex;
@@ -117,17 +115,15 @@
             min-height: 0;
         }
 
-        /* 提詞機光學微弧反射紋理 */
         .rig-screen-enclosure::after {
             content: "";
             position: absolute;
             inset: 0;
-            background: linear-gradient(135deg, rgba(255, 255, 255, 0.035) 0%, rgba(255, 255, 255, 0) 40%, rgba(0, 0, 0, 0.2) 100%);
+            background: linear-gradient(135deg, rgba(255, 255, 255, 0.03) 0%, rgba(255, 255, 255, 0) 40%, rgba(0, 0, 0, 0.2) 100%);
             pointer-events: none;
             z-index: 25;
         }
 
-        /* 頂部控制欄 */
         header {
             padding: 10px 20px;
             display: flex;
@@ -145,6 +141,19 @@
             color: #94a3b8;
             letter-spacing: 0.8px;
             font-family: "Noto Sans HK", sans-serif;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .model-badge {
+            font-size: 0.65rem;
+            background: rgba(56, 189, 248, 0.15);
+            color: #38bdf8;
+            border: 1px solid rgba(56, 189, 248, 0.35);
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-weight: 500;
         }
 
         .btn-group {
@@ -180,6 +189,7 @@
             height: 40px;
             border-radius: 50%;
             box-shadow: 0 0 16px rgba(239, 68, 68, 0.4);
+            transition: all 0.3s ease;
         }
 
         .power-btn.active {
@@ -187,7 +197,6 @@
             box-shadow: 0 0 16px rgba(16, 185, 129, 0.5);
         }
 
-        /* 雙欄主視圖容器 */
         .viewport-container {
             flex: 1;
             display: flex;
@@ -197,7 +206,6 @@
             min-height: 0; 
         }
 
-        /* 欄位封裝 */
         .column-box {
             display: flex;
             flex-direction: column;
@@ -217,7 +225,6 @@
             background-color: var(--mando-bg);
         }
 
-        /* 標籤欄 */
         .column-header {
             padding: 8px 18px;
             display: flex;
@@ -228,13 +235,8 @@
             z-index: 10;
         }
 
-        .canto-column .column-header {
-            background: #090a0f;
-        }
-
-        .mando-column .column-header {
-            background: #0d1117;
-        }
+        .canto-column .column-header { background: #090a0f; }
+        .mando-column .column-header { background: #0d1117; }
 
         .pane-tag {
             font-family: "Noto Sans HK", sans-serif;
@@ -263,7 +265,6 @@
             color: #64748b;
         }
 
-        /* 獨立滾動區域 */
         .scroll-body {
             flex: 1;
             overflow-y: auto;
@@ -273,15 +274,9 @@
             z-index: 1;
         }
 
-        .canto-scroll-body {
-            padding: 16px 20px 40px 20px;
-        }
+        .canto-scroll-body { padding: 16px 20px 40px 20px; }
+        .mando-scroll-body { padding: 16px 20px 20px 20px; }
 
-        .mando-scroll-body {
-            padding: 16px 20px 20px 20px;
-        }
-
-        /* 底部安全緩衝墊片 */
         .bottom-safe-spacer {
             height: calc(80px + env(safe-area-inset-bottom, 24px));
             width: 100%;
@@ -289,7 +284,6 @@
             flex-shrink: 0;
         }
 
-        /* 文字排版 */
         .cantonese-content {
             font-family: "Noto Serif HK", serif;
             font-size: var(--cantonese-size);
@@ -317,18 +311,6 @@
             word-break: break-word;
         }
 
-        .mandarin-pending {
-            color: #64748b;
-            font-size: 0.9em;
-            margin-left: 4px;
-            animation: pulseQuiet 1.2s infinite;
-        }
-
-        @keyframes pulseQuiet {
-            0%, 100% { opacity: 0.25; }
-            50% { opacity: 0.7; }
-        }
-
         #fontToast {
             position: fixed;
             top: 58px;
@@ -337,14 +319,15 @@
             border: 1px solid rgba(56, 189, 248, 0.3);
             color: #38bdf8;
             font-size: 0.8rem;
-            padding: 5px 10px;
+            padding: 6px 12px;
             border-radius: 6px;
             pointer-events: none;
             opacity: 0;
             transform: translateY(-4px);
-            transition: all 0.2s ease;
+            transition: all 0.25s ease;
             z-index: 40;
             font-family: "Noto Sans HK", sans-serif;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
         }
 
         #fontToast.show { opacity: 1; transform: translateY(0); }
@@ -443,7 +426,7 @@
             align-items: center;
         }
 
-        /* 逐字輸出時的跟隨光標 */
+        /* 逐字跟隨光標 */
         .typing-cursor::after {
             content: " ▍";
             display: inline-block;
@@ -470,17 +453,19 @@
 </head>
 <body>
 
-    <!-- 3D 演播室立體字幕機實體底層 -->
+    <!-- 3D 演播室立體底層 -->
     <canvas id="threeCanvas"></canvas>
 
-    <!-- 3D 物理提詞機主體裝配架 -->
+    <!-- 3D 提詞機機體架 -->
     <main id="teleprompterRig" class="teleprompter-rig">
 
-        <!-- 提詞機嵌入式屏幕箱體 -->
         <div class="rig-screen-enclosure">
 
             <header>
-                <span class="brand-title">實時粵普字幕</span>
+                <div class="brand-title">
+                    <span>實時粵普字幕</span>
+                    <span class="model-badge">Qwen 3.8</span>
+                </div>
                 <div class="btn-group">
                     <button class="icon-btn" title="切換字體" onclick="cycleFontSize()">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
@@ -507,7 +492,7 @@
             <!-- 上下獨立視口 -->
             <div class="viewport-container">
                 
-                <!-- 上欄：粵語區 -->
+                <!-- 上欄：粵語原文（純瀏覽器語音辨識，舊版高可靠機制） -->
                 <section class="column-box canto-column">
                     <div class="column-header">
                         <span class="pane-tag tag-canto">粵語原文</span>
@@ -528,14 +513,13 @@
                     </div>
                 </section>
 
-                <!-- 下欄：普通話區 -->
+                <!-- 下欄：普通話翻譯（由 Qwen 引擎驅動） -->
                 <section class="column-box mando-column">
                     <div class="column-header">
                         <span class="pane-tag tag-mando">普通話翻譯</span>
                     </div>
                     <div id="mandoScroll" class="scroll-body mando-scroll-body">
                         <div id="mandarinContent" class="mandarin-content"></div>
-                        <!-- 防手機功能鍵/手勢條遮擋墊片 -->
                         <div class="bottom-safe-spacer"></div>
                     </div>
                 </section>
@@ -571,94 +555,52 @@
     </div>
 
     <script>
-        /* ------------------ 0. Three.js 3D 演播室字幕機實體構建 ------------------ */
+        /* ------------------ 0. Three.js 3D 輕量化演播室機體 ------------------ */
         const canvas = document.getElementById('threeCanvas');
         const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
         renderer.setSize(window.innerWidth, window.innerHeight);
-        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5)); // 限制像素比，防高分屏卡頓
 
         const scene = new THREE.Scene();
         const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 100);
         camera.position.set(0, 0, 24);
 
-        // 機體主容器
         const machineGroup = new THREE.Group();
         scene.add(machineGroup);
 
-        // 金屬遮光外殼
-        const hoodMat = new THREE.MeshStandardMaterial({
-            color: 0x141822,
-            metalness: 0.82,
-            roughness: 0.28
-        });
+        const hoodMat = new THREE.MeshStandardMaterial({ color: 0x141822, metalness: 0.8, roughness: 0.3 });
+        const bezelMat = new THREE.MeshStandardMaterial({ color: 0x222a38, metalness: 0.85, roughness: 0.25 });
 
-        const bezelMat = new THREE.MeshStandardMaterial({
-            color: 0x222a38,
-            metalness: 0.9,
-            roughness: 0.2
-        });
-
-        // 機身主箱體
-        const chassisGeo = new THREE.BoxGeometry(19.5, 23.5, 2.0);
-        const chassis = new THREE.Mesh(chassisGeo, hoodMat);
+        // 主機殼
+        const chassis = new THREE.Mesh(new THREE.BoxGeometry(19.5, 23.5, 2.0), hoodMat);
         chassis.position.z = -1.2;
         machineGroup.add(chassis);
 
-        // 頂部遮光翼板
-        const topHoodGeo = new THREE.BoxGeometry(19.6, 0.35, 3.2);
-        const topHood = new THREE.Mesh(topHoodGeo, bezelMat);
+        // 頂部/兩側遮光罩
+        const topHood = new THREE.Mesh(new THREE.BoxGeometry(19.6, 0.35, 3.2), bezelMat);
         topHood.position.set(0, 11.8, 0.4);
         topHood.rotation.x = 0.15;
         machineGroup.add(topHood);
 
-        // 左側遮光翼板
-        const leftHoodGeo = new THREE.BoxGeometry(0.35, 23.6, 3.2);
-        const leftHood = new THREE.Mesh(leftHoodGeo, bezelMat);
+        const leftHood = new THREE.Mesh(new THREE.BoxGeometry(0.35, 23.6, 3.2), bezelMat);
         leftHood.position.set(-9.85, 0, 0.4);
         leftHood.rotation.y = -0.15;
         machineGroup.add(leftHood);
 
-        // 右側遮光翼板
         const rightHood = leftHood.clone();
         rightHood.position.x = 9.85;
         rightHood.rotation.y = 0.15;
         machineGroup.add(rightHood);
 
-        // 機身四角裝配內六角螺釘
-        const boltGeo = new THREE.CylinderGeometry(0.18, 0.18, 0.4, 6);
-        const boltMat = new THREE.MeshStandardMaterial({ color: 0x64748b, metalness: 0.95, roughness: 0.1 });
-        const boltOffsets = [
-            [-9.2, 11.2], [9.2, 11.2],
-            [-9.2, -11.2], [9.2, -11.2]
-        ];
-        boltOffsets.forEach(([bx, by]) => {
-            const bolt = new THREE.Mesh(boltGeo, boltMat);
-            bolt.rotation.x = Math.PI / 2;
-            bolt.position.set(bx, by, 0.2);
-            machineGroup.add(bolt);
-        });
-
-        // 底部重型金屬支撐關節
-        const mountGeo = new THREE.CylinderGeometry(1.2, 1.5, 3.0, 16);
-        const mount = new THREE.Mesh(mountGeo, hoodMat);
-        mount.position.set(0, -13.0, -1.2);
-        machineGroup.add(mount);
-
-        // 演播室燈光組
-        const ambientLight = new THREE.AmbientLight(0xffffff, 0.55);
-        scene.add(ambientLight);
-
-        const keyLight = new THREE.DirectionalLight(0xbae6fd, 0.85);
+        // 燈光
+        scene.add(new THREE.AmbientLight(0xffffff, 0.6));
+        const keyLight = new THREE.DirectionalLight(0xbae6fd, 0.8);
         keyLight.position.set(10, 15, 18);
         scene.add(keyLight);
 
-        const rimLight = new THREE.DirectionalLight(0x38bdf8, 0.45);
-        rimLight.position.set(-15, -10, 10);
-        scene.add(rimLight);
-
-        // 滑鼠與觸控 3D 視差
-        let targetRotX = 0;
-        let targetRotY = 0;
+        // 視差變換
+        let targetRotX = 0, targetRotY = 0;
+        let smoothRotX = 0, smoothRotY = 0;
         const rigElement = document.getElementById('teleprompterRig');
 
         window.addEventListener('mousemove', (e) => {
@@ -666,10 +608,6 @@
             const ny = (e.clientY / window.innerHeight) * 2 - 1;
             targetRotY = nx * 0.08;
             targetRotX = -ny * 0.06;
-
-            if (rigElement) {
-                rigElement.style.transform = `rotateX(${-ny * 4.5}deg) rotateY(${nx * 5.5}deg)`;
-            }
         });
 
         window.addEventListener('resize', () => {
@@ -680,15 +618,20 @@
 
         function render3DLoop() {
             requestAnimationFrame(render3DLoop);
+            smoothRotY += (targetRotY - smoothRotY) * 0.08;
+            smoothRotX += (targetRotX - smoothRotX) * 0.08;
 
-            machineGroup.rotation.y += (targetRotY - machineGroup.rotation.y) * 0.08;
-            machineGroup.rotation.x += (targetRotX - machineGroup.rotation.x) * 0.08;
+            machineGroup.rotation.y = smoothRotY;
+            machineGroup.rotation.x = smoothRotX;
 
+            if (rigElement) {
+                rigElement.style.transform = `rotateX(${smoothRotX * 60}deg) rotateY(${smoothRotY * 60}deg)`;
+            }
             renderer.render(scene, camera);
         }
         render3DLoop();
 
-        /* ------------------ 1. 繁體字與字串安全過濾器 ------------------ */
+        /* ------------------ 1. 繁體轉換與輔助工具 ------------------ */
         let hkConverter = null;
         try {
             if (window.OpenCC) {
@@ -704,20 +647,20 @@
             return text;
         }
 
-        function sanitizeAiOutput(text) {
-            if (!text) return "";
-            let cleaned = text;
-            cleaned = cleaned.replace(/^(翻譯結果|譯文|普通話|現代標準中文)[：:\s]*/i, '');
-            cleaned = cleaned.replace(/^[（(][^）)]*[）)]\s*/g, '');
-            cleaned = cleaned.replace(/[`"'“”‘’]/g, '');
-            return cleaned.trim();
-        }
-
         function cleanString(str) {
             return (str || '').replace(/[，。？！、\s\.,!\?]/g, '');
         }
 
-        /* ------------------ 2. 極致平滑「逐字」流式翻譯打字機 ------------------ */
+        const fontToast = document.getElementById('fontToast');
+        let toastTimer = null;
+        function showToast(msg) {
+            fontToast.innerText = msg;
+            fontToast.classList.add('show');
+            clearTimeout(toastTimer);
+            toastTimer = setTimeout(() => fontToast.classList.remove('show'), 1500);
+        }
+
+        /* ------------------ 2. 極速平滑逐字打字機 ------------------ */
         let recentContextList = [];
 
         class TypewriterStream {
@@ -728,21 +671,19 @@
                 this.queue = [];
                 this.timer = null;
                 this.isFinished = false;
-                this.baseSpeed = 22;
+                this.baseSpeed = 20;
             }
 
             push(text) {
                 if (!text) return;
-                for (const char of text) {
-                    this.queue.push(char);
-                }
+                for (const char of text) this.queue.push(char);
                 if (!this.timer) this.tick();
             }
 
             tick() {
                 const step = () => {
                     if (this.queue.length > 0) {
-                        const popCount = this.queue.length > 12 ? 2 : 1;
+                        const popCount = this.queue.length > 10 ? 2 : 1;
                         for (let i = 0; i < popCount && this.queue.length > 0; i++) {
                             this.el.textContent += this.queue.shift();
                         }
@@ -750,9 +691,7 @@
                         this.timer = setTimeout(step, this.baseSpeed);
                     } else {
                         this.timer = null;
-                        if (this.isFinished && this.onDone) {
-                            this.onDone();
-                        }
+                        if (this.isFinished && this.onDone) this.onDone();
                     }
                 };
                 step();
@@ -766,6 +705,7 @@
             }
         }
 
+        /* ------------------ 3. Qwen 普通話翻譯專屬調用 ------------------ */
         async function translateDeltaWithPuter(newSentence, targetSpan) {
             if (!newSentence || !newSentence.trim()) {
                 targetSpan.remove();
@@ -785,8 +725,8 @@
                 const messages = [
                     {
                         role: "system",
-                        content: `你是頂級粵語轉現代普通話專家。請參考前文理解語境，將當前句翻譯為自然流暢的繁體普通話。
-要求：只翻譯當前句，嚴禁翻譯前文，只輸出譯文內容，禁止任何解釋。`
+                        content: `你是頂級粵語轉現代標準普通話專家。請參考前文理解語境，將當前句翻譯為自然流暢的繁體普通話。
+要求：只翻譯當前句，嚴禁重複前文，只輸出譯文內容，禁止附帶任何解釋。`
                     },
                     {
                         role: "user",
@@ -802,22 +742,27 @@
                     () => scrollMandoToBottom(),
                     () => {
                         targetSpan.classList.remove("typing-cursor");
-
                         let txt = targetSpan.textContent.trim();
                         if (txt && !/[，。？！、]$/.test(txt)) {
                             targetSpan.textContent = txt + "，";
                         }
-
                         recentContextList.push(newSentence);
                         if (recentContextList.length > 2) recentContextList.shift();
                         scrollMandoToBottom();
                     }
                 );
 
-              const response = await puter.ai.chat(messages, {
-    model: "infron:qwen/qwen3.8-27b-abliterated-cyber:free",  // 指定免費且中文翻譯優秀的 Qwen 模型
-    stream: true
-});
+                let response;
+                try {
+                    // 使用指定且中文優秀的 Qwen 3.8 旗艦開源模型
+                    response = await puter.ai.chat(messages, {
+                        model: "infron:qwen/qwen3.8-27b-abliterated-cyber:free",
+                        stream: true
+                    });
+                } catch (qwenErr) {
+                    console.warn("Qwen 免費節點繁忙，無縫啟用常規備用通道:", qwenErr);
+                    response = await puter.ai.chat(messages, { stream: true });
+                }
 
                 for await (const part of response) {
                     const rawToken = part?.text ?? "";
@@ -828,13 +773,13 @@
                 writer.finish();
 
             } catch (err) {
-                console.error("【Puter.js 翻譯異常】：", err);
+                console.error("【翻譯處理異常】：", err);
                 targetSpan.classList.remove("typing-cursor");
                 if (!targetSpan.textContent.trim()) targetSpan.remove();
             }
         }
 
-        /* ------------------ 3. 雙欄精準滾動與文字流 ------------------ */
+        /* ------------------ 4. 粵語原文雙軌處理（舊版原生高可靠架構） ------------------ */
         const cantoScroll = document.getElementById('cantoScroll');
         const mandoScroll = document.getElementById('mandoScroll');
         const confirmedPart = document.getElementById('confirmedPart');
@@ -851,31 +796,26 @@
         let autoScrollMando = true;
 
         cantoScroll.addEventListener('scroll', () => {
-            const threshold = 80;
-            autoScrollCanto = (cantoScroll.scrollHeight - cantoScroll.scrollTop - cantoScroll.clientHeight) < threshold;
+            autoScrollCanto = (cantoScroll.scrollHeight - cantoScroll.scrollTop - cantoScroll.clientHeight) < 80;
         });
 
         mandoScroll.addEventListener('scroll', () => {
-            const threshold = 120;
-            autoScrollMando = (mandoScroll.scrollHeight - mandoScroll.scrollTop - mandoScroll.clientHeight) < threshold;
+            autoScrollMando = (mandoScroll.scrollHeight - mandoScroll.scrollTop - mandoScroll.clientHeight) < 120;
         });
 
         function scrollCantoToBottom() {
             if (autoScrollCanto) {
-                requestAnimationFrame(() => {
-                    cantoScroll.scrollTop = cantoScroll.scrollHeight;
-                });
+                requestAnimationFrame(() => { cantoScroll.scrollTop = cantoScroll.scrollHeight; });
             }
         }
 
         function scrollMandoToBottom() {
             if (autoScrollMando) {
-                requestAnimationFrame(() => {
-                    mandoScroll.scrollTop = mandoScroll.scrollHeight;
-                });
+                requestAnimationFrame(() => { mandoScroll.scrollTop = mandoScroll.scrollHeight; });
             }
         }
 
+        // 實時臨時字句展示（純本地處理，毫秒級響應）
         function handleSpeechInterim(interim) {
             if (!interim) return;
             interimPart.className = "interim-text typing-cursor";
@@ -883,6 +823,7 @@
             scrollCantoToBottom();
         }
 
+        // 確定期語音斷句處理（純原生分流，完全不依賴 Qwen）
         function handleSpeechFinal(finalText) {
             if (!finalText || !finalText.trim()) return;
 
@@ -892,6 +833,7 @@
             const cleanFinal = cleanString(finalText);
             const now = Date.now();
 
+            // 防短時間重複觸發
             if (cleanFinal === lastFinalCleanText && (now - lastFinalTimestamp < 2000)) return;
 
             const cleanConfirmed = cleanString(rawConfirmedText);
@@ -914,12 +856,14 @@
             rawConfirmedText += delta; 
             charCount.textContent = `${cleanString(rawConfirmedText).length} 字`;
 
+            // 1. 【粵語區】：舊版可靠本地打字機直接渲染，不經由任何 AI
             const cantoSpan = document.createElement('span');
             cantoSpan.className = "typing-cursor";
             cantoSpan.textContent = "";
             confirmedPart.appendChild(cantoSpan);
             scrollCantoToBottom();
 
+            // 2. 【普通話區】：準備承接 Qwen 翻譯
             const mandoSpan = document.createElement('span');
             mandarinContent.appendChild(mandoSpan);
             scrollMandoToBottom();
@@ -941,50 +885,81 @@
 
                 cantoWriter.push(delta);
                 cantoWriter.finish();
-            }, 120);
+            }, 100);
 
+            // 僅由普通話翻譯獨立呼叫 Qwen
             translateDeltaWithPuter(delta, mandoSpan);
         }
 
-        /* ------------------ 4. 語音辨識與防休眠 ------------------ */
+        /* ------------------ 5. 語音辨識、防崩潰重啟與 10 秒休眠 ------------------ */
         const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
         let recognition = null;
         let userWantsListening = false;
         let isEngineRunning = false;
         let wakeLock = null;
 
+        // 10 秒無聲休眠計時器
+        let silenceTimeout = null;
+        let restartDebounce = null;
+        const SILENCE_LIMIT_MS = 10000;
+
         const toggleBtn = document.getElementById('toggleBtn');
         const playIcon = document.getElementById('playIcon');
         const pauseIcon = document.getElementById('pauseIcon');
 
-        const SILENT_AUDIO_URI = "data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA=";
-        const keepAliveAudio = new Audio(SILENT_AUDIO_URI);
-        keepAliveAudio.loop = true;
+        // 觸發或重置 10 秒倒數計時
+        function touchSilenceTimer() {
+            if (!userWantsListening) return;
+            if (silenceTimeout) clearTimeout(silenceTimeout);
 
+            silenceTimeout = setTimeout(() => {
+                console.log("偵測到連續 10 秒無聲音，自動進入省電休眠");
+                showToast("10秒無聲音，已休眠");
+                hibernateRecognition();
+            }, SILENCE_LIMIT_MS);
+        }
+
+        // 螢幕保持常亮（WakeLock）
         async function acquireWakeLock() {
             try {
-                if ('wakeLock' in navigator) wakeLock = await navigator.wakeLock.request('screen');
+                if ('wakeLock' in navigator && !wakeLock) {
+                    wakeLock = await navigator.wakeLock.request('screen');
+                    wakeLock.addEventListener('release', () => { wakeLock = null; });
+                }
             } catch (err) {}
         }
 
         function releaseWakeLock() {
-            if (wakeLock) { wakeLock.release().catch(() => {}); wakeLock = null; }
-        }
-
-        function ensureRecognitionActive() {
-            if (userWantsListening && !isEngineRunning && recognition) {
-                try { recognition.start(); } catch (e) {}
+            if (wakeLock) {
+                wakeLock.release().catch(() => {});
+                wakeLock = null;
             }
         }
 
-        setInterval(() => {
-            if (userWantsListening) ensureRecognitionActive();
-        }, 400);
+        // 安全非阻塞重啟（徹底替代過去的 400ms 死循環）
+        function scheduleSafeRestart() {
+            if (!userWantsListening) return;
+            clearTimeout(restartDebounce);
+            restartDebounce = setTimeout(() => {
+                if (userWantsListening && !isEngineRunning && recognition) {
+                    try {
+                        recognition.start();
+                    } catch (e) {
+                        // 若瀏覽器硬體鎖尚未釋放，150ms 後重試一次
+                        setTimeout(() => {
+                            if (userWantsListening && !isEngineRunning && recognition) {
+                                try { recognition.start(); } catch(err) {}
+                            }
+                        }, 150);
+                    }
+                }
+            }, 100);
+        }
 
         document.addEventListener('visibilitychange', () => {
             if (document.visibilityState === 'visible' && userWantsListening) {
                 acquireWakeLock();
-                ensureRecognitionActive();
+                scheduleSafeRestart();
             }
         });
 
@@ -1000,9 +975,17 @@
                 toggleBtn.classList.add('active');
                 playIcon.style.display = 'none';
                 pauseIcon.style.display = 'block';
+                touchSilenceTimer();
             };
 
+            // 只要偵測到任何音頻或說話訊號，立即重置 10 秒倒數
+            recognition.onaudiostart = () => touchSilenceTimer();
+            recognition.onsoundstart = () => touchSilenceTimer();
+            recognition.onspeechstart = () => touchSilenceTimer();
+
             recognition.onresult = (event) => {
+                touchSilenceTimer(); // 有字輸入，重置休眠計時
+
                 let interim = '';
                 for (let i = event.resultIndex; i < event.results.length; ++i) {
                     const trans = event.results[i][0].transcript;
@@ -1018,52 +1001,65 @@
             };
 
             recognition.onerror = (e) => {
+                console.warn("語音服務提示:", e.error);
                 if (e.error === 'not-allowed') {
                     userWantsListening = false;
                     stopListeningUI();
                     alert("請允許麥克風權限以進行實時識別。");
+                } else if (e.error === 'no-speech') {
+                    // 靜音屬於正常狀態，交由 10 秒計時器管理休眠，不干預
                 } else {
-                    ensureRecognitionActive();
+                    scheduleSafeRestart();
                 }
             };
 
             recognition.onend = () => {
                 isEngineRunning = false;
+                // 如果尚未達 10 秒休眠時間，瀏覽器斷開時安全重連
                 if (userWantsListening) {
-                    ensureRecognitionActive();
+                    scheduleSafeRestart();
                 } else {
                     stopListeningUI();
                 }
             };
         }
 
-        /* ------------------ 5. 單鍵授權與啟動 ------------------ */
+        // 10 秒無聲觸發的休眠
+        function hibernateRecognition() {
+            userWantsListening = false;
+            if (silenceTimeout) clearTimeout(silenceTimeout);
+            if (restartDebounce) clearTimeout(restartDebounce);
+
+            releaseWakeLock();
+            try { recognition.stop(); } catch(e) {}
+            stopListeningUI();
+        }
+
+        // 啟動/暫停切換
         async function toggleSpeech() {
             if (!recognition) {
-                alert("當前瀏覽器不支援語音辨識，請使用 Chrome、Edge 或 Safari。");
+                alert("當前瀏覽器不支援 Web Speech API，請使用 Chrome、Edge 或 Safari。");
                 return;
             }
 
             if (userWantsListening) {
-                userWantsListening = false;
-                releaseWakeLock();
-                try { keepAliveAudio.pause(); } catch(e) {}
-                try { recognition.stop(); } catch(e) {}
-                stopListeningUI();
+                hibernateRecognition();
+                showToast("已停止識別");
             } else {
                 if (window.puter && window.puter.auth && !puter.auth.isSignedIn()) {
                     try {
                         await puter.auth.signIn({ attempt_temp_user_creation: true });
                     } catch (e) {
-                        alert("Puter AI 授權未完成，請允許授權視窗以開啟翻譯。");
+                        alert("Puter AI 授權未完成，請允許登入以開啟 Qwen 翻譯。");
                         return;
                     }
                 }
 
                 userWantsListening = true;
                 acquireWakeLock();
-                try { keepAliveAudio.play(); } catch(e) {}
-                ensureRecognitionActive();
+                touchSilenceTimer(); // 啟動 10 秒無聲倒數
+                scheduleSafeRestart();
+                showToast("已啟動識別");
             }
         }
 
@@ -1072,6 +1068,7 @@
             playIcon.style.display = 'block';
             pauseIcon.style.display = 'none';
             interimPart.innerText = "";
+            interimPart.className = "interim-text";
         }
 
         /* ------------------ 6. 字體調節 ------------------ */
@@ -1081,20 +1078,13 @@
             { name: "特大", canto: "2.15rem", mando: "1.65rem" }
         ];
         let currentScaleIdx = 0;
-        let toastTimer = null;
-        const fontToast = document.getElementById('fontToast');
 
         function cycleFontSize() {
             currentScaleIdx = (currentScaleIdx + 1) % fontScales.length;
             const cur = fontScales[currentScaleIdx];
             document.documentElement.style.setProperty('--cantonese-size', cur.canto);
             document.documentElement.style.setProperty('--mandarin-size', cur.mando);
-
-            fontToast.innerText = `字體 ${cur.name}`;
-            fontToast.classList.add('show');
-            clearTimeout(toastTimer);
-            toastTimer = setTimeout(() => fontToast.classList.remove('show'), 1200);
-
+            showToast(`字體 ${cur.name}`);
             scrollCantoToBottom();
             scrollMandoToBottom();
         }
