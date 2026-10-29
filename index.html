@@ -641,66 +641,128 @@
         /**
          * 即使沒有語音停頓，亦依據粵語連詞與語氣助詞智能切分（杜絕一大坨無標點文字）
          */
-        function splitIntoSemanticClauses(rawText) {
-            if (!rawText) return [];
-            let text = rawText.trim();
+       /* ==================== 升級版：智慧語意與呼吸節奏斷句引擎 ==================== */
 
-            // 若原本已帶有引擎標點，先按標點初切
-            const rawParts = text.split(/[，。？！、\.,!\?\n\r]+/);
-            const clauses = [];
+// 1. 建立瀏覽器原生分詞器 (零依賴，精準命中粵語/繁體詞界)
+const wordSegmenter = (typeof Intl !== 'undefined' && Intl.Segmenter)
+    ? new Intl.Segmenter('zh-HK', { granularity: 'word' })
+    : null;
 
-            const CONNECTIVE_STARTERS = /^(但係|不過|然而|跟住|然後|所以|因此|而且|如果|即係話|另外|總之|事實上|同埋|仲有)/;
-            const PARTICLE_ENDINGS = /(啦|喇|㗎|喎|囉|啫|咋|添|之嘛|喇喎|㗎啦|㗎喇|咩|呢|呀嘛|嗎)$/;
+// 2. 粵語語法詞典庫
+const LEXICON = {
+    // 強句尾語氣助詞 (說完這個詞，大概率是一句話的落腳點)
+    strongParticles: new Set([
+        '啦', '喇', '㗎', '喎', '囉', '啫', '咋', '添', '之嘛', '喇喎', 
+        '㗎啦', '㗎喇', '㗎咋', '咩', '呢', '呀嘛', '嗎', '下話', '嘅'
+    ]),
+    
+    // 強句首連接詞 (這個詞前面極度適合斷開)
+    connectives: new Set([
+        '但係', '不過', '然而', '跟住', '然後', '所以', '因此', '而且', 
+        '即係話', '另外', '總之', '事實上', '仲有', '反之', '換言之', '其實'
+    ]),
 
-            for (let part of rawParts) {
-                part = part.trim();
-                if (!part) continue;
+    // 句首代詞 / 開頭標誌 (若句子已具備長度，可在此處斷開)
+    starters: new Set([
+        '我哋', '你哋', '佢哋', '大家', '其實我', '如果', '因為', '咁樣'
+    ]),
 
-                // 若小於等於 8 字，視為自然的單句，不作強制拆解
-                if (cleanString(part).length <= 8) {
-                    clauses.push(part);
-                    continue;
-                }
+    // 緊密黏合詞 (強烈建議不要在這些詞後面立刻切斷)
+    glueWords: new Set([
+        '緊', '咗', '過', '嘅', '同埋', '一齊', '喺', '去', '想', '要'
+    ])
+};
 
-                // 長文字：沿著粵語音調節奏點進行智能斷句
-                let currentChunk = "";
-                for (let i = 0; i < part.length; i++) {
-                    currentChunk += part[i];
-                    const currentCleanLen = cleanString(currentChunk).length;
-                    const remaining = part.slice(i + 1);
-                    const remCleanLen = cleanString(remaining).length;
+/**
+ * 智慧切分：結合語法詞界與播報呼吸節奏
+ */
+function splitIntoSemanticClauses(rawText) {
+    if (!rawText) return [];
+    const text = rawText.trim();
+    if (cleanString(text).length <= 7) return [text];
 
-                    if (currentCleanLen >= 5 && remCleanLen >= 3) {
-                        // 1. 若後續文字剛好以轉折/接續連詞開頭，於此處自然斷句
-                        if (CONNECTIVE_STARTERS.test(remaining)) {
-                            clauses.push(currentChunk.trim());
-                            currentChunk = "";
-                            continue;
-                        }
+    // 第一步：先按既有的標點初切
+    const rawBlocks = text.split(/[，。？！、\.,!\?\n\r]+/);
+    const finalClauses = [];
 
-                        // 2. 若當前文字剛好以句尾語氣詞完結，於此處自然斷句
-                        if (PARTICLE_ENDINGS.test(currentChunk) && currentCleanLen >= 5) {
-                            clauses.push(currentChunk.trim());
-                            currentChunk = "";
-                            continue;
-                        }
+    for (let block of rawBlocks) {
+        block = block.trim();
+        const blockClean = cleanString(block);
+        if (!blockClean) continue;
 
-                        // 3. 超長無停頓安全防護（若超過 13 字仍無標記，於自然詞組邊界落標點）
-                        if (currentCleanLen >= 12 && /^(我哋|大家|佢哋|你哋|或者|因為|如果|咁樣)/.test(remaining)) {
-                            clauses.push(currentChunk.trim());
-                            currentChunk = "";
-                            continue;
-                        }
-                    }
-                }
-                if (currentChunk.trim()) {
-                    clauses.push(currentChunk.trim());
-                }
-            }
-
-            return clauses.filter(c => cleanString(c).length > 0);
+        // 若短語本身很短（<= 8 字），保留整句
+        if (blockClean.length <= 8) {
+            finalClauses.push(block);
+            continue;
         }
 
+        // 第二步：利用 Intl.Segmenter 進行專業分詞
+        let words = [];
+        if (wordSegmenter) {
+            words = Array.from(wordSegmenter.segment(block)).map(s => s.segment);
+        } else {
+            // 降級兼容：無 Segmenter 時簡易拆分
+            words = block.split('');
+        }
+
+        let currentClause = "";
+        let splitScore = 0; // 呼吸切分意願評分
+
+        for (let i = 0; i < words.length; i++) {
+            const word = words[i];
+            const nextWord = words[i + 1] || "";
+            currentClause += word;
+
+            const curLen = cleanString(currentClause).length;
+            const remainingLen = cleanString(words.slice(i + 1).join('')).length;
+
+            // 如果後續剩餘字數極少（< 3 字），不再切分，直接併入當前句避免落單字
+            if (remainingLen < 3) continue;
+
+            // ---------------- 動態計分機制 ----------------
+            splitScore = 0;
+
+            // 1. 彈簧長度壓力（6字起計分，越長越想切）
+            if (curLen >= 6) {
+                splitScore += (curLen - 5) * 6; // 6字=6分, 8字=18分, 11字=36分
+            }
+
+            // 2. 詞尾語氣詞獎勵
+            if (LEXICON.strongParticles.has(word)) {
+                splitScore += 40;
+            }
+
+            // 3. 下一個詞是句首連接詞獎勵
+            if (LEXICON.connectives.has(nextWord)) {
+                splitScore += 45;
+            }
+
+            // 4. 下一個詞是新主語獎勵
+            if (LEXICON.starters.has(nextWord) && curLen >= 6) {
+                splitScore += 30;
+            }
+
+            // 5. 語義黏性懲罰（若當前是黏性詞，盡量不切）
+            if (LEXICON.glueWords.has(word)) {
+                splitScore -= 40;
+            }
+
+            // ---------------- 觸發斷句 ----------------
+            // 閥值設為 65 分，或超過 13 字強制安全切斷
+            if (splitScore >= 65 || curLen >= 13) {
+                finalClauses.push(currentClause.trim());
+                currentClause = "";
+                splitScore = 0;
+            }
+        }
+
+        if (currentClause.trim()) {
+            finalClauses.push(currentClause.trim());
+        }
+    }
+
+    return finalClauses.filter(c => cleanString(c).length > 0);
+}
         /**
          * 判定子句的標點符號：
          * - 組內中間子句：一律以逗號「，」（或問號「？」、感嘆號「！」）分隔開上下句
