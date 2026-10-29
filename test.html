@@ -576,7 +576,6 @@
         keyLight.position.set(10, 15, 18);
         scene.add(keyLight);
 
-        // 靜態渲染函數，不啟用持續 requestAnimationFrame 循環
         function renderStatic3D() {
             renderer.render(scene, camera);
         }
@@ -588,7 +587,6 @@
             renderStatic3D();
         });
 
-        // 初始繪製一次即就緒
         renderStatic3D();
 
         /* ------------------ 1. 繁體字校準與通用輔助 ------------------ */
@@ -714,7 +712,6 @@
 
                 let response;
                 try {
-                    // 後端默默調用 Qwen 引擎，前端介面不展示任何冗餘字眼
                     response = await puter.ai.chat(messages, {
                         model: "infron:qwen/qwen3.8-27b-abliterated-cyber:free",
                         stream: true
@@ -775,14 +772,12 @@
             }
         }
 
-        // 說話時：字體呈柔和暗灰顯示，不閃爍、不干擾視覺
         function handleSpeechInterim(interim) {
             if (!interim) return;
             interimPart.textContent = interim;
             scrollCantoToBottom();
         }
 
-        // 說完斷句時：原地轉正為實體白字並加上標點，零延遲、不消失、絕不重新打一遍
         function handleSpeechFinal(finalText) {
             if (!finalText || !finalText.trim()) return;
 
@@ -820,17 +815,14 @@
             rawConfirmedText += delta; 
             charCount.textContent = `${cleanString(rawConfirmedText).length} 字`;
 
-            // 【核心升級】：未肯定字串清空的同時，確定字串同步就位，絕無文字中斷消失的空白期
             interimPart.textContent = "";
 
             const cantoSpan = document.createElement('span');
-            // 直接追加標點，保持粵語區完全安靜穩定
             cantoSpan.textContent = delta + (/[，。？！、]$/.test(delta) ? "" : "，");
             confirmedPart.appendChild(cantoSpan);
             fullPunctuatedText += cantoSpan.textContent;
             scrollCantoToBottom();
 
-            // 下方普通話區優雅接力，流式打出新譯文
             const mandoSpan = document.createElement('span');
             mandarinContent.appendChild(mandoSpan);
             scrollMandoToBottom();
@@ -838,30 +830,17 @@
             translateDeltaWithPuter(delta, mandoSpan);
         }
 
-        /* ------------------ 5. 語音辨識與 10 秒無聲自動休眠 ------------------ */
+        /* ------------------ 5. 語音辨識（常駐傳譯模式，取消無聲休眠） ------------------ */
         const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
         let recognition = null;
         let userWantsListening = false;
         let isEngineRunning = false;
         let wakeLock = null;
-
-        let silenceTimeout = null;
         let restartDebounce = null;
-        const SILENCE_LIMIT_MS = 10000; // 10 秒無聲設定
 
         const toggleBtn = document.getElementById('toggleBtn');
         const playIcon = document.getElementById('playIcon');
         const pauseIcon = document.getElementById('pauseIcon');
-
-        function touchSilenceTimer() {
-            if (!userWantsListening) return;
-            if (silenceTimeout) clearTimeout(silenceTimeout);
-
-            silenceTimeout = setTimeout(() => {
-                showToast("10秒無聲音，已休眠");
-                hibernateRecognition();
-            }, SILENCE_LIMIT_MS);
-        }
 
         async function acquireWakeLock() {
             try {
@@ -916,16 +895,9 @@
                 toggleBtn.classList.add('active');
                 playIcon.style.display = 'none';
                 pauseIcon.style.display = 'block';
-                touchSilenceTimer();
             };
 
-            recognition.onaudiostart = () => touchSilenceTimer();
-            recognition.onsoundstart = () => touchSilenceTimer();
-            recognition.onspeechstart = () => touchSilenceTimer();
-
             recognition.onresult = (event) => {
-                touchSilenceTimer();
-
                 let interim = '';
                 for (let i = event.resultIndex; i < event.results.length; ++i) {
                     const trans = event.results[i][0].transcript;
@@ -946,7 +918,7 @@
                     stopListeningUI();
                     alert("請允許麥克風權限以進行實時識別。");
                 } else if (e.error === 'no-speech') {
-                    // 靜音交由 10 秒計時器管理
+                    // 長時間安靜屬傳譯過程中的正常狀態，保持常駐，無需報錯中斷
                 } else {
                     scheduleSafeRestart();
                 }
@@ -954,6 +926,7 @@
 
             recognition.onend = () => {
                 isEngineRunning = false;
+                // 只要使用者未手動點擊暫停，引擎因靜音或系統超時斷開時自動立即重連
                 if (userWantsListening) {
                     scheduleSafeRestart();
                 } else {
@@ -962,9 +935,8 @@
             };
         }
 
-        function hibernateRecognition() {
+        function stopListeningSession() {
             userWantsListening = false;
-            if (silenceTimeout) clearTimeout(silenceTimeout);
             if (restartDebounce) clearTimeout(restartDebounce);
 
             releaseWakeLock();
@@ -979,7 +951,7 @@
             }
 
             if (userWantsListening) {
-                hibernateRecognition();
+                stopListeningSession();
                 showToast("已停止識別");
             } else {
                 if (window.puter && window.puter.auth && !puter.auth.isSignedIn()) {
@@ -993,9 +965,8 @@
 
                 userWantsListening = true;
                 acquireWakeLock();
-                touchSilenceTimer();
                 scheduleSafeRestart();
-                showToast("已啟動識別");
+                showToast("已啟動識別（常駐傳譯模式）");
             }
         }
 
