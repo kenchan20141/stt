@@ -29,7 +29,7 @@
             
             --ruby: #f59e0b;
             --accent: #38bdf8;
-            --cantonese-size: 2.0rem;
+            --cantonese-size: 2.05rem;
         }
 
         * {
@@ -172,12 +172,12 @@
             position: relative;
         }
 
-        /* 頂部柔和漸隱罩（提升視覺純淨感） */
+        /* 頂部柔和漸隱罩（防止捲動邊界銳利生硬） */
         .viewport-container::before {
             content: "";
             position: absolute;
             top: 0; left: 0; right: 0;
-            height: 36px;
+            height: 32px;
             background: linear-gradient(to bottom, #090a0f 20%, transparent);
             z-index: 10;
             pointer-events: none;
@@ -193,46 +193,46 @@
             z-index: 1;
         }
 
-        /* 核心階梯式排版流 */
+        /* 自然語音流容器 */
         .cantonese-stream {
             font-family: "Noto Serif HK", serif;
             font-size: var(--cantonese-size);
-            line-height: 1.8;
-            letter-spacing: 0.5px;
+            line-height: 1.85;
+            letter-spacing: 0.6px;
             display: flex;
             flex-direction: column;
-            gap: 16px;
+            gap: 14px;
             word-break: break-word;
         }
 
-        /* 歷史句子：柔和暗灰，退居背景，不搶奪眼球 */
+        /* 歷史句子：柔和暗灰，退居背景，不造成眼力疲勞 */
         .phrase-item.past {
             color: #526075;
             font-weight: 500;
-            transition: color 0.5s ease, opacity 0.5s ease;
-            opacity: 0.65;
+            transition: color 0.4s ease, opacity 0.4s ease;
+            opacity: 0.6;
         }
 
-        /* 最新完成句子：高對比純白光澤，眼睛一眼吸附 */
+        /* 最新完成的一句：純白高光聚焦，眼睛一眼就能找到 */
         .phrase-item.latest {
             color: #ffffff;
             font-weight: 700;
             opacity: 1;
             text-shadow: 0 0 16px rgba(255, 255, 255, 0.28);
-            animation: phrasePop 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+            animation: phrasePop 0.28s cubic-bezier(0.16, 1, 0.3, 1) forwards;
             position: relative;
             display: inline-block;
         }
 
-        /* 手機即時彈出的暫存句：青藍色高亮標籤，清晰辨識 */
+        /* 手機即時辨識中（或剛彈出的一小段）：帶天藍色柔和辨識標籤 */
         .phrase-item.interim {
             color: #38bdf8;
             font-weight: 600;
-            background: rgba(56, 189, 248, 0.1);
+            background: rgba(56, 189, 248, 0.08);
             border-left: 3px solid #38bdf8;
-            padding-left: 10px;
+            padding: 2px 10px;
             border-radius: 0 6px 6px 0;
-            animation: fadeIn 0.2s ease forwards;
+            animation: fadeIn 0.15s ease forwards;
         }
 
         .phrase-item.interim:empty {
@@ -240,14 +240,8 @@
         }
 
         @keyframes phrasePop {
-            0% {
-                opacity: 0;
-                transform: translateY(6px);
-            }
-            100% {
-                opacity: 1;
-                transform: translateY(0);
-            }
+            0% { opacity: 0; transform: translateY(6px); }
+            100% { opacity: 1; transform: translateY(0); }
         }
 
         @keyframes fadeIn {
@@ -414,7 +408,7 @@
 
             <div id="fontToast">字體 標準</div>
 
-            <!-- 分句階梯視圖 -->
+            <!-- 自然語意斷句提詞流 -->
             <div class="viewport-container">
                 <div id="cantoScroll" class="scroll-body">
                     <div id="cantoStream" class="cantonese-stream">
@@ -533,20 +527,19 @@
             toastTimer = setTimeout(() => fontToast.classList.remove('show'), 1500);
         }
 
-        /* ------------------ 2. 階梯分句提詞架構 ------------------ */
+        /* ------------------ 2. 核心自然斷句與階梯流 ------------------ */
         const cantoScroll = document.getElementById('cantoScroll');
         const cantoStream = document.getElementById('cantoStream');
         const interimPart = document.getElementById('interimPart');
 
-        let committedOffset = 0;
-        let lastResultIndex = -1;
         let pauseTimer = null;
         let autoScrollCanto = true;
-        let currentTranscript = "";
         let confirmedPlainHistory = "";
+        let lastFinalCleanText = "";
+        let lastFinalTimestamp = 0;
 
-        const phrasesList = []; // 歷史短句容器
-        const MAX_HISTORY_PHRASES = 35; // 保留合適數量，避免手機卡頓
+        const phrasesList = [];
+        const MAX_HISTORY_PHRASES = 40;
 
         cantoScroll.addEventListener('scroll', () => {
             autoScrollCanto = (cantoScroll.scrollHeight - cantoScroll.scrollTop - cantoScroll.clientHeight) < 140;
@@ -560,12 +553,38 @@
             }
         }
 
+        /**
+         * 智慧標點附著：根據自然語意或停頓賦予最合適的標點
+         */
+        function attachSmartPunctuation(text, isLongPause = false) {
+            let s = text.trim();
+            // 如果原本已經有標點，轉成全形標準標點
+            if (/[，。？！、\.,!\?]$/.test(s)) {
+                return s.replace(/\.$/, '。')
+                        .replace(/,$/, '，')
+                        .replace(/\?$/, '？')
+                        .replace(/!$/, '！');
+            }
+
+            // 粵語常見疑問詞檢測
+            const questionSuffixes = /(點解|係咪|係唔係|咩|呀嘛|呢|邊度|幾時|點樣|嗎|嘛|阿|呀)$/;
+            if (questionSuffixes.test(s)) {
+                return s + '？';
+            }
+
+            // 長停頓定稿為句號，短語句定稿為逗號
+            return isLongPause ? (s + '。') : (s + '，');
+        }
+
+        /**
+         * 杜絕重疊句子
+         */
         function removeOverlap(rawText) {
             if (!rawText || !confirmedPlainHistory) return rawText;
             const cleanText = cleanString(rawText);
             if (!cleanText) return "";
 
-            const maxCheck = Math.min(confirmedPlainHistory.length, cleanText.length, 25);
+            const maxCheck = Math.min(confirmedPlainHistory.length, cleanText.length, 30);
             let overlapLen = 0;
             for (let len = maxCheck; len >= 1; len--) {
                 if (confirmedPlainHistory.endsWith(cleanText.slice(0, len))) {
@@ -590,36 +609,37 @@
         }
 
         /**
-         * 提交短句為實體節點：
-         * 舊句子自動褪色變暗，新句子以亮白光澤登場
+         * 提交完整句子（依自然停頓或 isFinal 觸發，絕不生硬按字數截斷）
          */
-        function commitChunk(text) {
-            const deduplicated = removeOverlap(text);
+        function commitSentence(rawText, isLongPause = false) {
+            if (!rawText) return;
+            const deduplicated = removeOverlap(rawText);
             let seg = convertToHK(deduplicated || '').trim();
             if (!seg) return;
 
-            seg = seg.replace(/[，。？！、\.,!\?]+$/g, '');
             const plainSeg = cleanString(seg);
             if (!plainSeg) return;
 
-            // 將先前「最新」的句子標記為「歷史」，字色自動平滑暗化
+            // 智慧附著自然標點
+            seg = attachSmartPunctuation(seg, isLongPause);
+
+            // 1. 先前「最新句子」平滑褪色轉為歷史暗調（不再刺激眼球）
             const prevLatest = cantoStream.querySelector('.phrase-item.latest');
             if (prevLatest) {
                 prevLatest.classList.remove('latest');
                 prevLatest.classList.add('past');
             }
 
-            // 建立全新的獨立句子元素
+            // 2. 建立新句子：明亮純白，成為當前第一焦點
             const phraseElem = document.createElement('div');
             phraseElem.className = 'phrase-item latest';
-            phraseElem.textContent = seg + '。';
+            phraseElem.textContent = seg;
 
-            // 插入至即時暫存框前
             cantoStream.insertBefore(phraseElem, interimPart);
 
             confirmedPlainHistory += plainSeg;
-            if (confirmedPlainHistory.length > 200) {
-                confirmedPlainHistory = confirmedPlainHistory.slice(-150);
+            if (confirmedPlainHistory.length > 250) {
+                confirmedPlainHistory = confirmedPlainHistory.slice(-180);
             }
 
             phrasesList.push(phraseElem);
@@ -631,56 +651,60 @@
             scrollCantoToBottom();
         }
 
-        function processStreamText(fullTranscript, isFinal) {
+        /**
+         * 處理即時語音流（回歸附檔自然的語句感知）
+         */
+        function handleSpeechInterim(interimText) {
             clearTimeout(pauseTimer);
-            currentTranscript = fullTranscript;
-
-            if (fullTranscript.length < committedOffset) {
-                committedOffset = 0;
+            if (!interimText || !interimText.trim()) {
+                interimPart.textContent = '';
+                return;
             }
 
-            // 自然長度斷句（11~14字自然斷開成新的一行）
-            const CHUNK_LIMIT = 12;
-            while ((fullTranscript.length - committedOffset) >= CHUNK_LIMIT) {
-                const chunk = fullTranscript.slice(committedOffset, committedOffset + CHUNK_LIMIT);
-                commitChunk(chunk);
-                committedOffset += CHUNK_LIMIT;
-            }
-
-            let pending = fullTranscript.slice(committedOffset);
-            pending = removeOverlap(pending);
-
+            let pending = removeOverlap(interimText);
             if (pending.trim()) {
-                // 正在收音的字：藍色流光提示
+                // 手機跳出即時字時，帶藍色流光外觀
                 interimPart.textContent = convertToHK(pending.trim());
                 scrollCantoToBottom();
 
-                // 稍微停頓即刻定稿，變成純白亮句
+                // 講話自然微停頓（550ms 靜音即自然落句定稿）
                 pauseTimer = setTimeout(() => {
-                    commitRemaining();
-                }, 380);
+                    commitPendingInterim(false);
+                }, 550);
             } else {
                 interimPart.textContent = '';
             }
-
-            if (isFinal) {
-                commitRemaining();
-                committedOffset = 0;
-                currentTranscript = "";
-            }
         }
 
-        function commitRemaining() {
+        function handleSpeechFinal(finalText) {
             clearTimeout(pauseTimer);
-            committedOffset = currentTranscript.length;
-            const remaining = interimPart.textContent;
             interimPart.textContent = '';
-            if (remaining) {
-                commitChunk(remaining);
+
+            if (!finalText || !finalText.trim()) return;
+
+            const cleanFinal = cleanString(finalText);
+            const now = Date.now();
+
+            // 2秒內完全重複之 finalText 不重複追加
+            if (cleanFinal === lastFinalCleanText && (now - lastFinalTimestamp < 2000)) return;
+
+            lastFinalCleanText = cleanFinal;
+            lastFinalTimestamp = now;
+
+            // 語音引擎認定整句完結，以自然停頓收尾
+            commitSentence(finalText, true);
+        }
+
+        function commitPendingInterim(isLongPause = false) {
+            clearTimeout(pauseTimer);
+            const pending = interimPart.textContent;
+            interimPart.textContent = '';
+            if (pending && pending.trim()) {
+                commitSentence(pending, isLongPause);
             }
         }
 
-        /* ------------------ 3. 語音辨識機制 ------------------ */
+        /* ------------------ 3. 語音辨識機制（純離線無 PUTER） ------------------ */
         const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
         let recognition = null;
         let userWantsListening = false;
@@ -748,15 +772,21 @@
             };
 
             recognition.onresult = (event) => {
+                let interim = '';
                 for (let i = event.resultIndex; i < event.results.length; ++i) {
-                    if (i !== lastResultIndex) {
-                        lastResultIndex = i;
-                        committedOffset = 0;
-                    }
-
                     const res = event.results[i];
                     if (!res || !res[0]) continue;
-                    processStreamText(res[0].transcript, res.isFinal);
+                    const trans = res[0].transcript;
+
+                    if (res.isFinal) {
+                        handleSpeechFinal(trans);
+                    } else {
+                        interim += trans;
+                    }
+                }
+
+                if (interim) {
+                    handleSpeechInterim(interim);
                 }
             };
 
@@ -773,7 +803,7 @@
             };
 
             recognition.onend = () => {
-                commitRemaining();
+                commitPendingInterim(true);
                 isEngineRunning = false;
                 if (userWantsListening) {
                     scheduleSafeRestart();
@@ -786,7 +816,7 @@
         function stopListeningSession() {
             userWantsListening = false;
             if (restartDebounce) clearTimeout(restartDebounce);
-            commitRemaining();
+            commitPendingInterim(true);
             releaseWakeLock();
             try { recognition.stop(); } catch(e) {}
             stopListeningUI();
@@ -803,9 +833,6 @@
                 showToast("已停止提詞");
             } else {
                 userWantsListening = true;
-                committedOffset = 0;
-                currentTranscript = "";
-                lastResultIndex = -1;
                 acquireWakeLock();
                 scheduleSafeRestart();
                 showToast("已啟動實時提詞");
@@ -821,9 +848,9 @@
 
         /* ------------------ 4. 字體調節 ------------------ */
         const fontScales = [
-            { name: "標準", canto: "2.0rem" },
-            { name: "放大", canto: "2.4rem" },
-            { name: "特大", canto: "2.85rem" }
+            { name: "標準", canto: "2.05rem" },
+            { name: "放大", canto: "2.45rem" },
+            { name: "特大", canto: "2.90rem" }
         ];
         let currentScaleIdx = 0;
 
