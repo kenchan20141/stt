@@ -27,11 +27,9 @@
             --canto-bg: #090a0f;
             --card-border: rgba(255, 255, 255, 0.08);
             
-            --cantonese: #f8fafc;
             --ruby: #f59e0b;
             --accent: #38bdf8;
-
-            --cantonese-size: 1.85rem;
+            --cantonese-size: 2.0rem;
         }
 
         * {
@@ -44,7 +42,7 @@
 
         body {
             background-color: var(--bg);
-            color: var(--cantonese);
+            color: #ffffff;
             height: 100vh;
             height: 100dvh;
             display: flex;
@@ -54,7 +52,6 @@
             -webkit-font-smoothing: antialiased;
         }
 
-        /* 靜態 3D 背景 */
         #threeCanvas {
             position: fixed;
             top: 0;
@@ -65,7 +62,6 @@
             pointer-events: none;
         }
 
-        /* 提詞機外框主容器 */
         .teleprompter-rig {
             position: relative;
             z-index: 10;
@@ -79,7 +75,6 @@
             padding: 20px 24px 28px 24px;
             box-sizing: border-box;
             pointer-events: auto;
-            transform: none !important;
         }
 
         @media (max-width: 768px) {
@@ -96,12 +91,11 @@
             display: flex;
             flex-direction: column;
             background: #090a0f;
-            border-radius: 12px;
-            border: 3px solid #1e2638;
+            border-radius: 14px;
+            border: 2px solid #1e2638;
             box-shadow: 
                 0 0 0 1px rgba(0, 0, 0, 0.8),
-                0 20px 45px rgba(0, 0, 0, 0.9),
-                inset 0 0 20px rgba(0, 0, 0, 0.85);
+                0 20px 45px rgba(0, 0, 0, 0.9);
             overflow: hidden;
             position: relative;
             min-height: 0;
@@ -121,7 +115,7 @@
         .brand-title {
             font-size: 0.95rem;
             font-weight: 700;
-            color: #cbd5e1;
+            color: #94a3b8;
             letter-spacing: 0.8px;
             font-family: "Noto Sans HK", sans-serif;
         }
@@ -133,7 +127,7 @@
         }
 
         .icon-btn {
-            background: rgba(255, 255, 255, 0.06);
+            background: rgba(255, 255, 255, 0.05);
             border: 1px solid var(--card-border);
             color: #cbd5e1;
             width: 38px;
@@ -143,7 +137,7 @@
             align-items: center;
             justify-content: center;
             cursor: pointer;
-            transition: background 0.2s ease, transform 0.1s ease;
+            transition: all 0.2s ease;
             outline: none;
         }
 
@@ -158,13 +152,12 @@
             width: 42px;
             height: 42px;
             border-radius: 50%;
-            box-shadow: 0 0 16px rgba(239, 68, 68, 0.4);
-            transition: all 0.3s ease;
+            box-shadow: 0 0 16px rgba(239, 68, 68, 0.35);
         }
 
         .power-btn.active {
             background: #10b981;
-            box-shadow: 0 0 16px rgba(16, 185, 129, 0.5);
+            box-shadow: 0 0 16px rgba(16, 185, 129, 0.45);
         }
 
         /* 視圖區域 */
@@ -176,6 +169,18 @@
             width: 100%;
             min-height: 0; 
             background-color: var(--canto-bg);
+            position: relative;
+        }
+
+        /* 頂部柔和漸隱罩（提升視覺純淨感） */
+        .viewport-container::before {
+            content: "";
+            position: absolute;
+            top: 0; left: 0; right: 0;
+            height: 36px;
+            background: linear-gradient(to bottom, #090a0f 20%, transparent);
+            z-index: 10;
+            pointer-events: none;
         }
 
         .scroll-body {
@@ -188,45 +193,73 @@
             z-index: 1;
         }
 
+        /* 核心階梯式排版流 */
+        .cantonese-stream {
+            font-family: "Noto Serif HK", serif;
+            font-size: var(--cantonese-size);
+            line-height: 1.8;
+            letter-spacing: 0.5px;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+            word-break: break-word;
+        }
+
+        /* 歷史句子：柔和暗灰，退居背景，不搶奪眼球 */
+        .phrase-item.past {
+            color: #526075;
+            font-weight: 500;
+            transition: color 0.5s ease, opacity 0.5s ease;
+            opacity: 0.65;
+        }
+
+        /* 最新完成句子：高對比純白光澤，眼睛一眼吸附 */
+        .phrase-item.latest {
+            color: #ffffff;
+            font-weight: 700;
+            opacity: 1;
+            text-shadow: 0 0 16px rgba(255, 255, 255, 0.28);
+            animation: phrasePop 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+            position: relative;
+            display: inline-block;
+        }
+
+        /* 手機即時彈出的暫存句：青藍色高亮標籤，清晰辨識 */
+        .phrase-item.interim {
+            color: #38bdf8;
+            font-weight: 600;
+            background: rgba(56, 189, 248, 0.1);
+            border-left: 3px solid #38bdf8;
+            padding-left: 10px;
+            border-radius: 0 6px 6px 0;
+            animation: fadeIn 0.2s ease forwards;
+        }
+
+        .phrase-item.interim:empty {
+            display: none;
+        }
+
+        @keyframes phrasePop {
+            0% {
+                opacity: 0;
+                transform: translateY(6px);
+            }
+            100% {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        @keyframes fadeIn {
+            0% { opacity: 0; }
+            100% { opacity: 1; }
+        }
+
         .bottom-safe-spacer {
-            height: calc(100px + env(safe-area-inset-bottom, 24px));
+            height: calc(140px + env(safe-area-inset-bottom, 24px));
             width: 100%;
             pointer-events: none;
             flex-shrink: 0;
-        }
-
-        /* 整篇文字自然排版：新舊文字天衣無縫連貫 */
-        .cantonese-content {
-            font-family: "Noto Serif HK", serif;
-            font-size: var(--cantonese-size);
-            font-weight: 700;
-            line-height: 1.95;
-            letter-spacing: 0.5px;
-            color: var(--cantonese);
-            word-break: break-word;
-            text-align: justify;
-        }
-
-        /* 已定稿文字：純白無底色 */
-        .cantonese-content .confirmed-text {
-            color: #f8fafc;
-            background: transparent;
-        }
-
-        /* 新準備辨識文字：純粹的行內灰底標註，無框、無陰影、無光柱 */
-        .cantonese-content .interim-text {
-            background-color: #374151; /* 典雅深灰底色 */
-            color: #f9fafb;
-            border-radius: 3px;
-            padding: 0 3px;
-            display: inline;
-            box-decoration-break: clone;
-            -webkit-box-decoration-break: clone;
-        }
-
-        .cantonese-content .interim-text:empty {
-            display: none;
-            padding: 0;
         }
 
         #fontToast {
@@ -245,18 +278,17 @@
             transition: all 0.25s ease;
             z-index: 40;
             font-family: "Noto Sans HK", sans-serif;
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
         }
 
         #fontToast.show { opacity: 1; transform: translateY(0); }
 
         .scroll-body::-webkit-scrollbar, .modal-body::-webkit-scrollbar { width: 4px; }
         .scroll-body::-webkit-scrollbar-thumb, .modal-body::-webkit-scrollbar-thumb {
-            background: rgba(255, 255, 255, 0.15);
+            background: rgba(255, 255, 255, 0.12);
             border-radius: 4px;
         }
 
-        /* 粵拼彈窗 */
+        /* 粵拼注音彈窗 */
         .modal-overlay {
             position: fixed;
             top: 0; left: 0; width: 100vw; height: 100vh;
@@ -347,14 +379,10 @@
 </head>
 <body>
 
-    <!-- 靜態 3D 背景 -->
     <canvas id="threeCanvas"></canvas>
 
-    <!-- 居中提詞機主體 -->
     <main id="teleprompterRig" class="teleprompter-rig">
-
         <div class="rig-screen-enclosure">
-
             <header>
                 <span class="brand-title">實時粵語提詞</span>
                 <div class="btn-group">
@@ -386,16 +414,16 @@
 
             <div id="fontToast">字體 標準</div>
 
-            <!-- 純粹提詞主視圖：新舊文字融為一體 -->
+            <!-- 分句階梯視圖 -->
             <div class="viewport-container">
                 <div id="cantoScroll" class="scroll-body">
-                    <div id="cantoneseContent" class="cantonese-content"><span id="confirmedPart" class="confirmed-text"></span><span id="interimPart" class="interim-text"></span></div>
+                    <div id="cantoStream" class="cantonese-stream">
+                        <div id="interimPart" class="phrase-item interim"></div>
+                    </div>
                     <div class="bottom-safe-spacer"></div>
                 </div>
             </div>
-
         </div>
-
     </main>
 
     <!-- 粵拼彈窗 -->
@@ -505,9 +533,9 @@
             toastTimer = setTimeout(() => fontToast.classList.remove('show'), 1500);
         }
 
-        /* ------------------ 2. 去重流式分段提詞核心 ------------------ */
+        /* ------------------ 2. 階梯分句提詞架構 ------------------ */
         const cantoScroll = document.getElementById('cantoScroll');
-        const confirmedPart = document.getElementById('confirmedPart');
+        const cantoStream = document.getElementById('cantoStream');
         const interimPart = document.getElementById('interimPart');
 
         let committedOffset = 0;
@@ -515,43 +543,28 @@
         let pauseTimer = null;
         let autoScrollCanto = true;
         let currentTranscript = "";
-        
-        // 保存純漢字歷史記錄，用於與新語句比對重疊
         let confirmedPlainHistory = "";
 
-        // 自然語意音步長度（12字左右切分短句，不停頓亦能順滑吐字）
-        const CHUNK_LIMIT = 12;
-        const TARGET_MAX_CHARS = 160;
+        const phrasesList = []; // 歷史短句容器
+        const MAX_HISTORY_PHRASES = 35; // 保留合適數量，避免手機卡頓
 
         cantoScroll.addEventListener('scroll', () => {
-            autoScrollCanto = (cantoScroll.scrollHeight - cantoScroll.scrollTop - cantoScroll.clientHeight) < 80;
+            autoScrollCanto = (cantoScroll.scrollHeight - cantoScroll.scrollTop - cantoScroll.clientHeight) < 140;
         });
 
         function scrollCantoToBottom() {
             if (autoScrollCanto) {
-                requestAnimationFrame(() => { cantoScroll.scrollTop = cantoScroll.scrollHeight; });
+                requestAnimationFrame(() => {
+                    cantoScroll.scrollTop = cantoScroll.scrollHeight;
+                });
             }
         }
 
-        function trimHistory() {
-            if (confirmedPart.textContent.length > TARGET_MAX_CHARS) {
-                confirmedPart.textContent = confirmedPart.textContent.slice(-TARGET_MAX_CHARS);
-            }
-            if (confirmedPlainHistory.length > 250) {
-                confirmedPlainHistory = confirmedPlainHistory.slice(-180);
-            }
-        }
-
-        /**
-         * 核心去重函數：比對新輸入文本與上一句末尾是否重疊，剔除重複字句
-         */
         function removeOverlap(rawText) {
             if (!rawText || !confirmedPlainHistory) return rawText;
-
             const cleanText = cleanString(rawText);
             if (!cleanText) return "";
 
-            // 尋找已定稿末尾與新文本頭部的最長公共子串（最大比對 25 字）
             const maxCheck = Math.min(confirmedPlainHistory.length, cleanText.length, 25);
             let overlapLen = 0;
             for (let len = maxCheck; len >= 1; len--) {
@@ -562,13 +575,10 @@
             }
 
             if (overlapLen > 0) {
-                // 依據重疊的純字元數，剝離原始文字前端對應內容
                 let counted = 0;
                 let cutIndex = 0;
                 for (let i = 0; i < rawText.length; i++) {
-                    if (!/[，。？！、\s\.,!\?]/.test(rawText[i])) {
-                        counted++;
-                    }
+                    if (!/[，。？！、\s\.,!\?]/.test(rawText[i])) counted++;
                     if (counted === overlapLen) {
                         cutIndex = i + 1;
                         break;
@@ -576,65 +586,79 @@
                 }
                 return rawText.slice(cutIndex).trim();
             }
-
             return rawText;
         }
 
         /**
-         * 提交文字轉為白字定稿
+         * 提交短句為實體節點：
+         * 舊句子自動褪色變暗，新句子以亮白光澤登場
          */
         function commitChunk(text) {
             const deduplicated = removeOverlap(text);
             let seg = convertToHK(deduplicated || '').trim();
             if (!seg) return;
 
-            // 清理末端符號後加逗點
             seg = seg.replace(/[，。？！、\.,!\?]+$/g, '');
-            if (!seg) return;
-
             const plainSeg = cleanString(seg);
             if (!plainSeg) return;
 
-            seg += '，';
+            // 將先前「最新」的句子標記為「歷史」，字色自動平滑暗化
+            const prevLatest = cantoStream.querySelector('.phrase-item.latest');
+            if (prevLatest) {
+                prevLatest.classList.remove('latest');
+                prevLatest.classList.add('past');
+            }
 
-            confirmedPart.textContent += seg;
+            // 建立全新的獨立句子元素
+            const phraseElem = document.createElement('div');
+            phraseElem.className = 'phrase-item latest';
+            phraseElem.textContent = seg + '。';
+
+            // 插入至即時暫存框前
+            cantoStream.insertBefore(phraseElem, interimPart);
+
             confirmedPlainHistory += plainSeg;
+            if (confirmedPlainHistory.length > 200) {
+                confirmedPlainHistory = confirmedPlainHistory.slice(-150);
+            }
 
-            trimHistory();
+            phrasesList.push(phraseElem);
+            if (phrasesList.length > MAX_HISTORY_PHRASES) {
+                const old = phrasesList.shift();
+                if (old && old.parentNode) old.parentNode.removeChild(old);
+            }
+
             scrollCantoToBottom();
         }
 
-        /**
-         * 處理串流語音（解決不停頓不出字 + 徹底杜絕重覆）
-         */
         function processStreamText(fullTranscript, isFinal) {
             clearTimeout(pauseTimer);
             currentTranscript = fullTranscript;
 
-            // 若瀏覽器新開語意上下文導致長度縮水，重置游標
             if (fullTranscript.length < committedOffset) {
                 committedOffset = 0;
             }
 
-            // 超過自然音步時自動流式切句
+            // 自然長度斷句（11~14字自然斷開成新的一行）
+            const CHUNK_LIMIT = 12;
             while ((fullTranscript.length - committedOffset) >= CHUNK_LIMIT) {
                 const chunk = fullTranscript.slice(committedOffset, committedOffset + CHUNK_LIMIT);
                 commitChunk(chunk);
                 committedOffset += CHUNK_LIMIT;
             }
 
-            // 提取最新準備辨識的文字，並進行去重校準
             let pending = fullTranscript.slice(committedOffset);
             pending = removeOverlap(pending);
 
             if (pending.trim()) {
+                // 正在收音的字：藍色流光提示
                 interimPart.textContent = convertToHK(pending.trim());
                 scrollCantoToBottom();
 
-                // 400ms 微停頓立刻收口定稿變白字
+                // 稍微停頓即刻定稿，變成純白亮句
                 pauseTimer = setTimeout(() => {
                     commitRemaining();
-                }, 400);
+                }, 380);
             } else {
                 interimPart.textContent = '';
             }
@@ -646,15 +670,9 @@
             }
         }
 
-        /**
-         * 立即收口定稿：游標即時同步推進至 transcript 末端，杜絕二次重複觸發！
-         */
         function commitRemaining() {
             clearTimeout(pauseTimer);
-
-            // 關鍵：立刻將游標推進到底，避免同一個 transcript 被再次讀取
             committedOffset = currentTranscript.length;
-
             const remaining = interimPart.textContent;
             interimPart.textContent = '';
             if (remaining) {
@@ -702,7 +720,7 @@
                             if (userWantsListening && !isEngineRunning && recognition) {
                                 try { recognition.start(); } catch(err) {}
                             }
-                        }, 60);
+                        }, 80);
                     }
                 }
             }, 30);
@@ -731,7 +749,6 @@
 
             recognition.onresult = (event) => {
                 for (let i = event.resultIndex; i < event.results.length; ++i) {
-                    // 若進入新的辨識索引，重置本地游標偏移
                     if (i !== lastResultIndex) {
                         lastResultIndex = i;
                         committedOffset = 0;
@@ -739,8 +756,7 @@
 
                     const res = event.results[i];
                     if (!res || !res[0]) continue;
-                    const transcript = res[0].transcript;
-                    processStreamText(transcript, res.isFinal);
+                    processStreamText(res[0].transcript, res.isFinal);
                 }
             };
 
@@ -748,7 +764,7 @@
                 if (e.error === 'not-allowed') {
                     userWantsListening = false;
                     stopListeningUI();
-                    alert("請允許麥克風權限以進行實時識別。");
+                    alert("請允許麥克風權限以進行實時提詞。");
                 } else if (e.error === 'no-speech') {
                     if (userWantsListening) scheduleSafeRestart();
                 } else {
@@ -778,7 +794,7 @@
 
         function toggleSpeech() {
             if (!recognition) {
-                alert("當前瀏覽器不支援 Web Speech API，建議使用 Chrome、Edge 或 Safari。");
+                alert("此瀏覽器不支援 Web Speech API，建議使用 Safari 或 Chrome。");
                 return;
             }
 
@@ -805,9 +821,9 @@
 
         /* ------------------ 4. 字體調節 ------------------ */
         const fontScales = [
-            { name: "標準", canto: "1.85rem" },
-            { name: "放大", canto: "2.25rem" },
-            { name: "特大", canto: "2.75rem" }
+            { name: "標準", canto: "2.0rem" },
+            { name: "放大", canto: "2.4rem" },
+            { name: "特大", canto: "2.85rem" }
         ];
         let currentScaleIdx = 0;
 
@@ -824,6 +840,10 @@
         const modalContent = document.getElementById('modalContent');
         const ttsStatus = document.getElementById('ttsStatus');
         let currentPureText = "";
+
+        function getAllRecognizedText() {
+            return phrasesList.map(el => el.textContent).join('') + interimPart.textContent;
+        }
 
         async function fetchJyutpingRubyHTML(text) {
             if (!text) return "";
@@ -856,7 +876,7 @@
         }
 
         async function openPhoneticModal() {
-            const fullText = (confirmedPart.textContent + interimPart.textContent).trim();
+            const fullText = getAllRecognizedText().trim();
             currentPureText = cleanString(fullText);
 
             if (!fullText) {
