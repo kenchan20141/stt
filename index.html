@@ -65,7 +65,7 @@
             pointer-events: none;
         }
 
-        /* 提詞機主機殼容器 */
+        /* 提詞機外框主容器 */
         .teleprompter-rig {
             position: relative;
             z-index: 10;
@@ -105,15 +105,6 @@
             overflow: hidden;
             position: relative;
             min-height: 0;
-        }
-
-        .rig-screen-enclosure::after {
-            content: "";
-            position: absolute;
-            inset: 0;
-            background: linear-gradient(135deg, rgba(255, 255, 255, 0.03) 0%, rgba(255, 255, 255, 0) 40%, rgba(0, 0, 0, 0.2) 100%);
-            pointer-events: none;
-            z-index: 25;
         }
 
         header {
@@ -176,7 +167,7 @@
             box-shadow: 0 0 16px rgba(16, 185, 129, 0.5);
         }
 
-        /* 提詞視圖區 */
+        /* 視圖區域 */
         .viewport-container {
             flex: 1;
             display: flex;
@@ -204,42 +195,38 @@
             flex-shrink: 0;
         }
 
-        /* 粵語提詞內容排版 */
+        /* 自然文章式排版：新舊文字融為一體 */
         .cantonese-content {
             font-family: "Noto Serif HK", serif;
             font-size: var(--cantonese-size);
             font-weight: 700;
-            line-height: 2.05;
-            letter-spacing: 1px;
+            line-height: 1.9;
+            letter-spacing: 0.5px;
             color: var(--cantonese);
             word-break: break-word;
+            text-align: justify;
         }
 
-        /* 已定稿確認句：純白文字 */
-        .cantonese-content .phrase-final {
+        /* 已辨識文字：純白、無背景 */
+        .cantonese-content .confirmed-text {
             color: #f8fafc;
-            display: inline;
             background: transparent;
-            transition: color 0.25s ease;
         }
 
-        /* 正在識別的新語句：實時灰底視覺化效果（一眼清晰辨識） */
-        .cantonese-content .phrase-interim {
+        /* 新準備辨識文字：純粹的行內灰底標註，無任何邊框、無陰影、無光柱 */
+        .cantonese-content .interim-text {
+            background-color: #374151; /* 典雅深灰底色 */
+            color: #f9fafb;
+            border-radius: 3px;
+            padding: 0 3px;
             display: inline;
-            background: #2b3548;
-            color: #ffffff;
-            padding: 3px 8px;
-            margin: 0 3px;
-            border-radius: 6px;
             box-decoration-break: clone;
             -webkit-box-decoration-break: clone;
-            box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.12), 0 2px 8px rgba(0, 0, 0, 0.4);
-            animation: pulseSubtle 1.8s infinite ease-in-out;
         }
 
-        @keyframes pulseSubtle {
-            0%, 100% { background: #263042; }
-            50% { background: #334155; }
+        .cantonese-content .interim-text:empty {
+            display: none;
+            padding: 0;
         }
 
         #fontToast {
@@ -360,10 +347,10 @@
 </head>
 <body>
 
-    <!-- 靜態 3D 背景（0% 閒置開銷） -->
+    <!-- 靜態 3D 背景 -->
     <canvas id="threeCanvas"></canvas>
 
-    <!-- 居中提詞機主體 -->
+    <!-- 居中主體 -->
     <main id="teleprompterRig" class="teleprompter-rig">
 
         <div class="rig-screen-enclosure">
@@ -399,15 +386,10 @@
 
             <div id="fontToast">字體 標準</div>
 
-            <!-- 純粹提詞主視圖 -->
+            <!-- 純粹提詞主視圖：一段文字混合呈現 -->
             <div class="viewport-container">
                 <div id="cantoScroll" class="scroll-body">
-                    <div id="cantoneseContent" class="cantonese-content">
-                        <!-- 確認定稿文字（白字） -->
-                        <span id="confirmedPart"></span>
-                        <!-- 實時正在說的句子（清晰灰底標記） -->
-                        <span id="interimPart" class="phrase-interim" style="display: none;"></span>
-                    </div>
+                    <div id="cantoneseContent" class="cantonese-content"><span id="confirmedPart" class="confirmed-text"></span><span id="interimPart" class="interim-text"></span></div>
                     <div class="bottom-safe-spacer"></div>
                 </div>
             </div>
@@ -523,17 +505,18 @@
             toastTimer = setTimeout(() => fontToast.classList.remove('show'), 1500);
         }
 
-        /* ------------------ 2. 粵語流式提詞核心引擎 ------------------ */
+        /* ------------------ 2. 自然語流串流與斷句引擎 ------------------ */
         const cantoScroll = document.getElementById('cantoScroll');
         const confirmedPart = document.getElementById('confirmedPart');
         const interimPart = document.getElementById('interimPart');
 
-        let rawConfirmedText = "";
+        let committedOffset = 0;
+        let lastResultIndex = -1;
+        let pauseTimer = null;
         let autoScrollCanto = true;
-        let naturalSegmentTimer = null;
-        
-        // 語流自然長度閥值（通常粵語口語 10-14 字為一個自然意群/節拍）
-        const MAX_NATURAL_CHUNK_LEN = 13;
+
+        // 自然語意音步長度（11-13字切一小節，自然成句，不停頓亦能順滑輸出）
+        const CHUNK_LIMIT = 12;
         const TARGET_MAX_CHARS = 160;
 
         cantoScroll.addEventListener('scroll', () => {
@@ -546,110 +529,69 @@
             }
         }
 
-        // 維持歷史視窗
-        function trimConfirmedHistory() {
-            while (confirmedPart.childNodes.length > 1 && (confirmedPart.textContent || '').length > TARGET_MAX_CHARS) {
-                confirmedPart.removeChild(confirmedPart.firstChild);
-            }
-            if (confirmedPart.childNodes.length === 1 && (confirmedPart.firstChild.textContent || '').length > TARGET_MAX_CHARS) {
-                confirmedPart.firstChild.textContent = confirmedPart.firstChild.textContent.slice(-TARGET_MAX_CHARS);
-            }
-            if (rawConfirmedText.length > 220) {
-                rawConfirmedText = rawConfirmedText.slice(-TARGET_MAX_CHARS);
+        // 維持滑動視窗字數
+        function trimHistory() {
+            if (confirmedPart.textContent.length > TARGET_MAX_CHARS) {
+                confirmedPart.textContent = confirmedPart.textContent.slice(-TARGET_MAX_CHARS);
             }
         }
 
-        /**
-         * 提交定稿語段：
-         * 瞬間將文字由「灰底標記」轉換為「正式白字」，並自然綴上斷句符號
-         */
-        function commitSegment(text) {
-            let seg = convertToHK((text || '').trim());
+        // 將文字正式轉為白色定稿
+        function commitChunk(text) {
+            let seg = convertToHK(text || '').trim();
             if (!seg) return;
-
-            // 清除末端已有標點
+            
+            // 去除多餘符號後加逗號
             seg = seg.replace(/[，。？！、\.,!\?]+$/g, '');
             if (!seg) return;
-
-            // 智能斷句結尾：自然以逗號隔開成句
             seg += '，';
 
-            const phraseSpan = document.createElement('span');
-            phraseSpan.className = 'phrase-final';
-            phraseSpan.textContent = seg;
-            confirmedPart.appendChild(phraseSpan);
-
-            rawConfirmedText += seg;
-            trimConfirmedHistory();
+            confirmedPart.textContent += seg;
+            trimHistory();
             scrollCantoToBottom();
         }
 
-        /**
-         * 正在說話時的實時反饋（灰底視覺化處理）
-         * 支援自然語流切分：即便用戶完全不停頓，每滿一個自然意群長度亦會主動分段出字
-         */
-        function handleSpeechInterim(text) {
-            let pending = convertToHK((text || '').trim());
-            if (!pending) {
-                clearInterim();
-                return;
+        // 核心串流分段器：實時灰底顯示 + 自動自然斷句
+        function processStreamText(fullTranscript, isFinal) {
+            clearTimeout(pauseTimer);
+
+            // 若說話未停但已超過自然音步長度，流暢切出前方文字轉白
+            while ((fullTranscript.length - committedOffset) >= CHUNK_LIMIT) {
+                const chunk = fullTranscript.slice(committedOffset, committedOffset + CHUNK_LIMIT);
+                commitChunk(chunk);
+                committedOffset += CHUNK_LIMIT;
             }
 
-            // 演算法核心：若用戶一直講話不停頓，字串達到自然口語段落長度時，直接自動分段
-            while (pending.length >= MAX_NATURAL_CHUNK_LEN) {
-                const chunk = pending.slice(0, MAX_NATURAL_CHUNK_LEN);
-                commitSegment(chunk);
-                pending = pending.slice(MAX_NATURAL_CHUNK_LEN).trim();
-            }
-
-            if (pending.length > 0) {
-                interimPart.textContent = pending;
-                interimPart.style.display = 'inline';
+            // 剩下最新、準備辨識確認的文字：實時呈現灰底
+            const pending = fullTranscript.slice(committedOffset);
+            if (pending.trim()) {
+                interimPart.textContent = convertToHK(pending.trim());
                 scrollCantoToBottom();
 
-                // 動態微停頓計時器（400ms）：
-                // 用戶在語句間只要稍有 0.4 秒自然換氣微歇，便立即將灰底轉換為白字
-                clearTimeout(naturalSegmentTimer);
-                naturalSegmentTimer = setTimeout(() => {
-                    flushInterim();
-                }, 400);
+                // 自然微停頓（420ms）：稍有停歇立刻收口定稿，灰底直接變白字
+                pauseTimer = setTimeout(() => {
+                    commitRemaining();
+                }, 420);
             } else {
-                clearInterim();
+                interimPart.textContent = '';
+            }
+
+            if (isFinal) {
+                commitRemaining();
+                committedOffset = 0;
             }
         }
 
-        function flushInterim() {
-            clearTimeout(naturalSegmentTimer);
-            const pending = (interimPart.textContent || "").trim();
-            if (pending) {
-                clearInterim();
-                commitSegment(pending);
+        function commitRemaining() {
+            clearTimeout(pauseTimer);
+            const remaining = interimPart.textContent;
+            if (remaining) {
+                interimPart.textContent = '';
+                commitChunk(remaining);
             }
         }
 
-        function clearInterim() {
-            interimPart.textContent = "";
-            interimPart.style.display = 'none';
-        }
-
-        function handleSpeechFinal(text) {
-            clearTimeout(naturalSegmentTimer);
-            clearInterim();
-            const delta = convertToHK((text || '').trim());
-            if (delta) {
-                // 如果 final 文本較長，按自然長度拆分成獨立自然短句
-                let remaining = delta;
-                while (remaining.length > MAX_NATURAL_CHUNK_LEN) {
-                    commitSegment(remaining.slice(0, MAX_NATURAL_CHUNK_LEN));
-                    remaining = remaining.slice(MAX_NATURAL_CHUNK_LEN);
-                }
-                if (remaining) {
-                    commitSegment(remaining);
-                }
-            }
-        }
-
-        /* ------------------ 3. 語音辨識機制（徹底解決手機端停滯與排隊問題） ------------------ */
+        /* ------------------ 3. 語音辨識機制 ------------------ */
         const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
         let recognition = null;
         let userWantsListening = false;
@@ -692,7 +634,7 @@
                         }, 60);
                     }
                 }
-            }, 20);
+            }, 30);
         }
 
         document.addEventListener('visibilitychange', () => {
@@ -704,7 +646,6 @@
 
         if (SpeechRecognition) {
             recognition = new SpeechRecognition();
-            // 在所有手機/桌面平台均強制開啟連續辨識與即時串流反饋
             recognition.continuous = true;
             recognition.interimResults = true;
             recognition.lang = 'zh-HK';
@@ -718,20 +659,16 @@
             };
 
             recognition.onresult = (event) => {
-                let interim = '';
                 for (let i = event.resultIndex; i < event.results.length; ++i) {
+                    if (i !== lastResultIndex) {
+                        lastResultIndex = i;
+                        committedOffset = 0;
+                    }
+
                     const res = event.results[i];
                     if (!res || !res[0]) continue;
-                    const trans = res[0].transcript;
-
-                    if (res.isFinal) {
-                        handleSpeechFinal(trans);
-                    } else {
-                        interim += trans;
-                    }
-                }
-                if (interim) {
-                    handleSpeechInterim(interim);
+                    const transcript = res[0].transcript;
+                    processStreamText(transcript, res.isFinal);
                 }
             };
 
@@ -748,7 +685,7 @@
             };
 
             recognition.onend = () => {
-                flushInterim();
+                commitRemaining();
                 isEngineRunning = false;
                 if (userWantsListening) {
                     scheduleSafeRestart();
@@ -761,7 +698,7 @@
         function stopListeningSession() {
             userWantsListening = false;
             if (restartDebounce) clearTimeout(restartDebounce);
-            flushInterim();
+            commitRemaining();
             releaseWakeLock();
             try { recognition.stop(); } catch(e) {}
             stopListeningUI();
@@ -778,6 +715,8 @@
                 showToast("已停止提詞");
             } else {
                 userWantsListening = true;
+                committedOffset = 0;
+                lastResultIndex = -1;
                 acquireWakeLock();
                 scheduleSafeRestart();
                 showToast("已啟動實時提詞");
@@ -788,7 +727,7 @@
             toggleBtn.classList.remove('active');
             playIcon.style.display = 'block';
             pauseIcon.style.display = 'none';
-            clearInterim();
+            interimPart.textContent = "";
         }
 
         /* ------------------ 4. 字體調節 ------------------ */
@@ -844,8 +783,7 @@
         }
 
         async function openPhoneticModal() {
-            // 合併當前所有白字與正在說的內容
-            const fullText = (confirmedPart.innerText + " " + (interimPart.innerText || "")).trim();
+            const fullText = (confirmedPart.textContent + interimPart.textContent).trim();
             currentPureText = cleanString(fullText);
 
             if (!fullText) {
