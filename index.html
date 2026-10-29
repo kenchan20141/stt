@@ -715,16 +715,15 @@
             </div>
             <div class="modal-body" style="display:flex; flex-direction:column; gap:16px; padding:22px;">
                 <div class="input-group">
-                    <label class="input-label">純數字房間號 (例如：839215)</label>
+                    <label class="input-label">房間號</label>
                     <input id="inputRoomId" type="text" inputmode="numeric" pattern="[0-9]*" class="app-input" placeholder="請輸入 6 位數字" autocomplete="off" />
                 </div>
                 <div class="input-group">
                     <label class="input-label">連線密鑰</label>
                     <input id="inputSecretKey" type="text" class="app-input" placeholder="輸入連線密鑰" autocomplete="off" />
                 </div>
-                <div style="font-size: 0.76rem; color: #64748b; text-align: center;">或在此直接貼上完整邀請連結：</div>
-                <input id="inputFastPaste" type="text" class="app-input" placeholder="在此貼上完整分享網址..." oninput="handleFastPaste(event)" />
-                <button class="primary-action-btn" onclick="submitJoinRoom()">立即連線觀看</button>
+               
+                <button class="primary-action-btn" onclick="submitJoinRoom()">連線</button>
             </div>
         </div>
     </div>
@@ -1541,7 +1540,7 @@
         /* ------------------ 9. 桌面置頂懸浮字幕條 ------------------ */
         let pipWindow = null;
 
-        async function togglePipPrompter() {
+       async function togglePipPrompter() {
             if (pipWindow && !pipWindow.closed) {
                 pipWindow.close();
                 pipWindow = null;
@@ -1554,28 +1553,34 @@
             }
 
             try {
-                const screenW = window.screen.availWidth || window.screen.width || 1280;
+                // 取得目前螢幕的可用全寬度與原點
+                const availLeft = window.screen.availLeft ?? 0;
+                const availTop = window.screen.availTop ?? 0;
+                const availW = window.screen.availWidth || window.screen.width || window.innerWidth;
+                const availH = window.screen.availHeight || window.screen.height || window.innerHeight;
                 const targetH = 80;
 
                 pipWindow = await window.documentPictureInPicture.requestWindow({
-                    width: screenW,
+                    width: availW,
                     height: targetH
                 });
 
-                const snapToBottom = () => {
+                // 強制覆寫邊界，撐滿 100% 寬度並貼齊底端
+                const snapToFullWidthBottom = () => {
                     try {
-                        const availLeft = window.screen.availLeft ?? 0;
-                        const availTop = window.screen.availTop ?? 0;
-                        const availH = window.screen.availHeight || window.screen.height;
                         const winH = pipWindow.outerHeight || targetH;
+                        // 1. 強制重設為螢幕 100% 可用寬度
+                        pipWindow.resizeTo(availW, winH);
+                        // 2. 移動至最左側 (availLeft) 並置底
                         pipWindow.moveTo(availLeft, availTop + availH - winH);
-                        pipWindow.resizeTo(screenW, winH);
                     } catch (e) {}
                 };
 
-                snapToBottom();
-                setTimeout(snapToBottom, 60);
-                setTimeout(snapToBottom, 250);
+                // 分段觸發以繞過瀏覽器在視窗載入初期的尺寸限制
+                snapToFullWidthBottom();
+                requestAnimationFrame(snapToFullWidthBottom);
+                setTimeout(snapToFullWidthBottom, 100);
+                setTimeout(snapToFullWidthBottom, 300);
 
                 document.querySelectorAll('link[rel="stylesheet"]').forEach(link => {
                     pipWindow.document.head.appendChild(link.cloneNode(true));
