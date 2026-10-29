@@ -210,12 +210,6 @@
             border: 1px solid rgba(255, 255, 255, 0.15);
         }
 
-        .char-counter {
-            font-family: "Noto Sans HK", sans-serif;
-            font-size: 0.8rem;
-            color: #64748b;
-        }
-
         .scroll-body {
             flex: 1;
             overflow-y: auto;
@@ -233,7 +227,7 @@
             flex-shrink: 0;
         }
 
-        /* 粵語原文內容：字句平順安靜、字體清晰易讀 */
+        /* 粵語原文內容：已定稿白字 */
         .cantonese-content {
             font-family: "Noto Serif HK", serif;
             font-size: var(--cantonese-size);
@@ -244,10 +238,10 @@
             word-break: break-word;
         }
 
-        /* 臨時詞句：柔和暗灰、無下劃線、絕不閃爍干擾 */
+        /* 未肯定臨時詞句：專屬暗灰、無下劃線、絕不閃爍干擾 */
         .cantonese-content .interim-text {
             color: #94a3b8;
-            opacity: 0.75;
+            opacity: 0.8;
             font-weight: 500;
             margin-left: 2px;
         }
@@ -408,7 +402,6 @@
                 <div class="column-header">
                     <span class="pane-tag">粵語原音識別</span>
                     <div style="display:flex; align-items:center; gap:10px;">
-                        <span id="charCount" class="char-counter">0 字</span>
                         <button class="icon-btn" style="width:28px; height:28px;" onclick="openPhoneticModal()" title="粵拼注音">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
                                 <path d="M3 18v-6a9 9 0 0 1 18 0v6"></path>
@@ -529,17 +522,17 @@
             toastTimer = setTimeout(() => fontToast.classList.remove('show'), 1500);
         }
 
-        /* ------------------ 2. 粵語原文「無感鎖定」架構（零閃爍、零消失、零重打） ------------------ */
+        /* ------------------ 2. 粵語原文核心（手機端灰白過渡 + 150字滑動窗口緩存） ------------------ */
         const cantoScroll = document.getElementById('cantoScroll');
         const confirmedPart = document.getElementById('confirmedPart');
         const interimPart = document.getElementById('interimPart');
-        const charCount = document.getElementById('charCount');
 
         let rawConfirmedText = "";
-        let fullPunctuatedText = "";
         let lastFinalCleanText = "";
         let lastFinalTimestamp = 0;
         let autoScrollCanto = true;
+        let interimSilenceTimer = null;
+        const TARGET_MAX_CHARS = 150;
 
         cantoScroll.addEventListener('scroll', () => {
             autoScrollCanto = (cantoScroll.scrollHeight - cantoScroll.scrollTop - cantoScroll.clientHeight) < 80;
@@ -551,13 +544,79 @@
             }
         }
 
-        function handleSpeechInterim(interim) {
-            if (!interim) return;
-            interimPart.textContent = interim;
-            scrollCantoToBottom();
+        // 僅保留最新約 150 字，避免大量 DOM 及記憶體積壓
+        function trimConfirmedHistory() {
+            while (confirmedPart.childNodes.length > 1 && (confirmedPart.textContent || '').length > TARGET_MAX_CHARS) {
+                confirmedPart.removeChild(confirmedPart.firstChild);
+            }
+            if (confirmedPart.childNodes.length === 1 && (confirmedPart.firstChild.textContent || '').length > TARGET_MAX_CHARS) {
+                confirmedPart.firstChild.textContent = confirmedPart.firstChild.textContent.slice(-TARGET_MAX_CHARS);
+            }
+            if (rawConfirmedText.length > 200) {
+                rawConfirmedText = rawConfirmedText.slice(-TARGET_MAX_CHARS);
+            }
         }
 
+        // 去除行動端累積識別中已肯定部分的重疊前綴
+        function stripConfirmedPrefix(text) {
+            if (!text || !rawConfirmedText) return text;
+            const cleanConf = cleanString(rawConfirmedText);
+            const cleanText = cleanString(text);
+            if (!cleanConf || !cleanText) return text;
+
+            const minMatchLen = Math.min(3, cleanConf.length);
+            for (let len = Math.min(cleanConf.length, cleanText.length); len >= minMatchLen; len--) {
+                const prefix = cleanText.slice(0, len);
+                if (cleanConf.endsWith(prefix)) {
+                    let matchedChars = 0;
+                    let cutIdx = 0;
+                    for (let i = 0; i < text.length; i++) {
+                        if (!/[，。？！、\s\.,!\?]/.test(text[i])) {
+                            matchedChars++;
+                        }
+                        if (matchedChars === len) {
+                            cutIdx = i + 1;
+                            break;
+                        }
+                    }
+                    return text.slice(cutIdx).replace(/^[，。？！、\s\.,!\?]+/, '').trim();
+                }
+            }
+            return text;
+        }
+
+        // 處理未肯定字句：手機與電腦均統一顯示為柔和灰色
+        function handleSpeechInterim(interim) {
+            const stripped = stripConfirmedPrefix(interim);
+            interimPart.textContent = stripped;
+            if (stripped) {
+                scrollCantoToBottom();
+                resetSilenceTimer();
+            } else {
+                clearTimeout(interimSilenceTimer);
+            }
+        }
+
+        function resetSilenceTimer() {
+            clearTimeout(interimSilenceTimer);
+            interimSilenceTimer = setTimeout(() => {
+                commitInterim();
+            }, 850);
+        }
+
+        function commitInterim() {
+            clearTimeout(interimSilenceTimer);
+            const pending = (interimPart.textContent || "").trim();
+            if (pending) {
+                interimPart.textContent = "";
+                handleSpeechFinal(pending);
+            }
+        }
+
+        // 肯定文字：轉為白色定稿，並修剪至最新 150 字
         function handleSpeechFinal(finalText) {
+            if (!finalText || !finalText.trim()) return;
+            finalText = stripConfirmedPrefix(finalText);
             if (!finalText || !finalText.trim()) return;
 
             const cleanFinal = cleanString(finalText);
@@ -565,6 +624,7 @@
 
             if (cleanFinal === lastFinalCleanText && (now - lastFinalTimestamp < 2000)) {
                 interimPart.textContent = "";
+                clearTimeout(interimSilenceTimer);
                 return;
             }
 
@@ -572,6 +632,7 @@
             const tailSlice = cleanConfirmed.slice(-Math.max(cleanFinal.length + 10, 50));
             if (tailSlice.endsWith(cleanFinal)) {
                 interimPart.textContent = "";
+                clearTimeout(interimSilenceTimer);
                 return;
             }
 
@@ -586,25 +647,26 @@
 
             if (!cleanString(delta)) {
                 interimPart.textContent = "";
+                clearTimeout(interimSilenceTimer);
                 return;
             }
 
             lastFinalCleanText = cleanFinal;
             lastFinalTimestamp = now;
-            rawConfirmedText += delta; 
-            charCount.textContent = `${cleanString(rawConfirmedText).length} 字`;
+            rawConfirmedText += delta;
 
-            // 臨時字串無縫過渡為定稿文字
+            clearTimeout(interimSilenceTimer);
             interimPart.textContent = "";
 
             const cantoSpan = document.createElement('span');
             cantoSpan.textContent = delta + (/[，。？！、]$/.test(delta) ? "" : "，");
             confirmedPart.appendChild(cantoSpan);
-            fullPunctuatedText += cantoSpan.textContent;
+
+            trimConfirmedHistory();
             scrollCantoToBottom();
         }
 
-        /* ------------------ 3. 語音辨識（常駐傳譯模式，無休眠、無網絡依賴） ------------------ */
+        /* ------------------ 3. 語音辨識（適配電腦及手機端灰白狀態） ------------------ */
         const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
         let recognition = null;
         let userWantsListening = false;
@@ -674,16 +736,24 @@
             recognition.onresult = (event) => {
                 let interim = '';
                 for (let i = event.resultIndex; i < event.results.length; ++i) {
-                    const trans = event.results[i][0].transcript;
-                    if (event.results[i].isFinal) {
+                    const res = event.results[i];
+                    if (!res || !res[0]) continue;
+                    const trans = res[0].transcript;
+                    const confidence = res[0].confidence;
+
+                    // 行動端兼容校準：解決 Android Chrome 未定稿即標註 isFinal=true 但 confidence=0 的問題
+                    let isActuallyFinal = res.isFinal;
+                    if (isActuallyFinal && typeof confidence === 'number' && confidence === 0) {
+                        isActuallyFinal = false;
+                    }
+
+                    if (isActuallyFinal) {
                         handleSpeechFinal(trans);
                     } else {
                         interim += trans;
                     }
                 }
-                if (interim) {
-                    handleSpeechInterim(interim);
-                }
+                handleSpeechInterim(interim);
             };
 
             recognition.onerror = (e) => {
@@ -692,13 +762,14 @@
                     stopListeningUI();
                     alert("請允許麥克風權限以進行實時識別。");
                 } else if (e.error === 'no-speech') {
-                    // 常駐監聽，安靜時無需處理
+                    // 安靜狀態繼續監聽
                 } else {
                     scheduleSafeRestart();
                 }
             };
 
             recognition.onend = () => {
+                commitInterim();
                 isEngineRunning = false;
                 if (userWantsListening) {
                     scheduleSafeRestart();
@@ -711,6 +782,7 @@
         function stopListeningSession() {
             userWantsListening = false;
             if (restartDebounce) clearTimeout(restartDebounce);
+            commitInterim();
 
             releaseWakeLock();
             try { recognition.stop(); } catch(e) {}
@@ -757,7 +829,7 @@
             scrollCantoToBottom();
         }
 
-        /* ------------------ 5. 粵拼彈窗與語音朗讀 ------------------ */
+        /* ------------------ 5. 粵拼彈窗與語音朗讀（針對最新 ~150 字極速標註） ------------------ */
         const modal = document.getElementById('phoneticModal');
         const modalContent = document.getElementById('modalContent');
         const ttsStatus = document.getElementById('ttsStatus');
