@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>實時粵語提詞器</title>
+    <title>實時粵語提詞器 (廣播同步版)</title>
 
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -21,15 +21,19 @@
     <!-- 繁體字強制校準庫 -->
     <script src="https://cdn.jsdelivr.net/npm/opencc-js@1.0.5/dist/umd/full.min.js"></script>
 
+    <!-- PeerJS (用於老師/學生手機即時 P2P 同步) -->
+    <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+    <!-- QRCode 生成庫 -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+
     <style>
         :root {
             --bg: #05070a;
             --canto-bg: #090a0f;
             --card-border: rgba(255, 255, 255, 0.08);
-            
             --ruby: #f59e0b;
             --accent: #38bdf8;
-            --cantonese-size: 2.10rem;
+            --cantonese-size: 2.15rem;
         }
 
         * {
@@ -52,7 +56,6 @@
             -webkit-font-smoothing: antialiased;
         }
 
-        /* 靜態演播室底座背景 */
         #threeCanvas {
             position: fixed;
             top: 0;
@@ -67,7 +70,7 @@
             position: relative;
             z-index: 10;
             width: 100%;
-            max-width: 880px;
+            max-width: 900px;
             height: 100vh;
             height: 100dvh;
             max-height: 960px;
@@ -76,14 +79,12 @@
             padding: 20px 24px 28px 24px;
             box-sizing: border-box;
             pointer-events: auto;
-            transform: none !important;
         }
 
         @media (max-width: 768px) {
             .teleprompter-rig {
                 max-width: 100%;
                 height: 100dvh;
-                max-height: none;
                 padding: 10px 8px 16px 8px;
             }
         }
@@ -95,10 +96,7 @@
             background: #090a0f;
             border-radius: 14px;
             border: 2px solid #1e2638;
-            box-shadow: 
-                0 0 0 1px rgba(0, 0, 0, 0.8),
-                0 20px 45px rgba(0, 0, 0, 0.9),
-                inset 0 0 20px rgba(0, 0, 0, 0.85);
+            box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.8), 0 20px 45px rgba(0, 0, 0, 0.9);
             overflow: hidden;
             position: relative;
             min-height: 0;
@@ -118,7 +116,7 @@
         .brand-meta {
             display: flex;
             align-items: center;
-            gap: 12px;
+            gap: 10px;
         }
 
         .brand-title {
@@ -127,6 +125,16 @@
             color: #94a3b8;
             letter-spacing: 0.8px;
             font-family: "Noto Sans HK", sans-serif;
+        }
+
+        .status-badge {
+            font-family: "Noto Sans HK", sans-serif;
+            font-size: 0.75rem;
+            padding: 2px 8px;
+            border-radius: 4px;
+            background: rgba(56, 189, 248, 0.15);
+            color: var(--accent);
+            border: 1px solid rgba(56, 189, 248, 0.3);
         }
 
         .char-counter {
@@ -179,7 +187,6 @@
             box-shadow: 0 0 16px rgba(16, 185, 129, 0.45);
         }
 
-        /* 視圖區域 */
         .viewport-container {
             flex: 1;
             display: flex;
@@ -196,7 +203,7 @@
             position: absolute;
             top: 0; left: 0; right: 0;
             height: 36px;
-            background: linear-gradient(to bottom, #090a0f 20%, transparent);
+            background: linear-gradient(to bottom, #090a0f 25%, transparent);
             z-index: 10;
             pointer-events: none;
         }
@@ -211,43 +218,39 @@
             z-index: 1;
         }
 
-        /* 提詞流容器 */
         .cantonese-stream {
             font-family: "Noto Serif HK", serif;
             font-size: var(--cantonese-size);
             line-height: 1.85;
-            letter-spacing: 0.6px;
+            letter-spacing: 0.8px;
             display: flex;
             flex-direction: column;
-            gap: 14px;
+            gap: 22px;
             word-break: break-word;
         }
 
-        /* 句子基礎項 */
-        .phrase-item {
+        .phrase-group {
             display: block;
+            position: relative;
             line-height: 1.85;
             word-break: break-word;
-            transition: color 0.4s ease, opacity 0.4s ease, text-shadow 0.4s ease;
+            transition: color 0.4s ease, opacity 0.4s ease;
         }
 
-        /* 歷史句子：溫和暗灰，自然退居背景 */
-        .phrase-item.past {
-            color: #4b5563;
+        .phrase-group.past {
+            color: #475569;
             font-weight: 500;
-            opacity: 0.45;
+            opacity: 0.42;
         }
 
-        /* 最新的 2 至 3 句：共同保持純白高光聚焦，構成自然視讀區塊 */
-        .phrase-item.active-recent {
+        .phrase-group.active-latest {
             color: #ffffff;
             font-weight: 700;
             opacity: 1;
             text-shadow: 0 0 16px rgba(255, 255, 255, 0.28);
-            animation: phraseNaturalPop 0.22s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+            animation: phrasePop 0.22s cubic-bezier(0.16, 1, 0.3, 1) forwards;
         }
 
-        /* 即時識別中（講話中）：柔和天藍色流光標籤 */
         .phrase-item.interim {
             color: #38bdf8;
             font-weight: 600;
@@ -257,21 +260,14 @@
             border-radius: 0 6px 6px 0;
             display: inline-block;
             margin-top: 4px;
-            animation: fadeIn 0.15s ease forwards;
+            align-self: flex-start;
         }
 
-        .phrase-item.interim:empty {
-            display: none;
-        }
+        .phrase-item.interim:empty { display: none; }
 
-        @keyframes phraseNaturalPop {
+        @keyframes phrasePop {
             0% { opacity: 0; transform: translateY(6px); }
             100% { opacity: 1; transform: translateY(0); }
-        }
-
-        @keyframes fadeIn {
-            0% { opacity: 0; }
-            100% { opacity: 1; }
         }
 
         .bottom-safe-spacer {
@@ -301,13 +297,7 @@
 
         #fontToast.show { opacity: 1; transform: translateY(0); }
 
-        .scroll-body::-webkit-scrollbar, .modal-body::-webkit-scrollbar { width: 4px; }
-        .scroll-body::-webkit-scrollbar-thumb, .modal-body::-webkit-scrollbar-thumb {
-            background: rgba(255, 255, 255, 0.12);
-            border-radius: 4px;
-        }
-
-        /* 粵拼注音彈窗 */
+        /* 模態框通風樣式 */
         .modal-overlay {
             position: fixed;
             top: 0; left: 0; width: 100vw; height: 100vh;
@@ -349,42 +339,7 @@
             padding: 24px;
             overflow-y: auto;
             flex: 1;
-            line-height: 2.6;
             background: #080a0e;
-            display: flex;
-            flex-wrap: wrap;
-            gap: 2px;
-        }
-
-        ruby.jp-ruby {
-            display: inline-flex;
-            flex-direction: column-reverse;
-            align-items: center;
-            margin: 2px 4px;
-            line-height: 1;
-        }
-
-        ruby.jp-ruby rt.c-rt {
-            display: block;
-            font-size: 0.82rem;
-            line-height: 1;
-            font-family: "Noto Sans HK", sans-serif;
-            color: var(--ruby);
-            margin-bottom: 6px;
-        }
-
-        ruby.jp-ruby span.c-char {
-            display: block;
-            font-size: 1.65rem;
-            font-weight: 600;
-            color: #f8fafc;
-        }
-
-        span.jp-punct {
-            font-size: 1.65rem;
-            line-height: 1.2;
-            color: #64748b;
-            margin: 0 3px;
         }
 
         .modal-footer {
@@ -393,6 +348,15 @@
             display: flex;
             justify-content: space-between;
             align-items: center;
+        }
+
+        /* 廣播 QR 彈窗特定設計 */
+        #qrContainer {
+            background: #ffffff;
+            padding: 16px;
+            border-radius: 10px;
+            display: inline-block;
+            margin: 0 auto;
         }
     </style>
 </head>
@@ -405,15 +369,26 @@
             <header>
                 <div class="brand-meta">
                     <span class="brand-title">實時粵語提詞</span>
+                    <span id="roleBadge" class="status-badge">老師端</span>
                     <span id="charCount" class="char-counter">0 字</span>
                 </div>
                 <div class="btn-group">
+                    <!-- 廣播分享按鈕 -->
+                    <button class="icon-btn" title="學生端同步 (QR碼)" onclick="openBroadcastModal()">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"></path>
+                            <polyline points="16 6 12 2 8 6"></polyline>
+                            <line x1="12" y1="2" x2="12" y2="15"></line>
+                        </svg>
+                    </button>
+                    <!-- 粵拼注音按鈕 -->
                     <button class="icon-btn" title="粵拼注音與朗讀" onclick="openPhoneticModal()">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
                             <path d="M3 18v-6a9 9 0 0 1 18 0v6"></path>
                             <path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z"></path>
                         </svg>
                     </button>
+                    <!-- 字體縮放按鈕 -->
                     <button class="icon-btn" title="切換字體大小" onclick="cycleFontSize()">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
                             <path d="M3.5 17.5L6.5 9.5L9.5 17.5"></path>
@@ -422,7 +397,8 @@
                             <path d="M14 13.5H19"></path>
                         </svg>
                     </button>
-                    <button id="toggleBtn" class="icon-btn power-btn" title="啟動提詞" onclick="toggleSpeech()">
+                    <!-- 麥克風開關（學生端會隱藏） -->
+                    <button id="toggleBtn" class="icon-btn power-btn" title="啟動收音" onclick="toggleSpeech()">
                         <svg id="playIcon" viewBox="0 0 24 24" fill="currentColor">
                             <path d="M8 5.14v13.72a1 1 0 0 0 1.5.86l11-6.86a1 1 0 0 0 0-1.72l-11-6.86a1 1 0 0 0-1.5.86z"></path>
                         </svg>
@@ -436,7 +412,7 @@
 
             <div id="fontToast">字體 標準</div>
 
-            <!-- 自然提詞主體流 -->
+            <!-- 主提詞視圖 -->
             <div class="viewport-container">
                 <div id="cantoScroll" class="scroll-body">
                     <div id="cantoStream" class="cantonese-stream">
@@ -448,32 +424,61 @@
         </div>
     </main>
 
+    <!-- 廣播分享視窗 (給學生掃碼) -->
+    <div id="broadcastModal" class="modal-overlay" onclick="closeModalOnBackdrop(event)">
+        <div class="modal-window" style="max-width: 420px; text-align: center;">
+            <div class="modal-header">
+                <span>學生手機同步 (掃描連線)</span>
+                <button class="icon-btn" style="width:28px; height:28px;" onclick="closeBroadcastModal()">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                </button>
+            </div>
+            <div class="modal-body" style="display:flex; flex-direction:column; align-items:center; gap:16px;">
+                <p style="font-size:0.85rem; color:#94a3b8;">讓學生用手機相機掃描下方 QR 碼，或開啟專屬連結即可實時接收字幕：</p>
+                <div id="qrContainer"></div>
+                <div style="font-family: monospace; font-size: 0.9rem; color: #38bdf8; word-break: break-all; padding: 0 10px;" id="roomLinkText"></div>
+                <div style="font-size:0.8rem; color:#64748b;" id="connectedCount">目前在線學生：0 人</div>
+            </div>
+        </div>
+    </div>
+
     <!-- 粵拼彈窗 -->
     <div id="phoneticModal" class="modal-overlay" onclick="closeModalOnBackdrop(event)">
         <div class="modal-window">
             <div class="modal-header">
                 <span>粵拼注音與朗讀</span>
                 <button class="icon-btn" style="width:28px; height:28px;" onclick="closePhoneticModal()">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
-                        <line x1="18" y1="6" x2="6" y2="18"></line>
-                        <line x1="6" y1="6" x2="18" y2="18"></line>
-                    </svg>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
                 </button>
             </div>
             <div id="modalContent" class="modal-body"></div>
             <div class="modal-footer">
-                <span id="ttsStatus" style="font-size: 0.82rem; color: #94a3b8; font-family: 'Noto Sans HK', sans-serif;">就緒</span>
+                <span id="ttsStatus" style="font-size: 0.82rem; color: #94a3b8;">就緒</span>
                 <button id="ttsPlayBtn" class="icon-btn" style="background:#0284c7; color:#fff;" onclick="speakCurrentText()">
-                    <svg viewBox="0 0 24 24" fill="currentColor">
-                        <polygon points="6 3 20 12 6 21 6 3"></polygon>
-                    </svg>
+                    <svg viewBox="0 0 24 24" fill="currentColor"><polygon points="6 3 20 12 6 21 6 3"></polygon></svg>
                 </button>
             </div>
         </div>
     </div>
 
     <script>
-        /* ------------------ 0. 靜態 3D 機體背景（不隨滑鼠晃動） ------------------ */
+        /* ------------------ 0. 判斷模式 (老師 vs 學生) ------------------ */
+        const urlParams = new URLSearchParams(window.location.search);
+        const joinRoomId = urlParams.get('room');
+        const isStudentMode = Boolean(joinRoomId);
+
+        const roleBadge = document.getElementById('roleBadge');
+        const toggleBtn = document.getElementById('toggleBtn');
+
+        if (isStudentMode) {
+            roleBadge.textContent = "學生端 (接收中)";
+            roleBadge.style.color = "#10b981";
+            roleBadge.style.borderColor = "rgba(16, 185, 129, 0.4)";
+            roleBadge.style.background = "rgba(16, 185, 129, 0.15)";
+            toggleBtn.style.display = 'none'; // 學生無需麥克風
+        }
+
+        /* ------------------ 1. 靜態 3D 背景 ------------------ */
         const canvas = document.getElementById('threeCanvas');
         const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
         renderer.setSize(window.innerWidth, window.innerHeight);
@@ -513,20 +518,16 @@
         keyLight.position.set(10, 15, 18);
         scene.add(keyLight);
 
-        function renderStatic3D() {
-            renderer.render(scene, camera);
-        }
-
+        function renderStatic3D() { renderer.render(scene, camera); }
         window.addEventListener('resize', () => {
             camera.aspect = window.innerWidth / window.innerHeight;
             camera.updateProjectionMatrix();
             renderer.setSize(window.innerWidth, window.innerHeight);
             renderStatic3D();
         });
-
         renderStatic3D();
 
-        /* ------------------ 1. 繁體字校準 ------------------ */
+        /* ------------------ 2. 繁體字校準 ------------------ */
         let hkConverter = null;
         try {
             if (window.OpenCC) {
@@ -543,7 +544,7 @@
         }
 
         function cleanString(str) {
-            return (str || '').replace(/[，。？！、\s\.,!\?]/g, '');
+            return (str || '').replace(/[，。？！、\s\.,!\?…—]/g, '');
         }
 
         const fontToast = document.getElementById('fontToast');
@@ -555,14 +556,9 @@
             toastTimer = setTimeout(() => fontToast.classList.remove('show'), 1500);
         }
 
-        /* ------------------ 2. 粵語自然節奏斷句引擎 ------------------ */
-
-        // 粵語句尾疑問助詞及結構
-        const QUESTION_ENDINGS = /(點解|係咪|係唔係|係未|得唔得|好唔好|幾時|邊個|邊度|邊處|點樣|點做|點算|成點|咩|呀嘛|呀嗱|呢|嗎|得未|好未|係咪呀|係唔係呀|下話|呀)$/;
-        // 粵語句尾強烈感嘆詞
-        const EXCLAMATION_ENDINGS = /(太好喇|好犀利|超勁|正呀|好正|利害|搞錯|痴線|唔係卦|救命|嘩|哇|好嘢|真係誇張|真係正|勁呀)$/;
-        // 粵語收尾語氣詞（完整句意定稿）
-        const TERMINAL_PARTICLES = /(啦|喇|㗎|喎|囉|啫|咋|添|嘅|之嘛|喇喎|㗎啦|㗎喇|㗎咋|罷了|唔知呢)$/;
+        /* ------------------ 3. 粵語句組引擎 ------------------ */
+        const QUESTION_ENDINGS = /(點解|係咪|係唔係|係未|得唔得|好唔好|幾時|邊個|邊度|邊處|點樣|點做|點算|成點|做咩|做乜|做乜嘢|嗎|下話|得未|好未|係咪呀|係唔係呀|點樣呀|做咩呀|邊個呀|幾時呀)$/;
+        const EXCLAMATION_ENDINGS = /(太好喇|好犀利|超勁|正呀|好正|利害|搞錯|痴線|唔係卦|救命|嘩|哇|好嘢|真係誇張|真係正|勁呀|正話|好痛呀|好正呀)$/;
 
         const cantoScroll = document.getElementById('cantoScroll');
         const cantoStream = document.getElementById('cantoStream');
@@ -574,10 +570,12 @@
         let lastFinalCleanText = "";
         let lastFinalTimestamp = 0;
 
-        // 保存所有句子物件：{ text: string, elem: HTMLElement }
-        const phrasesList = [];
-        const MAX_HISTORY_PHRASES = 60;
-        const ACTIVE_RECENT_COUNT = 3; // 保持最新 2~3 句為「最新高光狀態」
+        const groupList = [];
+        let currentGroup = null;
+        let longPauseTimer = null;
+
+        const MAX_VALID_SENTENCES_PER_GROUP = 3;
+        const LONG_PAUSE_THRESHOLD = 1400;
 
         cantoScroll.addEventListener('scroll', () => {
             autoScrollCanto = (cantoScroll.scrollHeight - cantoScroll.scrollTop - cantoScroll.clientHeight) < 120;
@@ -591,152 +589,241 @@
             }
         }
 
-        /**
-         * 智慧標點附著：依照自然粵語音律與語義結尾判定
-         */
-        function attachSmartPunctuation(text, isSentenceEnd = false) {
-            let s = text.trim();
-            if (!s) return "";
+        function extractNonOverlappingDelta(incomingText) {
+            if (!incomingText) return "";
+            const cleanIncoming = cleanString(incomingText);
+            if (!cleanIncoming) return "";
+            if (!confirmedPlainHistory) return incomingText.trim();
 
-            // 清理末尾原有標點後重新由語境裁定
-            s = s.replace(/[，。？！、\.,!\?]+$/g, '');
+            const recentHistory = confirmedPlainHistory.slice(-200);
+            if (cleanIncoming.length >= 3 && recentHistory.includes(cleanIncoming)) return "";
+            if (recentHistory.endsWith(cleanIncoming)) return "";
 
-            if (QUESTION_ENDINGS.test(s)) {
-                return s + '？';
+            const maxLen = Math.min(recentHistory.length, cleanIncoming.length);
+            let overlapLen = 0;
+            for (let len = maxLen; len >= 1; len--) {
+                if (recentHistory.endsWith(cleanIncoming.slice(0, len))) {
+                    overlapLen = len;
+                    break;
+                }
             }
-            if (EXCLAMATION_ENDINGS.test(s)) {
-                return s + '！';
+            if (overlapLen === cleanIncoming.length) return "";
+
+            if (overlapLen > 0) {
+                let cleanCount = 0;
+                let cutIndex = 0;
+                for (let i = 0; i < incomingText.length; i++) {
+                    if (!/[，。？！、\s\.,!\?…—]/.test(incomingText[i])) cleanCount++;
+                    if (cleanCount === overlapLen) {
+                        cutIndex = i + 1;
+                        break;
+                    }
+                }
+                return incomingText.slice(cutIndex).trim();
             }
-            if (isSentenceEnd || TERMINAL_PARTICLES.test(s)) {
-                return s + '。';
-            }
-            return s + '，';
+            return incomingText.trim();
         }
 
-        /**
-         * 最新 2~3 句保持「最新」高光，舊的才平滑褪暗
-         */
-        function refreshHighlightState() {
-            const total = phrasesList.length;
-            phrasesList.forEach((item, index) => {
-                if (index >= total - ACTIVE_RECENT_COUNT) {
-                    item.elem.classList.remove('past');
-                    item.elem.classList.add('active-recent');
+        const wordSegmenter = (typeof Intl !== 'undefined' && Intl.Segmenter)
+            ? new Intl.Segmenter('zh-HK', { granularity: 'word' }) : null;
+
+        const LEXICON = {
+            strongParticles: new Set(['啦', '喇', '㗎', '喎', '囉', '啫', '咋', '添', '之嘛', '喇喎', '㗎啦', '㗎喇', '㗎咋', '咩', '呢', '呀嘛', '嗎', '下話', '嘅']),
+            connectives: new Set(['但係', '不過', '然而', '跟住', '然後', '所以', '因此', '而且', '即係話', '另外', '總之', '事實上', '仲有', '反之', '換言之', '其實']),
+            starters: new Set(['我哋', '你哋', '佢哋', '大家', '其實我', '如果', '因為', '咁樣']),
+            glueWords: new Set(['緊', '咗', '過', '嘅', '同埋', '一齊', '喺', '去', '想', '要'])
+        };
+
+        function splitIntoSemanticClauses(rawText) {
+            if (!rawText) return [];
+            const text = rawText.trim().replace(/^[，。？！、\.,!\?\s…—]+|[，。？！、\.,!\?\s…—]+$/g, '');
+            if (!text) return [];
+            if (cleanString(text).length <= 7) return [text];
+
+            const rawBlocks = text.split(/[，。？！、\.,!\?\n\r]+/);
+            const finalClauses = [];
+
+            for (let block of rawBlocks) {
+                block = block.trim();
+                const blockClean = cleanString(block);
+                if (!blockClean) continue;
+                if (blockClean.length <= 8) {
+                    finalClauses.push(block);
+                    continue;
+                }
+
+                let words = wordSegmenter ? Array.from(wordSegmenter.segment(block)).map(s => s.segment) : block.split('');
+                let currentClause = "";
+                let splitScore = 0;
+
+                for (let i = 0; i < words.length; i++) {
+                    const word = words[i];
+                    const nextWord = words[i + 1] || "";
+                    currentClause += word;
+
+                    const curLen = cleanString(currentClause).length;
+                    const remainingLen = cleanString(words.slice(i + 1).join('')).length;
+
+                    if (remainingLen < 3) continue;
+
+                    splitScore = 0;
+                    if (curLen >= 6) splitScore += (curLen - 5) * 6;
+                    if (LEXICON.strongParticles.has(word)) splitScore += 40;
+                    if (LEXICON.connectives.has(nextWord)) splitScore += 45;
+                    if (LEXICON.starters.has(nextWord) && curLen >= 6) splitScore += 30;
+                    if (LEXICON.glueWords.has(word)) splitScore -= 40;
+
+                    if (splitScore >= 65 || curLen >= 13) {
+                        finalClauses.push(currentClause.trim());
+                        currentClause = "";
+                    }
+                }
+                if (currentClause.trim()) finalClauses.push(currentClause.trim());
+            }
+            return finalClauses.filter(c => cleanString(c).length > 0);
+        }
+
+        function getClausePunctuation(rawClauseText, isGroupFinalClause = false) {
+            const clean = cleanString(rawClauseText);
+            if (QUESTION_ENDINGS.test(clean)) return '？';
+            if (EXCLAMATION_ENDINGS.test(clean)) return '！';
+            if (isGroupFinalClause) return '。';
+            return '，';
+        }
+
+        function renderGroupText(group, isFinalized = false) {
+            const clauses = group.clauses;
+            if (clauses.length === 0) return "";
+            let fullStr = "";
+            for (let i = 0; i < clauses.length; i++) {
+                const pureText = clauses[i].replace(/[，。？！、\.,!\?\s…—]+$/g, '').trim();
+                if (!pureText) continue;
+                const isLast = (i === clauses.length - 1);
+                const punct = getClausePunctuation(pureText, isLast && isFinalized);
+                fullStr += pureText + punct;
+            }
+            return fullStr;
+        }
+
+        function refreshGroupHighlights() {
+            const total = groupList.length;
+            groupList.forEach((group, index) => {
+                if (index === total - 1) {
+                    group.elem.classList.remove('past');
+                    group.elem.classList.add('active-latest');
                 } else {
-                    item.elem.classList.remove('active-recent');
-                    item.elem.classList.add('past');
+                    group.elem.classList.remove('active-latest');
+                    group.elem.classList.add('past');
                 }
             });
-
-            // 實時統計字數
-            const totalChars = phrasesList.reduce((acc, cur) => acc + cleanString(cur.text).length, 0);
+            const totalChars = groupList.reduce((acc, g) => acc + cleanString(g.fullText).length, 0);
             charCount.textContent = `${totalChars} 字`;
         }
 
-        /**
-         * 提交句子到提詞流（含「5字或以下不單獨成句」與「最新兩三句放在一起高光」機制）
-         */
-        function commitSentence(rawText, isSentenceEnd = false) {
-            if (!rawText) return;
-            let seg = convertToHK(rawText).trim();
-            const cleanSeg = cleanString(seg);
-            if (!cleanSeg) return;
+        function createNewGroup() {
+            const groupElem = document.createElement('div');
+            groupElem.className = 'phrase-group active-latest';
+            cantoStream.insertBefore(groupElem, interimPart);
 
-            const charLen = cleanSeg.length;
+            const newGroup = { elem: groupElem, clauses: [], validCount: 0, fullText: "" };
+            groupList.push(newGroup);
 
-            // 核心規則：如果一句中只有五字或以下，則不當成獨立一句看待，合併到上一句
-            if (charLen <= 5 && phrasesList.length > 0) {
-                const lastItem = phrasesList[phrasesList.length - 1];
-                // 剔除上一句尾部的句號/問號/逗號，以逗號或自然銜接形式合併
-                let prevTextBase = lastItem.text.replace(/[，。？！、\.,!\?]+$/g, '');
-                const mergedPunct = attachSmartPunctuation(seg, isSentenceEnd);
-                
-                lastItem.text = `${prevTextBase}，${mergedPunct}`;
-                lastItem.elem.textContent = lastItem.text;
-
-                confirmedPlainHistory += cleanSeg;
-                refreshHighlightState();
-                scrollCantoToBottom();
-                return;
+            if (groupList.length > 50) {
+                const old = groupList.shift();
+                if (old?.elem?.parentNode) old.elem.parentNode.removeChild(old.elem);
             }
-
-            // 大於 5 字（或首句）：作為獨立句子壓入提詞流
-            const punctuatedText = attachSmartPunctuation(seg, isSentenceEnd);
-
-            const phraseElem = document.createElement('div');
-            phraseElem.className = 'phrase-item active-recent';
-            phraseElem.textContent = punctuatedText;
-
-            cantoStream.insertBefore(phraseElem, interimPart);
-
-            const phraseObj = { text: punctuatedText, elem: phraseElem };
-            phrasesList.push(phraseObj);
-
-            confirmedPlainHistory += cleanSeg;
-            if (confirmedPlainHistory.length > 300) {
-                confirmedPlainHistory = confirmedPlainHistory.slice(-200);
-            }
-
-            if (phrasesList.length > MAX_HISTORY_PHRASES) {
-                const old = phrasesList.shift();
-                if (old && old.elem.parentNode) old.elem.parentNode.removeChild(old.elem);
-            }
-
-            refreshHighlightState();
-            scrollCantoToBottom();
+            refreshGroupHighlights();
+            return newGroup;
         }
 
-        /* ------------------ 3. 語音辨識機制（參考附檔優秀的 Delta 與去重邏輯） ------------------ */
+        function finalizeCurrentGroup() {
+            clearTimeout(longPauseTimer);
+            longPauseTimer = null;
+            if (!currentGroup) return;
 
+            currentGroup.fullText = renderGroupText(currentGroup, true);
+            currentGroup.elem.textContent = currentGroup.fullText;
+
+            // 若是老師端，廣播定稿更新
+            if (!isStudentMode) broadcastPayload({ type: 'finalize', fullText: currentGroup.fullText });
+
+            currentGroup = null;
+            refreshGroupHighlights();
+        }
+
+        function commitSpeechDelta(rawText) {
+            clearTimeout(longPauseTimer);
+            let delta = convertToHK(rawText).trim();
+            delta = extractNonOverlappingDelta(delta);
+            if (!delta) return;
+
+            const semanticClauses = splitIntoSemanticClauses(delta);
+            if (semanticClauses.length === 0) return;
+
+            for (const clause of semanticClauses) {
+                const cleanLen = cleanString(clause).length;
+                if (cleanLen === 0) continue;
+                const cleanClause = cleanString(clause);
+                if (confirmedPlainHistory.endsWith(cleanClause)) continue;
+
+                const isValidSentence = cleanLen > 5;
+                if (!currentGroup) currentGroup = createNewGroup();
+
+                currentGroup.clauses.push(clause);
+                if (isValidSentence) currentGroup.validCount++;
+
+                currentGroup.fullText = renderGroupText(currentGroup, false);
+                currentGroup.elem.textContent = currentGroup.fullText;
+
+                confirmedPlainHistory += cleanClause;
+                if (confirmedPlainHistory.length > 1000) confirmedPlainHistory = confirmedPlainHistory.slice(-600);
+
+                // 廣播給學生端
+                if (!isStudentMode) {
+                    broadcastPayload({
+                        type: 'update_group',
+                        fullText: currentGroup.fullText
+                    });
+                }
+
+                if (currentGroup.validCount >= MAX_VALID_SENTENCES_PER_GROUP) {
+                    finalizeCurrentGroup();
+                }
+            }
+
+            refreshGroupHighlights();
+            scrollCantoToBottom();
+
+            if (currentGroup) {
+                longPauseTimer = setTimeout(() => { finalizeCurrentGroup(); }, LONG_PAUSE_THRESHOLD);
+            }
+        }
+
+        /* ------------------ 4. 語音辨識機制（僅在老師端執行） ------------------ */
         function handleSpeechInterim(interim) {
             if (!interim || !interim.trim()) {
                 interimPart.textContent = "";
+                if (!isStudentMode) broadcastPayload({ type: 'interim', text: "" });
                 return;
             }
-            interimPart.textContent = convertToHK(interim.trim());
-            scrollCantoToBottom();
+            let delta = extractNonOverlappingDelta(convertToHK(interim.trim()));
+            interimPart.textContent = delta || "";
+            if (!isStudentMode) broadcastPayload({ type: 'interim', text: delta || "" });
+            if (delta) scrollCantoToBottom();
         }
 
         function handleSpeechFinal(finalText) {
             if (!finalText || !finalText.trim()) return;
-
             const cleanFinal = cleanString(finalText);
             const now = Date.now();
-
-            // 防重複觸發
             if (cleanFinal === lastFinalCleanText && (now - lastFinalTimestamp < 1800)) {
                 interimPart.textContent = "";
                 return;
             }
-
-            const cleanConfirmed = cleanString(confirmedPlainHistory);
-            const tailSlice = cleanConfirmed.slice(-Math.max(cleanFinal.length + 10, 50));
-            if (tailSlice.endsWith(cleanFinal)) {
-                interimPart.textContent = "";
-                return;
-            }
-
-            // 附檔經典去重：扣除與前文重疊的開頭
-            let delta = finalText.trim();
-            for (let i = delta.length; i >= 2; i--) {
-                const checkPrefix = cleanString(delta.slice(0, i));
-                if (checkPrefix.length >= 2 && tailSlice.endsWith(checkPrefix)) {
-                    delta = delta.slice(i).trim();
-                    break;
-                }
-            }
-
-            if (!cleanString(delta)) {
-                interimPart.textContent = "";
-                return;
-            }
-
             lastFinalCleanText = cleanFinal;
             lastFinalTimestamp = now;
             interimPart.textContent = "";
-
-            // 交由自然斷句引擎處理（判定是否 <= 5 字合併，或作為新句進入最新高光區）
-            commitSentence(delta, true);
+            commitSpeechDelta(finalText);
         }
 
         const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -746,7 +833,6 @@
         let wakeLock = null;
         let restartDebounce = null;
 
-        const toggleBtn = document.getElementById('toggleBtn');
         const playIcon = document.getElementById('playIcon');
         const pauseIcon = document.getElementById('pauseIcon');
 
@@ -771,27 +857,12 @@
             clearTimeout(restartDebounce);
             restartDebounce = setTimeout(() => {
                 if (userWantsListening && !isEngineRunning && recognition) {
-                    try {
-                        recognition.start();
-                    } catch (e) {
-                        setTimeout(() => {
-                            if (userWantsListening && !isEngineRunning && recognition) {
-                                try { recognition.start(); } catch(err) {}
-                            }
-                        }, 120);
-                    }
+                    try { recognition.start(); } catch (e) {}
                 }
             }, 80);
         }
 
-        document.addEventListener('visibilitychange', () => {
-            if (document.visibilityState === 'visible' && userWantsListening) {
-                acquireWakeLock();
-                scheduleSafeRestart();
-            }
-        });
-
-        if (SpeechRecognition) {
+        if (SpeechRecognition && !isStudentMode) {
             recognition = new SpeechRecognition();
             recognition.continuous = true;
             recognition.interimResults = true;
@@ -810,70 +881,43 @@
                 for (let i = event.resultIndex; i < event.results.length; ++i) {
                     const res = event.results[i];
                     if (!res || !res[0]) continue;
-                    const trans = res[0].transcript;
-
-                    if (res.isFinal) {
-                        handleSpeechFinal(trans);
-                    } else {
-                        interim += trans;
-                    }
+                    if (res.isFinal) handleSpeechFinal(res[0].transcript);
+                    else interim += res[0].transcript;
                 }
-                if (interim) {
-                    handleSpeechInterim(interim);
-                }
+                if (interim) handleSpeechInterim(interim);
             };
 
             recognition.onerror = (e) => {
                 if (e.error === 'not-allowed') {
                     userWantsListening = false;
                     stopListeningUI();
-                    alert("請允許麥克風權限以進行實時提詞。");
-                } else if (e.error === 'no-speech') {
-                    if (userWantsListening) scheduleSafeRestart();
-                } else {
-                    scheduleSafeRestart();
-                }
+                    alert("請允許麥克風權限以進行提詞。");
+                } else scheduleSafeRestart();
             };
 
             recognition.onend = () => {
                 isEngineRunning = false;
-                // 若仍有暫留的未完結 interim，於自然靜音時提交
-                const pending = interimPart.textContent;
                 interimPart.textContent = "";
-                if (pending && cleanString(pending)) {
-                    commitSentence(pending, true);
-                }
-
-                if (userWantsListening) {
-                    scheduleSafeRestart();
-                } else {
-                    stopListeningUI();
-                }
+                if (userWantsListening) scheduleSafeRestart();
+                else stopListeningUI();
             };
         }
 
-        function stopListeningSession() {
-            userWantsListening = false;
-            if (restartDebounce) clearTimeout(restartDebounce);
-            releaseWakeLock();
-            try { recognition.stop(); } catch(e) {}
-            stopListeningUI();
-        }
-
         function toggleSpeech() {
-            if (!recognition) {
-                alert("此瀏覽器不支援 Web Speech API，建議使用 Safari、Edge 或 Chrome。");
-                return;
-            }
-
+            if (!recognition) return alert("瀏覽器不支援 Web Speech API。");
             if (userWantsListening) {
-                stopListeningSession();
-                showToast("已停止提詞");
+                userWantsListening = false;
+                if (restartDebounce) clearTimeout(restartDebounce);
+                finalizeCurrentGroup();
+                releaseWakeLock();
+                try { recognition.stop(); } catch(e) {}
+                stopListeningUI();
+                showToast("已停止收音");
             } else {
                 userWantsListening = true;
                 acquireWakeLock();
                 scheduleSafeRestart();
-                showToast("提詞已啟動");
+                showToast("提詞收音已啟動");
             }
         }
 
@@ -884,11 +928,123 @@
             interimPart.textContent = "";
         }
 
-        /* ------------------ 4. 字體調節 ------------------ */
+        /* ------------------ 5. WebRTC P2P 即時同步廣播引擎 ------------------ */
+        let peer = null;
+        let connections = []; // 老師端保存連線中的所有學生
+
+        function initP2PNetworking() {
+            if (isStudentMode) {
+                // 【學生端】連接老師
+                peer = new Peer();
+                peer.on('open', (id) => {
+                    const conn = peer.connect(joinRoomId);
+                    conn.on('open', () => {
+                        showToast("已成功連接老師廣播！");
+                    });
+                    conn.on('data', (data) => {
+                        handleIncomingTeacherData(data);
+                    });
+                    conn.on('close', () => {
+                        showToast("與老師連線已中斷");
+                    });
+                });
+            } else {
+                // 【老師端】建立廣播頻道
+                const roomId = 'canto-' + Math.random().toString(36).substring(2, 8);
+                peer = new Peer(roomId);
+
+                peer.on('open', (id) => {
+                    setupQRCode(id);
+                });
+
+                peer.on('connection', (conn) => {
+                    connections.push(conn);
+                    updateConnectedCount();
+
+                    // 當新學生連入時，把既有的歷史記錄打包同步給他
+                    const historySnapshot = groupList.map(g => g.fullText);
+                    conn.send({ type: 'sync_history', history: historySnapshot });
+
+                    conn.on('close', () => {
+                        connections = connections.filter(c => c !== conn);
+                        updateConnectedCount();
+                    });
+                });
+            }
+        }
+
+        function updateConnectedCount() {
+            const countEl = document.getElementById('connectedCount');
+            if (countEl) countEl.innerText = `目前在線學生：${connections.length} 人`;
+        }
+
+        function broadcastPayload(data) {
+            connections.forEach(conn => {
+                if (conn.open) {
+                    try { conn.send(data); } catch (e) {}
+                }
+            });
+        }
+
+        // 學生端接收處理老師推過來的數據
+        function handleIncomingTeacherData(data) {
+            if (data.type === 'interim') {
+                interimPart.textContent = data.text;
+                if (data.text) scrollCantoToBottom();
+            } else if (data.type === 'update_group') {
+                if (!currentGroup) currentGroup = createNewGroup();
+                currentGroup.fullText = data.fullText;
+                currentGroup.elem.textContent = data.fullText;
+                refreshGroupHighlights();
+                scrollCantoToBottom();
+            } else if (data.type === 'finalize') {
+                if (currentGroup) {
+                    currentGroup.fullText = data.fullText;
+                    currentGroup.elem.textContent = data.fullText;
+                    currentGroup = null;
+                    refreshGroupHighlights();
+                }
+            } else if (data.type === 'sync_history') {
+                // 首次加入時補全歷史紀錄
+                data.history.forEach(txt => {
+                    const g = createNewGroup();
+                    g.fullText = txt;
+                    g.elem.textContent = txt;
+                });
+                currentGroup = null;
+                refreshGroupHighlights();
+                scrollCantoToBottom();
+            }
+        }
+
+        function setupQRCode(roomId) {
+            const currentUrl = window.location.origin + window.location.pathname + '?room=' + roomId;
+            document.getElementById('roomLinkText').innerText = currentUrl;
+            
+            const qrContainer = document.getElementById('qrContainer');
+            qrContainer.innerHTML = "";
+            new QRCode(qrContainer, {
+                text: currentUrl,
+                width: 180,
+                height: 180,
+                colorDark: "#000000",
+                colorLight: "#ffffff",
+                correctLevel: QRCode.CorrectLevel.M
+            });
+        }
+
+        const broadcastModal = document.getElementById('broadcastModal');
+        function openBroadcastModal() { broadcastModal.classList.add('active'); }
+        function closeBroadcastModal() { broadcastModal.classList.remove('active'); }
+
+        // 啟動 P2P 網路
+        initP2PNetworking();
+
+        /* ------------------ 6. 字體調節 ------------------ */
         const fontScales = [
-            { name: "標準", canto: "2.10rem" },
-            { name: "放大", canto: "2.55rem" },
-            { name: "特大", canto: "3.05rem" }
+            { name: "標準", canto: "2.15rem" },
+            { name: "放大", canto: "2.60rem" },
+            { name: "特大", canto: "3.10rem" }
         ];
         let currentScaleIdx = 0;
 
@@ -900,14 +1056,14 @@
             scrollCantoToBottom();
         }
 
-        /* ------------------ 5. 粵拼注音彈窗與朗讀 ------------------ */
+        /* ------------------ 7. 粵拼注音與 TTS ------------------ */
         const modal = document.getElementById('phoneticModal');
         const modalContent = document.getElementById('modalContent');
         const ttsStatus = document.getElementById('ttsStatus');
         let currentPureText = "";
 
         function getAllRecognizedText() {
-            return phrasesList.map(item => item.text).join('') + interimPart.textContent;
+            return groupList.map(item => item.fullText).join('') + interimPart.textContent;
         }
 
         async function fetchJyutpingRubyHTML(text) {
@@ -929,9 +1085,9 @@
                             continue;
                         }
                         if (rawJp) {
-                            html += `<ruby class="jp-ruby"><span class="c-char">${char}</span><rt class="c-rt">${rawJp}</rt></ruby>`;
+                            html += `<ruby style="display:inline-flex; flex-direction:column-reverse; align-items:center; margin:2px 4px; line-height:1;"><span style="font-size:1.65rem; font-weight:600; color:#f8fafc;">${char}</span><rt style="font-size:0.82rem; color:var(--ruby); margin-bottom:6px;">${rawJp}</rt></ruby>`;
                         } else {
-                            html += `<span class="jp-punct">${char}</span>`;
+                            html += `<span style="font-size:1.65rem; color:#64748b; margin:0 3px;">${char}</span>`;
                         }
                     }
                     return html;
@@ -945,12 +1101,12 @@
             currentPureText = cleanString(fullText);
 
             if (!fullText) {
-                modalContent.innerHTML = "<div style='color:#64748b; font-size:1rem; padding:10px;'>暫無文字</div>";
+                modalContent.innerHTML = "<div style='color:#64748b; padding:10px;'>暫無文字</div>";
                 modal.classList.add('active');
                 return;
             }
 
-            modalContent.innerHTML = "<div style='color:#94a3b8; font-size:1rem; width:100%; text-align:center; padding:30px 0;'>粵拼注音生成中...</div>";
+            modalContent.innerHTML = "<div style='color:#94a3b8; width:100%; text-align:center; padding:30px 0;'>粵拼注音生成中...</div>";
             ttsStatus.innerText = "標音中";
             modal.classList.add('active');
 
@@ -966,20 +1122,18 @@
 
         function closeModalOnBackdrop(event) {
             if (event.target === modal) closePhoneticModal();
+            if (event.target === broadcastModal) closeBroadcastModal();
         }
 
         function speakCurrentText() {
             if (!('speechSynthesis' in window)) return;
             window.speechSynthesis.cancel();
-
             const utter = new SpeechSynthesisUtterance(currentPureText);
             utter.lang = 'zh-HK';
             utter.rate = 0.85;
-
             utter.onstart = () => ttsStatus.innerText = "朗讀中";
             utter.onend = () => ttsStatus.innerText = "完畢";
             utter.onerror = () => ttsStatus.innerText = "就緒";
-
             window.speechSynthesis.speak(utter);
         }
     </script>
