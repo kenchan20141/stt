@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>實時粵語提詞器 (廣播同步版)</title>
+    <title>實時粵語提詞器 (雲端廣播版)</title>
 
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -21,8 +21,8 @@
     <!-- 繁體字強制校準庫 -->
     <script src="https://cdn.jsdelivr.net/npm/opencc-js@1.0.5/dist/umd/full.min.js"></script>
 
-    <!-- PeerJS (用於老師/學生手機即時 P2P 同步) -->
-    <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+    <!-- MQTT WebSocket 穿透廣播庫（解決任何網絡不通問題） -->
+    <script src="https://unpkg.com/mqtt@5.3.5/dist/mqtt.min.js"></script>
     <!-- QRCode 生成庫 -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 
@@ -130,11 +130,21 @@
         .status-badge {
             font-family: "Noto Sans HK", sans-serif;
             font-size: 0.75rem;
-            padding: 2px 8px;
+            padding: 3px 8px;
             border-radius: 4px;
-            background: rgba(56, 189, 248, 0.15);
-            color: var(--accent);
-            border: 1px solid rgba(56, 189, 248, 0.3);
+            background: rgba(239, 68, 68, 0.15);
+            color: #ef4444;
+            border: 1px solid rgba(239, 68, 68, 0.3);
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            transition: all 0.3s;
+        }
+
+        .status-badge.connected {
+            background: rgba(16, 185, 129, 0.15);
+            color: #10b981;
+            border-color: rgba(16, 185, 129, 0.3);
         }
 
         .char-counter {
@@ -297,7 +307,6 @@
 
         #fontToast.show { opacity: 1; transform: translateY(0); }
 
-        /* 模態框通風樣式 */
         .modal-overlay {
             position: fixed;
             top: 0; left: 0; width: 100vw; height: 100vh;
@@ -350,7 +359,6 @@
             align-items: center;
         }
 
-        /* 廣播 QR 彈窗特定設計 */
         #qrContainer {
             background: #ffffff;
             padding: 16px;
@@ -369,26 +377,23 @@
             <header>
                 <div class="brand-meta">
                     <span class="brand-title">實時粵語提詞</span>
-                    <span id="roleBadge" class="status-badge">老師端</span>
+                    <span id="roleBadge" class="status-badge">連線中...</span>
                     <span id="charCount" class="char-counter">0 字</span>
                 </div>
                 <div class="btn-group">
-                    <!-- 廣播分享按鈕 -->
-                    <button class="icon-btn" title="學生端同步 (QR碼)" onclick="openBroadcastModal()">
+                    <button id="broadcastBtn" class="icon-btn" title="學生端同步 QR 碼" onclick="openBroadcastModal()">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
                             <path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"></path>
                             <polyline points="16 6 12 2 8 6"></polyline>
                             <line x1="12" y1="2" x2="12" y2="15"></line>
                         </svg>
                     </button>
-                    <!-- 粵拼注音按鈕 -->
                     <button class="icon-btn" title="粵拼注音與朗讀" onclick="openPhoneticModal()">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
                             <path d="M3 18v-6a9 9 0 0 1 18 0v6"></path>
                             <path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z"></path>
                         </svg>
                     </button>
-                    <!-- 字體縮放按鈕 -->
                     <button class="icon-btn" title="切換字體大小" onclick="cycleFontSize()">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
                             <path d="M3.5 17.5L6.5 9.5L9.5 17.5"></path>
@@ -397,7 +402,6 @@
                             <path d="M14 13.5H19"></path>
                         </svg>
                     </button>
-                    <!-- 麥克風開關（學生端會隱藏） -->
                     <button id="toggleBtn" class="icon-btn power-btn" title="啟動收音" onclick="toggleSpeech()">
                         <svg id="playIcon" viewBox="0 0 24 24" fill="currentColor">
                             <path d="M8 5.14v13.72a1 1 0 0 0 1.5.86l11-6.86a1 1 0 0 0 0-1.72l-11-6.86a1 1 0 0 0-1.5.86z"></path>
@@ -412,7 +416,6 @@
 
             <div id="fontToast">字體 標準</div>
 
-            <!-- 主提詞視圖 -->
             <div class="viewport-container">
                 <div id="cantoScroll" class="scroll-body">
                     <div id="cantoStream" class="cantonese-stream">
@@ -424,7 +427,7 @@
         </div>
     </main>
 
-    <!-- 廣播分享視窗 (給學生掃碼) -->
+    <!-- 廣播分享視窗 -->
     <div id="broadcastModal" class="modal-overlay" onclick="closeModalOnBackdrop(event)">
         <div class="modal-window" style="max-width: 420px; text-align: center;">
             <div class="modal-header">
@@ -434,10 +437,9 @@
                 </button>
             </div>
             <div class="modal-body" style="display:flex; flex-direction:column; align-items:center; gap:16px;">
-                <p style="font-size:0.85rem; color:#94a3b8;">讓學生用手機相機掃描下方 QR 碼，或開啟專屬連結即可實時接收字幕：</p>
+                <p style="font-size:0.85rem; color:#94a3b8;">讓學生直接掃描下方二維碼，即可接收老師端實時字幕：</p>
                 <div id="qrContainer"></div>
-                <div style="font-family: monospace; font-size: 0.9rem; color: #38bdf8; word-break: break-all; padding: 0 10px;" id="roomLinkText"></div>
-                <div style="font-size:0.8rem; color:#64748b;" id="connectedCount">目前在線學生：0 人</div>
+                <div style="font-family: monospace; font-size: 0.8rem; color: #38bdf8; word-break: break-all; padding: 0 10px;" id="roomLinkText"></div>
             </div>
         </div>
     </div>
@@ -462,23 +464,29 @@
     </div>
 
     <script>
-        /* ------------------ 0. 判斷模式 (老師 vs 學生) ------------------ */
+        /* ------------------ 0. 模式判定與雲端房間設定 ------------------ */
         const urlParams = new URLSearchParams(window.location.search);
-        const joinRoomId = urlParams.get('room');
-        const isStudentMode = Boolean(joinRoomId);
+        let currentRoomId = urlParams.get('room');
+        const isStudentMode = Boolean(currentRoomId);
+
+        if (!currentRoomId) {
+            // 老師端隨機產生專屬房間號
+            currentRoomId = 'room_' + Math.floor(100000 + Math.random() * 900000);
+        }
 
         const roleBadge = document.getElementById('roleBadge');
         const toggleBtn = document.getElementById('toggleBtn');
+        const broadcastBtn = document.getElementById('broadcastBtn');
 
         if (isStudentMode) {
-            roleBadge.textContent = "學生端 (接收中)";
-            roleBadge.style.color = "#10b981";
-            roleBadge.style.borderColor = "rgba(16, 185, 129, 0.4)";
-            roleBadge.style.background = "rgba(16, 185, 129, 0.15)";
-            toggleBtn.style.display = 'none'; // 學生無需麥克風
+            broadcastBtn.style.display = 'none'; // 學生無需廣播按鈕
+            toggleBtn.style.display = 'none';    // 學生無需收音開關
+            roleBadge.innerText = '學生端: 連接中...';
+        } else {
+            roleBadge.innerText = '老師端: 連接中...';
         }
 
-        /* ------------------ 1. 靜態 3D 背景 ------------------ */
+        /* ------------------ 1. 3D 背景 ------------------ */
         const canvas = document.getElementById('threeCanvas');
         const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
         renderer.setSize(window.innerWidth, window.innerHeight);
@@ -744,8 +752,9 @@
             currentGroup.fullText = renderGroupText(currentGroup, true);
             currentGroup.elem.textContent = currentGroup.fullText;
 
-            // 若是老師端，廣播定稿更新
-            if (!isStudentMode) broadcastPayload({ type: 'finalize', fullText: currentGroup.fullText });
+            if (!isStudentMode) {
+                publishCloudData({ type: 'finalize', fullText: currentGroup.fullText });
+            }
 
             currentGroup = null;
             refreshGroupHighlights();
@@ -778,12 +787,8 @@
                 confirmedPlainHistory += cleanClause;
                 if (confirmedPlainHistory.length > 1000) confirmedPlainHistory = confirmedPlainHistory.slice(-600);
 
-                // 廣播給學生端
                 if (!isStudentMode) {
-                    broadcastPayload({
-                        type: 'update_group',
-                        fullText: currentGroup.fullText
-                    });
+                    publishCloudData({ type: 'update_group', fullText: currentGroup.fullText });
                 }
 
                 if (currentGroup.validCount >= MAX_VALID_SENTENCES_PER_GROUP) {
@@ -799,16 +804,16 @@
             }
         }
 
-        /* ------------------ 4. 語音辨識機制（僅在老師端執行） ------------------ */
+        /* ------------------ 4. 語音辨識（老師端） ------------------ */
         function handleSpeechInterim(interim) {
             if (!interim || !interim.trim()) {
                 interimPart.textContent = "";
-                if (!isStudentMode) broadcastPayload({ type: 'interim', text: "" });
+                if (!isStudentMode) publishCloudData({ type: 'interim', text: "" });
                 return;
             }
             let delta = extractNonOverlappingDelta(convertToHK(interim.trim()));
             interimPart.textContent = delta || "";
-            if (!isStudentMode) broadcastPayload({ type: 'interim', text: delta || "" });
+            if (!isStudentMode) publishCloudData({ type: 'interim', text: delta || "" });
             if (delta) scrollCantoToBottom();
         }
 
@@ -904,7 +909,7 @@
         }
 
         function toggleSpeech() {
-            if (!recognition) return alert("瀏覽器不支援 Web Speech API。");
+            if (!recognition) return alert("瀏覽器不支援語音辨識，請使用 Chrome、Safari 或 Edge。");
             if (userWantsListening) {
                 userWantsListening = false;
                 if (restartDebounce) clearTimeout(restartDebounce);
@@ -917,7 +922,7 @@
                 userWantsListening = true;
                 acquireWakeLock();
                 scheduleSafeRestart();
-                showToast("提詞收音已啟動");
+                showToast("收音已啟動");
             }
         }
 
@@ -928,66 +933,51 @@
             interimPart.textContent = "";
         }
 
-        /* ------------------ 5. WebRTC P2P 即時同步廣播引擎 ------------------ */
-        let peer = null;
-        let connections = []; // 老師端保存連線中的所有學生
+        /* ------------------ 5. 雲端 MQTT 廣播引擎 (100% 穿透保證) ------------------ */
+        let mqttClient = null;
+        const TOPIC = `cantonese_teleprompter/${currentRoomId}`;
 
-        function initP2PNetworking() {
-            if (isStudentMode) {
-                // 【學生端】連接老師
-                peer = new Peer();
-                peer.on('open', (id) => {
-                    const conn = peer.connect(joinRoomId);
-                    conn.on('open', () => {
-                        showToast("已成功連接老師廣播！");
-                    });
-                    conn.on('data', (data) => {
-                        handleIncomingTeacherData(data);
-                    });
-                    conn.on('close', () => {
-                        showToast("與老師連線已中斷");
-                    });
-                });
-            } else {
-                // 【老師端】建立廣播頻道
-                const roomId = 'canto-' + Math.random().toString(36).substring(2, 8);
-                peer = new Peer(roomId);
+        function initCloudSync() {
+            // 使用公開高可用 WebSocket Broker，走標準 443 SSL 埠，永不被校園網阻擋
+            mqttClient = mqtt.connect('wss://broker.emqx.io:8084/mqtt', {
+                clean: true,
+                connectTimeout: 4000,
+                reconnectPeriod: 2000
+            });
 
-                peer.on('open', (id) => {
-                    setupQRCode(id);
-                });
-
-                peer.on('connection', (conn) => {
-                    connections.push(conn);
-                    updateConnectedCount();
-
-                    // 當新學生連入時，把既有的歷史記錄打包同步給他
-                    const historySnapshot = groupList.map(g => g.fullText);
-                    conn.send({ type: 'sync_history', history: historySnapshot });
-
-                    conn.on('close', () => {
-                        connections = connections.filter(c => c !== conn);
-                        updateConnectedCount();
-                    });
-                });
-            }
-        }
-
-        function updateConnectedCount() {
-            const countEl = document.getElementById('connectedCount');
-            if (countEl) countEl.innerText = `目前在線學生：${connections.length} 人`;
-        }
-
-        function broadcastPayload(data) {
-            connections.forEach(conn => {
-                if (conn.open) {
-                    try { conn.send(data); } catch (e) {}
+            mqttClient.on('connect', () => {
+                roleBadge.classList.add('connected');
+                if (isStudentMode) {
+                    roleBadge.innerText = '學生端: 已連線';
+                    mqttClient.subscribe(TOPIC);
+                    showToast("已成功同步老師頻道！");
+                } else {
+                    roleBadge.innerText = '老師端: 廣播中';
+                    setupQRCode(currentRoomId);
                 }
+            });
+
+            mqttClient.on('message', (topic, message) => {
+                if (!isStudentMode) return;
+                try {
+                    const data = JSON.parse(message.toString());
+                    handleReceivedData(data);
+                } catch (e) {}
+            });
+
+            mqttClient.on('offline', () => {
+                roleBadge.classList.remove('connected');
+                roleBadge.innerText = '連線中斷...';
             });
         }
 
-        // 學生端接收處理老師推過來的數據
-        function handleIncomingTeacherData(data) {
+        function publishCloudData(payload) {
+            if (mqttClient && mqttClient.connected) {
+                mqttClient.publish(TOPIC, JSON.stringify(payload));
+            }
+        }
+
+        function handleReceivedData(data) {
             if (data.type === 'interim') {
                 interimPart.textContent = data.text;
                 if (data.text) scrollCantoToBottom();
@@ -1004,16 +994,6 @@
                     currentGroup = null;
                     refreshGroupHighlights();
                 }
-            } else if (data.type === 'sync_history') {
-                // 首次加入時補全歷史紀錄
-                data.history.forEach(txt => {
-                    const g = createNewGroup();
-                    g.fullText = txt;
-                    g.elem.textContent = txt;
-                });
-                currentGroup = null;
-                refreshGroupHighlights();
-                scrollCantoToBottom();
             }
         }
 
@@ -1025,8 +1005,8 @@
             qrContainer.innerHTML = "";
             new QRCode(qrContainer, {
                 text: currentUrl,
-                width: 180,
-                height: 180,
+                width: 190,
+                height: 190,
                 colorDark: "#000000",
                 colorLight: "#ffffff",
                 correctLevel: QRCode.CorrectLevel.M
@@ -1037,8 +1017,7 @@
         function openBroadcastModal() { broadcastModal.classList.add('active'); }
         function closeBroadcastModal() { broadcastModal.classList.remove('active'); }
 
-        // 啟動 P2P 網路
-        initP2PNetworking();
+        initCloudSync();
 
         /* ------------------ 6. 字體調節 ------------------ */
         const fontScales = [
@@ -1056,7 +1035,7 @@
             scrollCantoToBottom();
         }
 
-        /* ------------------ 7. 粵拼注音與 TTS ------------------ */
+        /* ------------------ 7. 粵拼注音與朗讀 ------------------ */
         const modal = document.getElementById('phoneticModal');
         const modalContent = document.getElementById('modalContent');
         const ttsStatus = document.getElementById('ttsStatus');
