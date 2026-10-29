@@ -1086,7 +1086,7 @@
                 mqttClient.subscribe(`canto/${currentRoomId}`);
             });
 
-           mqttClient.on('message', async (topic, msg) => {
+        mqttClient.on('message', async (topic, msg) => {
     const data = await decryptPayload(msg.toString());
     if (!data) return;
 
