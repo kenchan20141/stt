@@ -3,11 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>3D 實時粵普字幕機</title>
+    <title>實時粵語提詞</title>
 
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+HK:wght@400;500;700&family=Noto+Serif+HK:wght@600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+HK:wght@400;500;700&family=Noto+Serif+HK:wght@600;700;900&display=swap" rel="stylesheet">
 
     <!-- Three.js 3D 核心庫 -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -21,23 +21,18 @@
     <!-- 繁體字強制校準庫 -->
     <script src="https://cdn.jsdelivr.net/npm/opencc-js@1.0.5/dist/umd/full.min.js"></script>
 
-    <!-- 核心 Puter.js AI 引擎 -->
-    <script src="https://js.puter.com/v2/"></script>
-
     <style>
         :root {
-            --bg: #05070a;
-            --canto-bg: #090a0f;
-            --mando-bg: #0d1117;
+            --bg: #040608;
+            --canto-bg: #080a0f;
             --card-border: rgba(255, 255, 255, 0.08);
             
-            --cantonese: #f8fafc;
-            --mandarin: #38bdf8;
-            --mandarin-text: #bae6fd;
             --ruby: #f59e0b;
+            --accent: #38bdf8;
+            --accent-glow: rgba(56, 189, 248, 0.35);
 
-            --cantonese-size: 1.55rem;
-            --mandarin-size: 1.20rem;
+            --cantonese-size: 1.85rem;
+            --line-height: 1.7;
         }
 
         * {
@@ -48,10 +43,9 @@
             user-select: none;
         }
 
-        /* 3D 演播室環境背景 */
         body {
             background-color: var(--bg);
-            color: var(--cantonese);
+            color: #f8fafc;
             height: 100vh;
             height: 100dvh;
             display: flex;
@@ -59,10 +53,9 @@
             justify-content: center;
             overflow: hidden;
             -webkit-font-smoothing: antialiased;
-            perspective: 1200px;
         }
 
-        /* Three.js 3D 機體全屏畫布 */
+        /* 靜態 3D 背景 */
         #threeCanvas {
             position: fixed;
             top: 0;
@@ -73,12 +66,12 @@
             pointer-events: none;
         }
 
-        /* 3D 字幕機主殼容器：立體金屬提詞機結構 */
+        /* 提詞機主機外框 */
         .teleprompter-rig {
             position: relative;
             z-index: 10;
             width: 100%;
-            max-width: 860px;
+            max-width: 880px;
             height: 100vh;
             height: 100dvh;
             max-height: 960px;
@@ -87,8 +80,6 @@
             padding: 20px 24px 28px 24px;
             box-sizing: border-box;
             pointer-events: auto;
-            transform-style: preserve-3d;
-            transition: transform 0.15s ease-out;
         }
 
         @media (max-width: 768px) {
@@ -100,41 +91,29 @@
             }
         }
 
-        /* 嵌入式高解析提詞屏機體 */
         .rig-screen-enclosure {
             flex: 1;
             display: flex;
             flex-direction: column;
-            background: #090a0f;
-            border-radius: 12px;
-            border: 3px solid #1e2638;
+            background: #080a0f;
+            border-radius: 14px;
+            border: 2px solid #1c2436;
             box-shadow: 
-                0 0 0 1px rgba(0, 0, 0, 0.8),
-                0 20px 45px rgba(0, 0, 0, 0.9),
-                inset 0 0 20px rgba(0, 0, 0, 0.85);
+                0 0 0 1px rgba(0, 0, 0, 0.9),
+                0 25px 50px rgba(0, 0, 0, 0.95),
+                inset 0 0 25px rgba(0, 0, 0, 0.85);
             overflow: hidden;
             position: relative;
             min-height: 0;
         }
 
-        /* 提詞機光學微弧反射紋理 */
-        .rig-screen-enclosure::after {
-            content: "";
-            position: absolute;
-            inset: 0;
-            background: linear-gradient(135deg, rgba(255, 255, 255, 0.035) 0%, rgba(255, 255, 255, 0) 40%, rgba(0, 0, 0, 0.2) 100%);
-            pointer-events: none;
-            z-index: 25;
-        }
-
-        /* 頂部控制欄 */
         header {
-            padding: 10px 20px;
+            padding: 14px 22px;
             display: flex;
             justify-content: space-between;
             align-items: center;
             border-bottom: 1px solid var(--card-border);
-            background: #090a0f;
+            background: #090c12;
             z-index: 30;
             flex-shrink: 0;
         }
@@ -143,8 +122,20 @@
             font-size: 0.95rem;
             font-weight: 700;
             color: #94a3b8;
-            letter-spacing: 0.8px;
+            letter-spacing: 1px;
             font-family: "Noto Sans HK", sans-serif;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .brand-title::before {
+            content: "";
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #38bdf8;
+            box-shadow: 0 0 8px #38bdf8;
         }
 
         .btn-group {
@@ -154,11 +145,11 @@
         }
 
         .icon-btn {
-            background: rgba(255, 255, 255, 0.06);
+            background: rgba(255, 255, 255, 0.05);
             border: 1px solid var(--card-border);
             color: #cbd5e1;
-            width: 36px;
-            height: 36px;
+            width: 38px;
+            height: 38px;
             border-radius: 8px;
             display: flex;
             align-items: center;
@@ -170,25 +161,26 @@
 
         .icon-btn:hover { background: rgba(255, 255, 255, 0.12); color: #ffffff; }
         .icon-btn:active { transform: scale(0.92); }
-        .icon-btn svg { width: 17px; height: 17px; stroke-width: 2; }
+        .icon-btn svg { width: 18px; height: 18px; stroke-width: 2; }
 
         .power-btn {
             background: #ef4444;
-            border: 1px solid rgba(255, 255, 255, 0.25);
+            border: 1px solid rgba(255, 255, 255, 0.2);
             color: #ffffff;
-            width: 40px;
-            height: 40px;
+            width: 42px;
+            height: 42px;
             border-radius: 50%;
-            box-shadow: 0 0 16px rgba(239, 68, 68, 0.4);
-            transition: all 0.3s ease;
+            box-shadow: 0 0 16px rgba(239, 68, 68, 0.35);
+            transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
         }
 
         .power-btn.active {
             background: #10b981;
-            box-shadow: 0 0 16px rgba(16, 185, 129, 0.5);
+            box-shadow: 0 0 20px rgba(16, 185, 129, 0.55);
+            transform: scale(1.04);
         }
 
-        /* 雙欄主視圖容器 */
+        /* 視圖與動態流容器（頂部自帶景深淡出遮罩） */
         .viewport-container {
             flex: 1;
             display: flex;
@@ -196,155 +188,138 @@
             overflow: hidden;
             width: 100%;
             min-height: 0; 
-        }
-
-        /* 欄位封裝 */
-        .column-box {
-            display: flex;
-            flex-direction: column;
-            overflow: hidden;
+            background: radial-gradient(circle at 50% 100%, rgba(15, 23, 42, 0.45) 0%, rgba(8, 10, 15, 1) 85%);
             position: relative;
-            min-height: 0;
+            -webkit-mask-image: linear-gradient(to bottom, transparent 0%, black 12%, black 100%);
+            mask-image: linear-gradient(to bottom, transparent 0%, black 12%, black 100%);
         }
 
-        .canto-column {
-            flex: 55;
-            background-color: var(--canto-bg);
-            border-bottom: 2px solid var(--card-border);
-        }
-
-        .mando-column {
-            flex: 45;
-            background-color: var(--mando-bg);
-        }
-
-        /* 標籤欄 */
-        .column-header {
-            padding: 8px 18px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-            flex-shrink: 0;
-            z-index: 10;
-        }
-
-        .canto-column .column-header {
-            background: #090a0f;
-        }
-
-        .mando-column .column-header {
-            background: #0d1117;
-        }
-
-        .pane-tag {
-            font-family: "Noto Sans HK", sans-serif;
-            font-size: 0.72rem;
-            font-weight: 700;
-            padding: 3px 8px;
-            border-radius: 4px;
-            letter-spacing: 0.5px;
-        }
-
-        .tag-canto {
-            color: #cbd5e1;
-            background: rgba(255, 255, 255, 0.08);
-            border: 1px solid rgba(255, 255, 255, 0.15);
-        }
-
-        .tag-mando {
-            color: var(--mandarin);
-            background: rgba(56, 189, 248, 0.12);
-            border: 1px solid rgba(56, 189, 248, 0.3);
-        }
-
-        .char-counter {
-            font-family: "Noto Sans HK", sans-serif;
-            font-size: 0.75rem;
-            color: #64748b;
-        }
-
-        /* 獨立滾動區域 */
         .scroll-body {
             flex: 1;
             overflow-y: auto;
             scroll-behavior: smooth;
             -webkit-overflow-scrolling: touch;
+            padding: 30px 24px 20px 24px;
             position: relative;
             z-index: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
         }
 
-        .canto-scroll-body {
-            padding: 16px 20px 40px 20px;
+        @media (max-width: 768px) {
+            .scroll-body {
+                padding: 20px 14px 16px 14px;
+                gap: 10px;
+            }
         }
 
-        .mando-scroll-body {
-            padding: 16px 20px 20px 20px;
-        }
-
-        /* 底部安全緩衝墊片 */
         .bottom-safe-spacer {
-            height: calc(80px + env(safe-area-inset-bottom, 24px));
-            width: 100%;
-            pointer-events: none;
+            height: calc(140px + env(safe-area-inset-bottom, 20px));
             flex-shrink: 0;
+            pointer-events: none;
         }
 
-        /* 文字排版 */
-        .cantonese-content {
+        /* 語句流卡片（純視覺層次，無任何文字標籤） */
+        .utterance-chunk {
             font-family: "Noto Serif HK", serif;
             font-size: var(--cantonese-size);
-            font-weight: 700;
-            line-height: 1.8;
+            line-height: var(--line-height);
             letter-spacing: 0.8px;
-            color: var(--cantonese);
             word-break: break-word;
+            padding: 10px 16px;
+            border-radius: 10px;
+            position: relative;
+            transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+            transform-origin: left bottom;
+            border-left: 3px solid transparent;
         }
 
-        .cantonese-content .interim-text {
-            color: #38bdf8;
-            opacity: 0.85;
-            margin-left: 4px;
-            border-bottom: 2px dashed rgba(56, 189, 248, 0.4);
+        /* 1. 深度歷史句（景深褪色） */
+        .utterance-chunk.past-deep {
+            color: #475569;
+            opacity: 0.32;
+            transform: scale(0.97);
         }
 
-        .mandarin-content {
-            font-family: "Noto Serif HK", serif;
-            font-size: var(--mandarin-size);
+        /* 2. 近期歷史句（次級輔助） */
+        .utterance-chunk.past-mid {
+            color: #94a3b8;
+            opacity: 0.65;
+            transform: scale(0.99);
+        }
+
+        /* 3. 剛剛定稿的最新句（焦點高亮） */
+        .utterance-chunk.just-committed {
+            color: #ffffff;
+            opacity: 1;
             font-weight: 700;
-            line-height: 1.8;
-            letter-spacing: 0.8px;
-            color: var(--mandarin-text);
-            word-break: break-word;
+            text-shadow: 0 2px 14px rgba(255, 255, 255, 0.2);
+            border-left: 3px solid rgba(255, 255, 255, 0.3);
+            background: linear-gradient(90deg, rgba(255, 255, 255, 0.03) 0%, transparent 100%);
+        }
+
+        /* 4. 正在實時說話的語段（純視覺：科技藍流光柱 + 呼吸背景） */
+        .utterance-chunk.is-live {
+            color: #f0f9ff;
+            font-weight: 700;
+            background: linear-gradient(90deg, rgba(56, 189, 248, 0.08) 0%, rgba(56, 189, 248, 0.01) 100%);
+            border-left: 3.5px solid var(--accent);
+            box-shadow: inset 1px 0 12px rgba(56, 189, 248, 0.15);
+            animation: livePulse 2.4s ease-in-out infinite alternate;
+        }
+
+        @keyframes livePulse {
+            0% { border-left-color: #38bdf8; box-shadow: inset 1px 0 10px rgba(56, 189, 248, 0.1); }
+            100% { border-left-color: #0284c7; box-shadow: inset 1px 0 18px rgba(56, 189, 248, 0.25); }
+        }
+
+        /* 隨說隨出的發光動態閃爍游標（純視覺，直觀感知正在收音） */
+        .live-cursor {
+            display: inline-block;
+            width: 3px;
+            height: 1.15em;
+            vertical-align: -0.18em;
+            margin-left: 6px;
+            background: var(--accent);
+            border-radius: 2px;
+            box-shadow: 0 0 10px var(--accent);
+            animation: blinkCursor 0.8s ease-in-out infinite;
+        }
+
+        @keyframes blinkCursor {
+            0%, 100% { opacity: 1; transform: scaleY(1); }
+            50% { opacity: 0.15; transform: scaleY(0.75); }
         }
 
         #fontToast {
             position: fixed;
-            top: 58px;
-            right: 20px;
+            top: 70px;
+            right: 28px;
             background: rgba(15, 23, 42, 0.95);
             border: 1px solid rgba(56, 189, 248, 0.3);
             color: #38bdf8;
-            font-size: 0.8rem;
-            padding: 5px 10px;
+            font-size: 0.82rem;
+            padding: 6px 14px;
             border-radius: 6px;
             pointer-events: none;
             opacity: 0;
             transform: translateY(-4px);
-            transition: all 0.2s ease;
+            transition: all 0.25s ease;
             z-index: 40;
             font-family: "Noto Sans HK", sans-serif;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
         }
 
         #fontToast.show { opacity: 1; transform: translateY(0); }
 
         .scroll-body::-webkit-scrollbar, .modal-body::-webkit-scrollbar { width: 4px; }
         .scroll-body::-webkit-scrollbar-thumb, .modal-body::-webkit-scrollbar-thumb {
-            background: rgba(255, 255, 255, 0.15);
+            background: rgba(255, 255, 255, 0.12);
             border-radius: 4px;
         }
 
-        /* 拼音彈窗 */
+        /* 粵拼注音彈窗 */
         .modal-overlay {
             position: fixed;
             top: 0; left: 0; width: 100vw; height: 100vh;
@@ -360,15 +335,16 @@
         .modal-overlay.active { display: flex; }
 
         .modal-window {
-            background: #0d1117;
+            background: #0c1017;
             border: 1px solid var(--card-border);
             width: 100%;
-            max-width: 640px;
-            max-height: 80vh;
+            max-width: 680px;
+            max-height: 82vh;
             border-radius: 14px;
             display: flex;
             flex-direction: column;
             overflow: hidden;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.8);
         }
 
         .modal-header {
@@ -378,7 +354,7 @@
             align-items: center;
             border-bottom: 1px solid var(--card-border);
             font-family: "Noto Sans HK", sans-serif;
-            font-size: 0.9rem;
+            font-size: 0.95rem;
             color: #f1f5f9;
         }
 
@@ -403,22 +379,22 @@
 
         ruby.jp-ruby rt.c-rt {
             display: block;
-            font-size: 0.78rem;
+            font-size: 0.82rem;
             line-height: 1;
             font-family: "Noto Sans HK", sans-serif;
             color: var(--ruby);
-            margin-bottom: 5px;
+            margin-bottom: 6px;
         }
 
         ruby.jp-ruby span.c-char {
             display: block;
-            font-size: 1.55rem;
+            font-size: 1.65rem;
             font-weight: 600;
             color: #f8fafc;
         }
 
         span.jp-punct {
-            font-size: 1.55rem;
+            font-size: 1.65rem;
             line-height: 1.2;
             color: #64748b;
             margin: 0 3px;
@@ -431,47 +407,28 @@
             justify-content: space-between;
             align-items: center;
         }
-
-        /* 逐字輸出時的跟隨光標 */
-        .typing-cursor::after {
-            content: " ▍";
-            display: inline-block;
-            color: var(--mandarin);
-            font-size: 0.85em;
-            vertical-align: middle;
-            animation: blinkCursor 0.7s infinite;
-        }
-
-        @keyframes blinkCursor {
-            0%, 100% { opacity: 0; }
-            50% { opacity: 1; }
-        }
-
-        .cantonese-content .typing-cursor::after {
-            color: var(--cantonese);
-        }
-
-        .typing-cursor {
-            display: inline-block;
-            min-width: 1px;
-        }
     </style>
 </head>
 <body>
 
-    <!-- 3D 演播室立體字幕機實體底層 -->
+    <!-- 靜態 3D 背景 (0% 閒置開銷) -->
     <canvas id="threeCanvas"></canvas>
 
-    <!-- 3D 物理提詞機主體裝配架 -->
-    <main id="teleprompterRig" class="teleprompter-rig">
+    <!-- 提詞機屏幕 -->
+    <main class="teleprompter-rig">
 
-        <!-- 提詞機嵌入式屏幕箱體 -->
         <div class="rig-screen-enclosure">
 
             <header>
-                <span class="brand-title">實時粵普字幕</span>
+                <div class="brand-title">實時粵語提詞</div>
                 <div class="btn-group">
-                    <button class="icon-btn" title="切換字體" onclick="cycleFontSize()">
+                    <button class="icon-btn" title="粵拼注音" onclick="openPhoneticModal()">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M3 18v-6a9 9 0 0 1 18 0v6"></path>
+                            <path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z"></path>
+                        </svg>
+                    </button>
+                    <button class="icon-btn" title="切換字體大小" onclick="cycleFontSize()">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
                             <path d="M3.5 17.5L6.5 9.5L9.5 17.5"></path>
                             <path d="M4.8 14.5H8.2"></path>
@@ -493,42 +450,19 @@
 
             <div id="fontToast">字體 標準</div>
 
-            <!-- 上下雙欄獨立視口 -->
+            <!-- 純粹視覺流式提詞區 -->
             <div class="viewport-container">
-                
-                <!-- 上欄：粵語區 -->
-                <section class="column-box canto-column">
-                    <div class="column-header">
-                        <span class="pane-tag tag-canto">粵語原文</span>
-                        <div style="display:flex; align-items:center; gap:8px;">
-                            <span id="charCount" class="char-counter">0 字</span>
-                            <button class="icon-btn" style="width:24px; height:24px;" onclick="openPhoneticModal()" title="粵拼">
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
-                                    <path d="M3 18v-6a9 9 0 0 1 18 0v6"></path>
-                                    <path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z"></path>
-                                </svg>
-                            </button>
-                        </div>
-                    </div>
-                    <div id="cantoScroll" class="scroll-body canto-scroll-body">
-                        <div class="cantonese-content">
-                            <span id="confirmedPart"></span><span id="interimPart" class="interim-text"></span>
-                        </div>
-                    </div>
-                </section>
+                <div id="cantoScroll" class="scroll-body">
+                    <!-- 歷史語段動態容器 -->
+                    <div id="chunksFeed" style="display: flex; flex-direction: column; gap: 12px; width: 100%;"></div>
 
-                <!-- 下欄：普通話區 -->
-                <section class="column-box mando-column">
-                    <div class="column-header">
-                        <span class="pane-tag tag-mando">普通話翻譯</span>
+                    <!-- 當前正在說的語句 (純視覺活躍光條 + 脈衝游標) -->
+                    <div id="liveChunk" class="utterance-chunk is-live" style="display: none;">
+                        <span id="liveText"></span><span class="live-cursor"></span>
                     </div>
-                    <div id="mandoScroll" class="scroll-body mando-scroll-body">
-                        <div id="mandarinContent" class="mandarin-content"></div>
-                        <!-- 底部安全緩衝墊片 -->
-                        <div class="bottom-safe-spacer"></div>
-                    </div>
-                </section>
 
+                    <div class="bottom-safe-spacer"></div>
+                </div>
             </div>
 
         </div>
@@ -539,7 +473,7 @@
     <div id="phoneticModal" class="modal-overlay" onclick="closeModalOnBackdrop(event)">
         <div class="modal-window">
             <div class="modal-header">
-                <span>粵拼與發音</span>
+                <span>粵拼注音與朗讀</span>
                 <button class="icon-btn" style="width:28px; height:28px;" onclick="closePhoneticModal()">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
                         <line x1="18" y1="6" x2="6" y2="18"></line>
@@ -549,7 +483,7 @@
             </div>
             <div id="modalContent" class="modal-body"></div>
             <div class="modal-footer">
-                <span id="ttsStatus" style="font-size: 0.8rem; color: #94a3b8; font-family: 'Noto Sans HK', sans-serif;">就緒</span>
+                <span id="ttsStatus" style="font-size: 0.82rem; color: #94a3b8; font-family: 'Noto Sans HK', sans-serif;">就緒</span>
                 <button id="ttsPlayBtn" class="icon-btn" style="background:#0284c7; color:#fff;" onclick="speakCurrentText()">
                     <svg viewBox="0 0 24 24" fill="currentColor">
                         <polygon points="6 3 20 12 6 21 6 3"></polygon>
@@ -560,11 +494,11 @@
     </div>
 
     <script>
-        /* ------------------ 0. Three.js 3D 演播室字幕機實體構建 ------------------ */
+        /* ------------------ 0. 靜態 3D 背景 ------------------ */
         const canvas = document.getElementById('threeCanvas');
         const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
         renderer.setSize(window.innerWidth, window.innerHeight);
-        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
 
         const scene = new THREE.Scene();
         const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 100);
@@ -573,31 +507,19 @@
         const machineGroup = new THREE.Group();
         scene.add(machineGroup);
 
-        const hoodMat = new THREE.MeshStandardMaterial({
-            color: 0x141822,
-            metalness: 0.82,
-            roughness: 0.28
-        });
+        const hoodMat = new THREE.MeshStandardMaterial({ color: 0x121620, metalness: 0.85, roughness: 0.25 });
+        const bezelMat = new THREE.MeshStandardMaterial({ color: 0x1f2735, metalness: 0.8, roughness: 0.3 });
 
-        const bezelMat = new THREE.MeshStandardMaterial({
-            color: 0x222a38,
-            metalness: 0.9,
-            roughness: 0.2
-        });
-
-        const chassisGeo = new THREE.BoxGeometry(19.5, 23.5, 2.0);
-        const chassis = new THREE.Mesh(chassisGeo, hoodMat);
+        const chassis = new THREE.Mesh(new THREE.BoxGeometry(19.5, 23.5, 2.0), hoodMat);
         chassis.position.z = -1.2;
         machineGroup.add(chassis);
 
-        const topHoodGeo = new THREE.BoxGeometry(19.6, 0.35, 3.2);
-        const topHood = new THREE.Mesh(topHoodGeo, bezelMat);
+        const topHood = new THREE.Mesh(new THREE.BoxGeometry(19.6, 0.35, 3.2), bezelMat);
         topHood.position.set(0, 11.8, 0.4);
         topHood.rotation.x = 0.15;
         machineGroup.add(topHood);
 
-        const leftHoodGeo = new THREE.BoxGeometry(0.35, 23.6, 3.2);
-        const leftHood = new THREE.Mesh(leftHoodGeo, bezelMat);
+        const leftHood = new THREE.Mesh(new THREE.BoxGeometry(0.35, 23.6, 3.2), bezelMat);
         leftHood.position.set(-9.85, 0, 0.4);
         leftHood.rotation.y = -0.15;
         machineGroup.add(leftHood);
@@ -607,67 +529,25 @@
         rightHood.rotation.y = 0.15;
         machineGroup.add(rightHood);
 
-        const boltGeo = new THREE.CylinderGeometry(0.18, 0.18, 0.4, 6);
-        const boltMat = new THREE.MeshStandardMaterial({ color: 0x64748b, metalness: 0.95, roughness: 0.1 });
-        const boltOffsets = [
-            [-9.2, 11.2], [9.2, 11.2],
-            [-9.2, -11.2], [9.2, -11.2]
-        ];
-        boltOffsets.forEach(([bx, by]) => {
-            const bolt = new THREE.Mesh(boltGeo, boltMat);
-            bolt.rotation.x = Math.PI / 2;
-            bolt.position.set(bx, by, 0.2);
-            machineGroup.add(bolt);
-        });
-
-        const mountGeo = new THREE.CylinderGeometry(1.2, 1.5, 3.0, 16);
-        const mount = new THREE.Mesh(mountGeo, hoodMat);
-        mount.position.set(0, -13.0, -1.2);
-        machineGroup.add(mount);
-
-        const ambientLight = new THREE.AmbientLight(0xffffff, 0.55);
-        scene.add(ambientLight);
-
-        const keyLight = new THREE.DirectionalLight(0xbae6fd, 0.85);
+        scene.add(new THREE.AmbientLight(0xffffff, 0.6));
+        const keyLight = new THREE.DirectionalLight(0xbae6fd, 0.8);
         keyLight.position.set(10, 15, 18);
         scene.add(keyLight);
 
-        const rimLight = new THREE.DirectionalLight(0x38bdf8, 0.45);
-        rimLight.position.set(-15, -10, 10);
-        scene.add(rimLight);
-
-        let targetRotX = 0;
-        let targetRotY = 0;
-        const rigElement = document.getElementById('teleprompterRig');
-
-        window.addEventListener('mousemove', (e) => {
-            const nx = (e.clientX / window.innerWidth) * 2 - 1;
-            const ny = (e.clientY / window.innerHeight) * 2 - 1;
-            targetRotY = nx * 0.08;
-            targetRotX = -ny * 0.06;
-
-            if (rigElement) {
-                rigElement.style.transform = `rotateX(${-ny * 4.5}deg) rotateY(${nx * 5.5}deg)`;
-            }
-        });
+        function renderStatic3D() {
+            renderer.render(scene, camera);
+        }
 
         window.addEventListener('resize', () => {
             camera.aspect = window.innerWidth / window.innerHeight;
             camera.updateProjectionMatrix();
             renderer.setSize(window.innerWidth, window.innerHeight);
+            renderStatic3D();
         });
 
-        function render3DLoop() {
-            requestAnimationFrame(render3DLoop);
+        renderStatic3D();
 
-            machineGroup.rotation.y += (targetRotY - machineGroup.rotation.y) * 0.08;
-            machineGroup.rotation.x += (targetRotX - machineGroup.rotation.x) * 0.08;
-
-            renderer.render(scene, camera);
-        }
-        render3DLoop();
-
-        /* ------------------ 1. 繁體字與字串安全過濾器 ------------------ */
+        /* ------------------ 1. 繁體字校準 ------------------ */
         let hkConverter = null;
         try {
             if (window.OpenCC) {
@@ -675,162 +555,43 @@
             }
         } catch (e) {}
 
-        function ensureTraditional(text) {
-            if (!text) return "";
+        function convertToHK(str) {
+            if (!str) return '';
             if (hkConverter) {
-                try { text = hkConverter(text); } catch (e) {}
+                try { return hkConverter(str); } catch(e) {}
             }
-            return text;
+            return str;
         }
 
         function cleanString(str) {
             return (str || '').replace(/[，。？！、\s\.,!\?]/g, '');
         }
 
-        /* ------------------ 2. 極致平滑「逐字」流式翻譯打字機 ------------------ */
-        let recentContextList = [];
-
-        class TypewriterStream {
-            constructor(targetElement, onChar, onDone) {
-                this.el = targetElement;
-                this.onChar = onChar;
-                this.onDone = onDone;
-                this.queue = [];
-                this.timer = null;
-                this.isFinished = false;
-                this.baseSpeed = 22;
-            }
-
-            push(text) {
-                if (!text) return;
-                for (const char of text) {
-                    this.queue.push(char);
-                }
-                if (!this.timer) this.tick();
-            }
-
-            tick() {
-                const step = () => {
-                    if (this.queue.length > 0) {
-                        const popCount = this.queue.length > 12 ? 2 : 1;
-                        for (let i = 0; i < popCount && this.queue.length > 0; i++) {
-                            this.el.textContent += this.queue.shift();
-                        }
-                        if (this.onChar) this.onChar();
-                        this.timer = setTimeout(step, this.baseSpeed);
-                    } else {
-                        this.timer = null;
-                        if (this.isFinished && this.onDone) {
-                            this.onDone();
-                        }
-                    }
-                };
-                step();
-            }
-
-            finish() {
-                this.isFinished = true;
-                if (this.queue.length === 0 && !this.timer && this.onDone) {
-                    this.onDone();
-                }
-            }
+        const fontToast = document.getElementById('fontToast');
+        let toastTimer = null;
+        function showToast(msg) {
+            fontToast.innerText = msg;
+            fontToast.classList.add('show');
+            clearTimeout(toastTimer);
+            toastTimer = setTimeout(() => fontToast.classList.remove('show'), 1500);
         }
 
-        async function translateDeltaWithPuter(newSentence, targetSpan) {
-            if (!newSentence || !newSentence.trim()) {
-                targetSpan.remove();
-                return;
-            }
-
-            if (!window.puter || !window.puter.ai) {
-                targetSpan.remove();
-                return;
-            }
-
-            try {
-                const contextStr = recentContextList.length > 0
-                    ? `【前文參考】：${recentContextList.join('，')}`
-                    : "【無前文】";
-
-                const messages = [
-                    {
-                        role: "system",
-                        content: `你是頂級粵語轉現代普通話專家。請參考前文理解語境，將當前句翻譯為自然流暢的繁體普通話。
-要求：只翻譯當前句，嚴禁翻譯前文，只輸出譯文內容，禁止任何解釋。`
-                    },
-                    {
-                        role: "user",
-                        content: `${contextStr}\n【當前句】：${newSentence}`
-                    }
-                ];
-
-                targetSpan.className = "typing-cursor";
-                targetSpan.textContent = "";
-
-                const writer = new TypewriterStream(
-                    targetSpan,
-                    () => scrollMandoToBottom(),
-                    () => {
-                        targetSpan.classList.remove("typing-cursor");
-
-                        let txt = targetSpan.textContent.trim();
-                        if (txt && !/[，。？！、]$/.test(txt)) {
-                            targetSpan.textContent = txt + "，";
-                        }
-
-                        recentContextList.push(newSentence);
-                        if (recentContextList.length > 2) recentContextList.shift();
-                        scrollMandoToBottom();
-                    }
-                );
-
-                const response = await puter.ai.chat(messages, {
-                    model: "infron:qwen/qwen3.8-27b-abliterated-cyber:free",
-                    stream: true
-                });
-
-                for await (const part of response) {
-                    const rawToken = part?.text ?? "";
-                    if (!rawToken) continue;
-                    writer.push(ensureTraditional(rawToken));
-                }
-
-                writer.finish();
-
-            } catch (err) {
-                console.error("【Puter.js 翻譯異常】：", err);
-                targetSpan.classList.remove("typing-cursor");
-                if (!targetSpan.textContent.trim()) targetSpan.remove();
-            }
-        }
-
-        /* ------------------ 3. 雙欄精準滾動與文字流 ------------------ */
+        /* ------------------ 2. 智慧音律分詞與視覺化流 ------------------ */
         const cantoScroll = document.getElementById('cantoScroll');
-        const mandoScroll = document.getElementById('mandoScroll');
-        const confirmedPart = document.getElementById('confirmedPart');
-        const interimPart = document.getElementById('interimPart');
-        const mandarinContent = document.getElementById('mandarinContent');
-        const charCount = document.getElementById('charCount');
+        const chunksFeed = document.getElementById('chunksFeed');
+        const liveChunk = document.getElementById('liveChunk');
+        const liveText = document.getElementById('liveText');
 
-        let rawConfirmedText = "";
-        let fullPunctuatedText = "";
-        let lastFinalCleanText = "";
-        let lastFinalTimestamp = 0;
+        // 已確認的句子隊列
+        const committedChunks = [];
+        const MAX_STORED_CHUNKS = 45; // 保留合適滑動窗口
 
         let autoScrollCanto = true;
-        let autoScrollMando = true;
-
         cantoScroll.addEventListener('scroll', () => {
-            const threshold = 80;
-            autoScrollCanto = (cantoScroll.scrollHeight - cantoScroll.scrollTop - cantoScroll.clientHeight) < threshold;
+            autoScrollCanto = (cantoScroll.scrollHeight - cantoScroll.scrollTop - cantoScroll.clientHeight) < 100;
         });
 
-        mandoScroll.addEventListener('scroll', () => {
-            const threshold = 120;
-            autoScrollMando = (mandoScroll.scrollHeight - mandoScroll.scrollTop - mandoScroll.clientHeight) < threshold;
-        });
-
-        function scrollCantoToBottom() {
+        function scrollToBottom() {
             if (autoScrollCanto) {
                 requestAnimationFrame(() => {
                     cantoScroll.scrollTop = cantoScroll.scrollHeight;
@@ -838,141 +599,207 @@
             }
         }
 
-        function scrollMandoToBottom() {
-            if (autoScrollMando) {
-                requestAnimationFrame(() => {
-                    mandoScroll.scrollTop = mandoScroll.scrollHeight;
-                });
+        // 純視覺層次更新（不含任何標籤文字）
+        function refreshVisualHierarchy() {
+            const nodes = chunksFeed.children;
+            const total = nodes.length;
+
+            for (let i = 0; i < total; i++) {
+                const el = nodes[i];
+                const distFromEnd = total - 1 - i;
+
+                el.className = 'utterance-chunk';
+                if (distFromEnd === 0) {
+                    // 剛定稿的最新句：高亮白、微光底色
+                    el.classList.add('just-committed');
+                } else if (distFromEnd <= 2) {
+                    // 近期歷史句：次級灰白
+                    el.classList.add('past-mid');
+                } else {
+                    // 深度歷史：景深衰退暗灰
+                    el.classList.add('past-deep');
+                }
             }
         }
 
-        // 隨講隨出的即時臨時字流
-        function handleSpeechInterim(interim) {
-            if (!interim) {
-                interimPart.textContent = "";
-                interimPart.classList.remove("typing-cursor");
-                return;
+        // 定稿一個語段並掛載到視覺樹
+        function commitChunk(text, isSentenceEnd = false) {
+            let pure = convertToHK((text || '').trim());
+            if (!pure) return;
+
+            // 確保標點自然過渡（絕無硬編碼語氣詞，依據語律自動補齊）
+            if (!/[，。？！、]$/.test(pure)) {
+                pure += (isSentenceEnd ? "。" : "，");
             }
-            interimPart.className = "interim-text typing-cursor";
-            interimPart.textContent = ensureTraditional(interim);
-            scrollCantoToBottom();
-        }
 
-        // 自然語律成句流式結算核心
-        function handleSpeechFinal(finalText) {
-            if (!finalText || !finalText.trim()) return;
-
-            interimPart.className = "interim-text";
-            interimPart.textContent = "";
-
-            const cleanFinal = cleanString(finalText);
-            const now = Date.now();
-
-            if (cleanFinal === lastFinalCleanText && (now - lastFinalTimestamp < 2000)) return;
-
-            const cleanConfirmed = cleanString(rawConfirmedText);
-            const tailSlice = cleanConfirmed.slice(-Math.max(cleanFinal.length + 10, 50));
-            if (tailSlice.endsWith(cleanFinal)) return;
-
-            // 動態去除已被之前分句上屏的歷史前綴，提取當前自然分句增量（Delta）
-            let delta = finalText.trim();
-            for (let i = delta.length; i >= 2; i--) {
-                const checkPrefix = cleanString(delta.slice(0, i));
-                if (checkPrefix.length >= 2 && tailSlice.endsWith(checkPrefix)) {
-                    delta = delta.slice(i).trim();
-                    break;
+            committedChunks.push(pure);
+            if (committedChunks.length > MAX_STORED_CHUNKS) {
+                committedChunks.shift();
+                if (chunksFeed.firstChild) {
+                    chunksFeed.removeChild(chunksFeed.firstChild);
                 }
             }
 
-            if (!cleanString(delta)) return;
+            const chunkEl = document.createElement('div');
+            chunkEl.className = 'utterance-chunk just-committed';
+            chunkEl.textContent = pure;
+            chunksFeed.appendChild(chunkEl);
 
-            delta = ensureTraditional(delta);
-
-            lastFinalCleanText = cleanFinal;
-            lastFinalTimestamp = now;
-            rawConfirmedText += delta; 
-            charCount.textContent = `${cleanString(rawConfirmedText).length} 字`;
-
-            // 上欄：粵語原文流式打字機
-            const cantoSpan = document.createElement('span');
-            cantoSpan.className = "typing-cursor";
-            cantoSpan.textContent = "";
-            confirmedPart.appendChild(cantoSpan);
-            scrollCantoToBottom();
-
-            // 下欄：普通話翻譯容器
-            const mandoSpan = document.createElement('span');
-            mandarinContent.appendChild(mandoSpan);
-            scrollMandoToBottom();
-
-            setTimeout(() => {
-                const cantoWriter = new TypewriterStream(
-                    cantoSpan,
-                    () => scrollCantoToBottom(),
-                    () => {
-                        cantoSpan.classList.remove("typing-cursor");
-                        let txt = cantoSpan.textContent.trim();
-                        if (txt && !/[，。？！、]$/.test(txt)) {
-                            cantoSpan.textContent = txt + "，";
-                        }
-                        fullPunctuatedText += cantoSpan.textContent;
-                        scrollCantoToBottom();
-                    }
-                );
-
-                cantoWriter.push(delta);
-                cantoWriter.finish();
-            }, 100);
-
-            // 觸發 Puter.js AI 流式翻譯
-            translateDeltaWithPuter(delta, mandoSpan);
+            refreshVisualHierarchy();
+            scrollToBottom();
         }
 
-        /* ------------------ 4. 語音辨識與防休眠 ------------------ */
+        /* ------------------ 3. 語音流式自適應切分引擎 ------------------ */
+        /* 
+           徹底解決手機端長句不中斷就不出字的關鍵：
+           利用 Temporal Rhythm (說話音律微停頓) + Natural Cadence (語句自然長度上限)
+           進行流式切分，永遠不必硬編碼任何語氣詞！
+        */
+        let currentRawTranscript = "";
+        let sessionCommittedOffset = 0;
+        let lastCharTime = 0;
+        let rhythmCheckTimer = null;
+
+        // 當前 live chunk 文字
+        function updateLiveDisplay(text) {
+            const hkText = convertToHK(text);
+            if (hkText) {
+                liveText.textContent = hkText;
+                liveChunk.style.display = 'block';
+                scrollToBottom();
+            } else {
+                liveText.textContent = "";
+                liveChunk.style.display = 'none';
+            }
+        }
+
+        // 智慧切分檢查
+        function inspectCadenceAndSegment(forceEnd = false) {
+            if (forceEnd) {
+                const remaining = currentRawTranscript.slice(sessionCommittedOffset).trim();
+                if (remaining) {
+                    commitChunk(remaining, true);
+                }
+                sessionCommittedOffset = currentRawTranscript.length;
+                updateLiveDisplay("");
+                return;
+            }
+
+            const uncommitted = currentRawTranscript.slice(sessionCommittedOffset);
+            if (!uncommitted) {
+                updateLiveDisplay("");
+                return;
+            }
+
+            const cleanLen = cleanString(uncommitted).length;
+            const now = Date.now();
+            const pauseDuration = now - lastCharTime;
+
+            // 自然語句切分條件：
+            // 1. 檢測到自然微停頓 (380ms) 且字數已滿自然語塊 (>= 7字)
+            // 2. 或說話太快，字數已累積達自然呼吸上限 (>= 15字)
+            // 3. 或識別引擎內部自身帶有標點/空格分割線索
+            const hasEnginePunct = /[，。？！\n]/.test(uncommitted);
+
+            if ((cleanLen >= 7 && pauseDuration >= 380) || cleanLen >= 15 || hasEnginePunct) {
+                let cutIndex = uncommitted.length;
+
+                // 若有標點符號，以標點為界優先切分
+                const punctMatch = uncommitted.search(/[，。？！\n]/);
+                if (punctMatch !== -1 && punctMatch >= 4) {
+                    cutIndex = punctMatch + 1;
+                }
+
+                const chunkToCommit = uncommitted.slice(0, cutIndex).trim();
+                if (chunkToCommit) {
+                    commitChunk(chunkToCommit, false);
+                    sessionCommittedOffset += cutIndex;
+                }
+
+                const newRemainder = currentRawTranscript.slice(sessionCommittedOffset);
+                updateLiveDisplay(newRemainder);
+            } else {
+                updateLiveDisplay(uncommitted);
+            }
+        }
+
+        function handleStreamChunk(fullInterim) {
+            if (!fullInterim) return;
+
+            // 引擎可能重置或追加
+            if (fullInterim.length < sessionCommittedOffset) {
+                sessionCommittedOffset = 0;
+            }
+
+            currentRawTranscript = fullInterim;
+            lastCharTime = Date.now();
+
+            inspectCadenceAndSegment(false);
+
+            // 設置自然停頓檢測輪詢
+            clearTimeout(rhythmCheckTimer);
+            rhythmCheckTimer = setTimeout(() => {
+                inspectCadenceAndSegment(false);
+            }, 400);
+        }
+
+        /* ------------------ 4. 語音辨識驅動與手機端常駐 ------------------ */
         const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
         let recognition = null;
         let userWantsListening = false;
         let isEngineRunning = false;
         let wakeLock = null;
+        let restartDebounce = null;
 
         const toggleBtn = document.getElementById('toggleBtn');
         const playIcon = document.getElementById('playIcon');
         const pauseIcon = document.getElementById('pauseIcon');
 
-        // 音頻保活循環
-        const SILENT_AUDIO_URI = "data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA=";
-        const keepAliveAudio = new Audio(SILENT_AUDIO_URI);
-        keepAliveAudio.loop = true;
-
         async function acquireWakeLock() {
             try {
-                if ('wakeLock' in navigator) wakeLock = await navigator.wakeLock.request('screen');
+                if ('wakeLock' in navigator && !wakeLock) {
+                    wakeLock = await navigator.wakeLock.request('screen');
+                    wakeLock.addEventListener('release', () => { wakeLock = null; });
+                }
             } catch (err) {}
         }
 
         function releaseWakeLock() {
-            if (wakeLock) { wakeLock.release().catch(() => {}); wakeLock = null; }
-        }
-
-        function ensureRecognitionActive() {
-            if (userWantsListening && !isEngineRunning && recognition) {
-                try { recognition.start(); } catch (e) {}
+            if (wakeLock) {
+                wakeLock.release().catch(() => {});
+                wakeLock = null;
             }
         }
 
-        setInterval(() => {
-            if (userWantsListening) ensureRecognitionActive();
-        }, 400);
+        function scheduleSafeRestart() {
+            if (!userWantsListening) return;
+            clearTimeout(restartDebounce);
+            restartDebounce = setTimeout(() => {
+                if (userWantsListening && !isEngineRunning && recognition) {
+                    try {
+                        recognition.start();
+                    } catch (e) {
+                        setTimeout(() => {
+                            if (userWantsListening && !isEngineRunning && recognition) {
+                                try { recognition.start(); } catch(err) {}
+                            }
+                        }, 90);
+                    }
+                }
+            }, 40);
+        }
 
         document.addEventListener('visibilitychange', () => {
             if (document.visibilityState === 'visible' && userWantsListening) {
                 acquireWakeLock();
-                ensureRecognitionActive();
+                scheduleSafeRestart();
             }
         });
 
         if (SpeechRecognition) {
             recognition = new SpeechRecognition();
+            
+            // 啟用連續辨識與實時結果
             recognition.continuous = true;
             recognition.interimResults = true;
             recognition.lang = 'zh-HK';
@@ -986,23 +813,23 @@
             };
 
             recognition.onresult = (event) => {
-                let interim = '';
-                for (let i = event.resultIndex; i < event.results.length; ++i) {
+                let accumulated = '';
+                for (let i = 0; i < event.results.length; ++i) {
                     const res = event.results[i];
                     if (!res || !res[0]) continue;
-                    const trans = res[0].transcript;
-
-                    if (res.isFinal) {
-                        handleSpeechFinal(trans);
-                    } else {
-                        interim += trans;
-                    }
+                    accumulated += res[0].transcript;
                 }
-                if (interim) {
-                    handleSpeechInterim(interim);
-                } else {
-                    interimPart.textContent = "";
-                    interimPart.classList.remove("typing-cursor");
+
+                if (accumulated) {
+                    handleStreamChunk(accumulated);
+                }
+
+                // 針對最後一個 result 是否定稿
+                const lastRes = event.results[event.results.length - 1];
+                if (lastRes && lastRes.isFinal) {
+                    inspectCadenceAndSegment(true);
+                    currentRawTranscript = "";
+                    sessionCommittedOffset = 0;
                 }
             };
 
@@ -1010,49 +837,51 @@
                 if (e.error === 'not-allowed') {
                     userWantsListening = false;
                     stopListeningUI();
-                    alert("請允許麥克風權限以進行實時識別。");
+                    alert("請允許麥克風權限以進行實時粵語識別。");
+                } else if (e.error === 'no-speech') {
+                    if (userWantsListening) scheduleSafeRestart();
                 } else {
-                    ensureRecognitionActive();
+                    scheduleSafeRestart();
                 }
             };
 
             recognition.onend = () => {
+                inspectCadenceAndSegment(true);
                 isEngineRunning = false;
                 if (userWantsListening) {
-                    ensureRecognitionActive();
+                    scheduleSafeRestart();
                 } else {
                     stopListeningUI();
                 }
             };
         }
 
-        /* ------------------ 5. 單鍵授權與啟動 ------------------ */
-        async function toggleSpeech() {
+        function stopListeningSession() {
+            userWantsListening = false;
+            if (restartDebounce) clearTimeout(restartDebounce);
+            clearTimeout(rhythmCheckTimer);
+
+            inspectCadenceAndSegment(true);
+            releaseWakeLock();
+
+            try { recognition.stop(); } catch(e) {}
+            stopListeningUI();
+        }
+
+        function toggleSpeech() {
             if (!recognition) {
-                alert("當前瀏覽器不支援語音辨識，請使用 Chrome、Edge 或 Safari。");
+                alert("當前瀏覽器不支援 Web Speech API，建議使用 Safari、Chrome 或 Edge。");
                 return;
             }
 
             if (userWantsListening) {
-                userWantsListening = false;
-                releaseWakeLock();
-                try { keepAliveAudio.pause(); } catch(e) {}
-                try { recognition.stop(); } catch(e) {}
-                stopListeningUI();
+                stopListeningSession();
+                showToast("已停止識別");
             } else {
-                if (window.puter && window.puter.auth && !puter.auth.isSignedIn()) {
-                    try {
-                        await puter.auth.signIn({ attempt_temp_user_creation: true });
-                    } catch (e) {
-                        alert("Puter AI 授權未完成，請允許授權視窗以開啟翻譯。");
-                        return;
-                    }
-                }
-
                 userWantsListening = true;
                 acquireWakeLock();
-                try { keepAliveAudio.play(); } catch(e) {}
-                ensureRecognitionActive();
+                scheduleSafeRestart();
+                showToast("提詞已啟動");
             }
         }
 
@@ -1060,36 +889,28 @@
             toggleBtn.classList.remove('active');
             playIcon.style.display = 'block';
             pauseIcon.style.display = 'none';
-            interimPart.innerText = "";
-            interimPart.classList.remove("typing-cursor");
+            liveChunk.style.display = 'none';
+            liveText.textContent = "";
         }
 
-        /* ------------------ 6. 字體調節 ------------------ */
+        /* ------------------ 5. 字體調節 ------------------ */
         const fontScales = [
-            { name: "標準", canto: "1.55rem", mando: "1.20rem" },
-            { name: "放大", canto: "1.85rem", mando: "1.40rem" },
-            { name: "特大", canto: "2.15rem", mando: "1.65rem" }
+            { name: "標準", canto: "1.85rem", lh: "1.7" },
+            { name: "放大", canto: "2.3rem",  lh: "1.65" },
+            { name: "特大", canto: "2.8rem",  lh: "1.6" }
         ];
         let currentScaleIdx = 0;
-        let toastTimer = null;
-        const fontToast = document.getElementById('fontToast');
 
         function cycleFontSize() {
             currentScaleIdx = (currentScaleIdx + 1) % fontScales.length;
             const cur = fontScales[currentScaleIdx];
             document.documentElement.style.setProperty('--cantonese-size', cur.canto);
-            document.documentElement.style.setProperty('--mandarin-size', cur.mando);
-
-            fontToast.innerText = `字體 ${cur.name}`;
-            fontToast.classList.add('show');
-            clearTimeout(toastTimer);
-            toastTimer = setTimeout(() => fontToast.classList.remove('show'), 1200);
-
-            scrollCantoToBottom();
-            scrollMandoToBottom();
+            document.documentElement.style.setProperty('--line-height', cur.lh);
+            showToast(`字體 ${cur.name}`);
+            scrollToBottom();
         }
 
-        /* ------------------ 7. 粵拼彈窗與發音 ------------------ */
+        /* ------------------ 6. 粵拼注音彈窗與朗讀 ------------------ */
         const modal = document.getElementById('phoneticModal');
         const modalContent = document.getElementById('modalContent');
         const ttsStatus = document.getElementById('ttsStatus');
@@ -1126,16 +947,21 @@
         }
 
         async function openPhoneticModal() {
-            const fullText = (confirmedPart.innerText || "").trim();
+            // 合併所有已定稿句子以及當前句
+            let fullText = committedChunks.join('');
+            if (liveText.textContent) {
+                fullText += liveText.textContent;
+            }
+            fullText = fullText.trim();
             currentPureText = cleanString(fullText);
 
             if (!fullText) {
-                modalContent.innerHTML = "<div style='color:#64748b; font-size:1rem; padding:10px;'>暫無文字</div>";
+                modalContent.innerHTML = "<div style='color:#64748b; font-size:1rem; padding:20px; width:100%; text-align:center;'>暫無提詞文字</div>";
                 modal.classList.add('active');
                 return;
             }
 
-            modalContent.innerHTML = "<div style='color:#94a3b8; font-size:1rem; width:100%; text-align:center; padding:30px 0;'>標註中...</div>";
+            modalContent.innerHTML = "<div style='color:#94a3b8; font-size:1rem; width:100%; text-align:center; padding:30px 0;'>粵拼注音生成中...</div>";
             ttsStatus.innerText = "標音中";
             modal.classList.add('active');
 
