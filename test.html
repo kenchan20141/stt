@@ -951,9 +951,17 @@
         }
 
         /* ------------------ 5. 語音辨識機制 ------------------ */
-    function handleSpeechInterim(interim) {
-    // 停用臨時文字顯示
-}
+        function handleSpeechInterim(interim) {
+            if (!interim || !interim.trim()) {
+                interimPart.textContent = "";
+                if (currentMode === 'broadcast') broadcastSecurePayload({ type: 'interim', text: "" });
+                return;
+            }
+            let delta = extractNonOverlappingDelta(convertToHK(interim.trim()));
+            interimPart.textContent = delta || "";
+            if (currentMode === 'broadcast') broadcastSecurePayload({ type: 'interim', text: delta || "" });
+            if (delta) scrollCantoToBottom();
+        }
 
        function handleSpeechFinal(finalText) {
     if (!finalText || !finalText.trim()) return;
@@ -1009,12 +1017,12 @@
             }, 80);
         }
 
-     if (SpeechRecognition && !isReceiverMode) {
-    recognition = new SpeechRecognition();
-    recognition.continuous = true;
-    recognition.interimResults = true;  // <--- 將這行改為 false
-    recognition.lang = 'zh-HK';
-    recognition.maxAlternatives = 1;
+        if (SpeechRecognition && !isReceiverMode) {
+            recognition = new SpeechRecognition();
+            recognition.continuous = true;
+            recognition.interimResults = true;
+            recognition.lang = 'zh-HK';
+            recognition.maxAlternatives = 1;
 
             recognition.onstart = () => {
                 isEngineRunning = true;
@@ -1023,14 +1031,16 @@
                 pauseIcon.style.display = 'block';
             };
 
-           recognition.onresult = (event) => {
-    for (let i = event.resultIndex; i < event.results.length; ++i) {
-        const res = event.results[i];
-        if (res && res[0] && res.isFinal) {
-            handleSpeechFinal(res[0].transcript);
-        }
-    }
-};
+            recognition.onresult = (event) => {
+                let interim = '';
+                for (let i = event.resultIndex; i < event.results.length; ++i) {
+                    const res = event.results[i];
+                    if (!res || !res[0]) continue;
+                    if (res.isFinal) handleSpeechFinal(res[0].transcript);
+                    else interim += res[0].transcript;
+                }
+                if (interim) handleSpeechInterim(interim);
+            };
 
             recognition.onerror = (e) => {
                 if (e.error === 'not-allowed') {
