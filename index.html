@@ -559,9 +559,14 @@
 
         /* ------------------ 2. 粵語句組與智能斷句引擎 ------------------ */
 
-        const QUESTION_ENDINGS = /(點解|係咪|係唔係|係未|得唔得|好唔好|幾時|邊個|邊度|邊處|點樣|點做|點算|成點|咩|呀嘛|呀嗱|呢|嗎|得未|好未|係咪呀|係唔係呀|下話|呀)$/;
-        const EXCLAMATION_ENDINGS = /(太好喇|好犀利|超勁|正呀|好正|利害|搞錯|痴線|唔係卦|救命|嘩|哇|好嘢|真係誇張|真係正|勁呀)$/;
-        const TERMINAL_PARTICLES = /(啦|喇|㗎|喎|囉|啫|咋|添|嘅|之嘛|喇喎|㗎啦|㗎喇|㗎咋|罷了|唔知呢)$/;
+     // 1. 只有包含真正的疑問詞、反問結構、或專門疑問語氣詞時，才加「？」
+const QUESTION_ENDINGS = /(點解|係咪|係唔係|係未|得唔得|好唔好|幾時|邊個|邊度|邊處|點樣|點做|點算|成點|做咩|做乜|做乜嘢|咩|呢|嗎|呀嗱|下話|得未|好未|係咪呀|係唔係呀|點樣呀|做咩呀|邊個呀|幾時呀)$/;
+
+// 2. 感嘆句結尾，加「！」
+const EXCLAMATION_ENDINGS = /(太好喇|好犀利|超勁|正呀|好正|利害|搞錯|痴線|唔係卦|救命|嘩|哇|好嘢|真係誇張|真係正|勁呀|正話|好痛呀|好正呀)$/;
+
+// 3. 常規陳述語氣助詞（把「呀」回歸到這裡，正常句末加「。」，組內加「，」）
+const TERMINAL_PARTICLES = /(啦|喇|㗎|喎|囉|啫|咋|添|嘅|之嘛|喇喎|㗎啦|㗎喇|㗎咋|罷了|唔知呢|呀|阿)$/;
 
         const cantoScroll = document.getElementById('cantoScroll');
         const cantoStream = document.getElementById('cantoStream');
@@ -687,7 +692,11 @@ const LEXICON = {
  */
 function splitIntoSemanticClauses(rawText) {
     if (!rawText) return [];
-    const text = rawText.trim();
+    // 先把開頭與結尾的標點剝乾淨
+    const text = rawText.trim().replace(/^[，。？！、\.,!\?\s…—]+|[，。？！、\.,!\?\s…—]+$/g, '');
+    if (!text) return [];
+
+    // 若短句小於等於 7 字，直接返回已剝除標點的乾淨文字
     if (cleanString(text).length <= 7) return [text];
 
     // 第一步：先按既有的標點初切
@@ -795,20 +804,26 @@ function splitIntoSemanticClauses(rawText) {
         /**
          * 渲染句組文本：精確保障每句之間都有合適標點分隔
          */
-        function renderGroupText(group, isFinalized = false) {
-            const clauses = group.clauses;
-            if (clauses.length === 0) return "";
+      /**
+ * 渲染句組文本：強制過濾掉文字原有的尾端標點，徹底杜絕「。？」或「，，」重複出現
+ */
+function renderGroupText(group, isFinalized = false) {
+    const clauses = group.clauses;
+    if (clauses.length === 0) return "";
 
-            let fullStr = "";
-            for (let i = 0; i < clauses.length; i++) {
-                const text = clauses[i];
-                const isLast = (i === clauses.length - 1);
-                // 只有整組定稿且是最後一句才加句號；其餘一律加分隔標點（逗號/問號/感嘆號）
-                const punct = getClausePunctuation(text, isLast && isFinalized);
-                fullStr += text + punct;
-            }
-            return fullStr;
-        }
+    let fullStr = "";
+    for (let i = 0; i < clauses.length; i++) {
+        // 先將句子原本自帶的尾端標點（不論中英文）全部剔除
+        const pureText = clauses[i].replace(/[，。？！、\.,!\?\s…—]+$/g, '').trim();
+        if (!pureText) continue;
+
+        const isLast = (i === clauses.length - 1);
+        // 重新由提詞器統一決定最合適的標點
+        const punct = getClausePunctuation(pureText, isLast && isFinalized);
+        fullStr += pureText + punct;
+    }
+    return fullStr;
+}
 
         /**
          * 核心高光控制：只有最新一個句組才高光！其餘全部暗淡退居背景
