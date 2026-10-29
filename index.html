@@ -3,11 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>實時粵語提詞器</title>
+    <title>實時粵語提詞器 - Cinematic Studio</title>
 
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+HK:wght@400;500;700&family=Noto+Serif+HK:wght@600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Noto+Sans+HK:wght@400;500;700&family=Noto+Serif+HK:wght@500;700&family=Oswald:wght@400;500;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
 
     <!-- Three.js 3D 核心庫 -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -28,11 +28,26 @@
 
     <style>
         :root {
-            --bg: #05070a;
-            --canto-bg: #090a0f;
-            --card-border: rgba(255, 255, 255, 0.08);
-            --ruby: #f59e0b;
-            --accent: #38bdf8;
+            /* Morandi Cinematic Studio Palette */
+            --bg-base: #18191B;       
+            --surface: #242426;       
+            --surface-light: #2F3033; 
+            --primary: #B89B72;       
+            --primary-hover: #CDB38B;
+            --text-main: #E6E2D6;     
+            --text-muted: #858480;    
+            --border: #38383A;        
+            --accent-red: #A85751;
+            --accent-green: #4E8765;
+            --canto-bg: #121213;
+
+            --font-title: 'Oswald', sans-serif;
+            --font-mono: 'Space Mono', monospace;
+            --font-sans: 'Inter', "Noto Sans HK", sans-serif;
+            --font-serif: "Noto Serif HK", serif;
+
+            --shadow-depth: 0 24px 50px rgba(0, 0, 0, 0.7);
+            --inner-glow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
             --cantonese-size: 2.15rem;
         }
 
@@ -45,8 +60,10 @@
         }
 
         body {
-            background-color: var(--bg);
-            color: #ffffff;
+            background-color: var(--bg-base);
+            background-image: radial-gradient(circle at 50% 0%, #222428 0%, var(--bg-base) 85%);
+            color: var(--text-main);
+            font-family: var(--font-sans);
             height: 100vh;
             height: 100dvh;
             display: flex;
@@ -54,6 +71,23 @@
             justify-content: center;
             overflow: hidden;
             -webkit-font-smoothing: antialiased;
+        }
+
+        /* 35MM 膠片旁印水印裝飾 */
+        body::before {
+            content: "35MM // CINE-SYNC FORMAT ▻ KODAK VISION3";
+            position: fixed;
+            top: 50%;
+            left: 20px;
+            transform: translateY(-50%) rotate(-90deg);
+            transform-origin: left center;
+            font-size: 10px;
+            font-family: var(--font-mono);
+            letter-spacing: 6px;
+            color: rgba(133, 132, 128, 0.28);
+            white-space: nowrap;
+            pointer-events: none;
+            z-index: 2;
         }
 
         #threeCanvas {
@@ -64,103 +98,111 @@
             height: 100vh;
             z-index: 1;
             pointer-events: none;
+            opacity: 0.65;
         }
 
         .teleprompter-rig {
             position: relative;
             z-index: 10;
             width: 100%;
-            max-width: 900px;
+            max-width: 920px;
             height: 100vh;
             height: 100dvh;
-            max-height: 960px;
+            max-height: 940px;
             display: flex;
             flex-direction: column;
-            padding: 20px 24px 28px 24px;
+            padding: 24px 20px 28px 20px;
             box-sizing: border-box;
             pointer-events: auto;
         }
 
+        /* 電影工作室風格機箱外觀 */
         .rig-screen-enclosure {
             flex: 1;
             display: flex;
             flex-direction: column;
-            background: #090a0f;
-            border-radius: 14px;
-            border: 2px solid #1e2638;
-            box-shadow: 
-                0 0 0 1px rgba(0, 0, 0, 0.8),
-                0 20px 45px rgba(0, 0, 0, 0.9),
-                inset 0 0 20px rgba(0, 0, 0, 0.85);
+            background: var(--surface);
+            border-radius: 6px;
+            border: 1px solid rgba(0, 0, 0, 0.85);
+            box-shadow: var(--shadow-depth), var(--inner-glow);
             overflow: hidden;
             position: relative;
             min-height: 0;
         }
 
-        /* 頂部導航列排版佈局 */
+        /* 頂部導航控制列 */
         header {
-            padding: 12px 18px;
+            padding: 14px 24px;
             display: flex;
             justify-content: space-between;
             align-items: center;
-            border-bottom: 1px solid var(--card-border);
-            background: #090a0f;
+            border-bottom: 1px solid var(--border);
+            background: #1C1D1F;
             z-index: 30;
             flex-shrink: 0;
-            gap: 10px;
-            min-height: 58px;
+            gap: 12px;
+            min-height: 60px;
         }
 
         .brand-meta {
             display: flex;
             align-items: center;
-            gap: 8px;
+            gap: 12px;
             flex-shrink: 0;
             min-width: 0;
         }
 
         .brand-logo-icon {
             display: none;
-            color: #38bdf8;
+            color: var(--primary);
             width: 20px;
             height: 20px;
             flex-shrink: 0;
         }
 
         .brand-title {
-            font-size: 0.95rem;
-            font-weight: 700;
-            color: #94a3b8;
-            letter-spacing: 0.8px;
-            font-family: "Noto Sans HK", sans-serif;
+            font-size: 1.05rem;
+            font-weight: 500;
+            color: var(--text-main);
+            letter-spacing: 2px;
+            font-family: var(--font-title);
+            text-transform: uppercase;
             white-space: nowrap;
+        }
+
+        .brand-title span {
+            color: var(--primary);
+            font-size: 0.8rem;
+            font-family: var(--font-mono);
+            letter-spacing: 1px;
+            margin-left: 6px;
         }
 
         /* 狀態指示燈 */
         .status-dot {
-            width: 8px;
-            height: 8px;
+            width: 7px;
+            height: 7px;
             border-radius: 50%;
-            background: #334155;
+            background: var(--border);
             flex-shrink: 0;
             transition: all 0.3s ease;
         }
 
         .status-dot.broadcast {
-            background: #10b981;
-            box-shadow: 0 0 10px #10b981;
-            animation: pulseDot 1.8s infinite;
+            background: var(--primary);
+            box-shadow: 0 0 10px var(--primary);
+            animation: pulseDot 2s infinite ease-in-out;
         }
 
         .status-dot.receive {
-            background: #38bdf8;
-            box-shadow: 0 0 10px #38bdf8;
-            animation: pulseDot 1.8s infinite;
+            background: var(--primary-hover);
+            box-shadow: 0 0 10px var(--primary-hover);
+            animation: pulseDot 2s infinite ease-in-out;
         }
 
         @keyframes pulseDot {
-            0%, 100% { opacity: 1; transform: scale(1); }
-            50% { opacity: 0.45; transform: scale(0.85); }
+            0%, 100% { opacity: 0.9; transform: scale(1); }
+            50% { opacity: 0.3; transform: scale(0.85); }
         }
 
         .btn-group {
@@ -168,88 +210,105 @@
             align-items: center;
             gap: 8px;
             flex-shrink: 0;
-            flex-wrap: nowrap; /* 嚴禁折行，避免垂直重疊 */
+            flex-wrap: nowrap;
         }
 
         .icon-btn {
-            background: rgba(255, 255, 255, 0.06);
-            border: 1px solid var(--card-border);
-            color: #cbd5e1;
-            width: 38px;
-            height: 38px;
-            border-radius: 8px;
+            background: var(--surface-light);
+            border: 1px solid var(--border);
+            color: var(--text-muted);
+            width: 40px;
+            height: 40px;
+            border-radius: 4px;
             display: flex;
             align-items: center;
             justify-content: center;
             cursor: pointer;
-            transition: all 0.2s ease;
+            transition: all 0.25s ease;
             outline: none;
             position: relative;
             flex-shrink: 0;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.3);
         }
 
-        .icon-btn:hover { background: rgba(255, 255, 255, 0.12); color: #ffffff; }
-        .icon-btn:active { transform: scale(0.94); }
-        .icon-btn svg { width: 18px; height: 18px; stroke-width: 2; }
+        .icon-btn:hover {
+            background: #38393D;
+            color: var(--text-main);
+            border-color: #4E4F54;
+            transform: translateY(-1px);
+        }
+
+        .icon-btn:active {
+            transform: scale(0.95);
+        }
+
+        .icon-btn svg {
+            width: 18px;
+            height: 18px;
+            stroke-width: 2;
+        }
 
         .icon-btn.mode-active {
-            background: rgba(56, 189, 248, 0.15);
-            border-color: rgba(56, 189, 248, 0.45);
-            color: #38bdf8;
+            background: rgba(184, 155, 114, 0.15);
+            border-color: var(--primary);
+            color: var(--primary);
+            box-shadow: inset 0 0 12px rgba(184, 155, 114, 0.15);
         }
 
         .power-btn {
-            background: #ef4444;
-            border: 1px solid rgba(255, 255, 255, 0.25);
-            color: #ffffff;
-            width: 42px;
-            height: 42px;
-            border-radius: 50%;
-            box-shadow: 0 0 16px rgba(239, 68, 68, 0.35);
+            background: rgba(168, 87, 81, 0.2);
+            border: 1px solid var(--accent-red);
+            color: var(--accent-red);
+            width: 40px;
+            height: 40px;
+            border-radius: 4px;
             flex-shrink: 0;
         }
 
-        .power-btn.active {
-            background: #10b981;
-            box-shadow: 0 0 16px rgba(16, 185, 129, 0.45);
+        .power-btn:hover {
+            background: rgba(168, 87, 81, 0.35);
+            color: #ffffff;
+            border-color: #c96b65;
         }
 
-        /* 📱 手機端響應式排版優化 (解決擠壓與歪斜) */
+        .power-btn.active {
+            background: var(--primary);
+            color: #121212;
+            border-color: var(--primary);
+            box-shadow: 0 0 18px rgba(184, 155, 114, 0.4);
+        }
+
+        .power-btn.active:hover {
+            background: var(--primary-hover);
+        }
+
+        /* 響應式佈局 */
         @media (max-width: 640px) {
+            body::before { display: none; }
             .teleprompter-rig {
                 max-width: 100%;
                 height: 100dvh;
-                padding: 6px 6px 12px 6px;
+                padding: 6px 6px 10px 6px;
             }
 
             .rig-screen-enclosure {
-                border-radius: 10px;
-                border-width: 1.5px;
+                border-radius: 4px;
             }
 
             header {
-                padding: 8px 10px;
-                min-height: 48px;
-                gap: 6px;
+                padding: 8px 12px;
+                min-height: 50px;
+                gap: 8px;
             }
 
-            /* 手機上隱藏文字標題，改顯示精緻圖標，釋放空間 */
-            .brand-title {
-                display: none;
-            }
+            .brand-title { display: none; }
+            .brand-logo-icon { display: flex; }
 
-            .brand-logo-icon {
-                display: flex;
-            }
-
-            .btn-group {
-                gap: 5px;
-            }
+            .btn-group { gap: 5px; }
 
             .icon-btn {
-                width: 33px;
-                height: 33px;
-                border-radius: 7px;
+                width: 34px;
+                height: 34px;
             }
 
             .icon-btn svg {
@@ -258,20 +317,18 @@
             }
 
             .power-btn {
-                width: 36px;
-                height: 36px;
+                width: 34px;
+                height: 34px;
             }
 
-            /* 手機瀏覽器不支援 Document PiP，隱藏按鈕避免無效佔位 */
-            #btnPip {
-                display: none !important;
-            }
+            #btnPip { display: none !important; }
 
             .scroll-body {
-                padding: 16px 16px 40px 16px !important;
+                padding: 16px 18px 40px 18px !important;
             }
         }
 
+        /* 視口取景框 */
         .viewport-container {
             flex: 1;
             display: flex;
@@ -281,14 +338,28 @@
             min-height: 0; 
             background-color: var(--canto-bg);
             position: relative;
+            box-shadow: inset 0 8px 32px rgba(0, 0, 0, 0.85);
+        }
+
+        /* 攝影機取景十字準線刻度裝飾 */
+        .viewport-container::after {
+            content: "";
+            position: absolute;
+            inset: 16px;
+            border: 1px solid rgba(230, 226, 214, 0.08);
+            pointer-events: none;
+            background: 
+                linear-gradient(to right, rgba(230, 226, 214, 0.12) 1px, transparent 1px) 50% 50% / 24px 1px no-repeat,
+                linear-gradient(to bottom, rgba(230, 226, 214, 0.12) 1px, transparent 1px) 50% 50% / 1px 24px no-repeat;
+            z-index: 2;
         }
 
         .viewport-container::before {
             content: "";
             position: absolute;
             top: 0; left: 0; right: 0;
-            height: 36px;
-            background: linear-gradient(to bottom, #090a0f 25%, transparent);
+            height: 40px;
+            background: linear-gradient(to bottom, #121213 25%, transparent);
             z-index: 10;
             pointer-events: none;
         }
@@ -298,16 +369,16 @@
             overflow-y: auto;
             scroll-behavior: smooth;
             -webkit-overflow-scrolling: touch;
-            padding: 24px 28px 48px 28px;
+            padding: 28px 36px 54px 36px;
             position: relative;
             z-index: 1;
         }
 
         .cantonese-stream {
-            font-family: "Noto Serif HK", serif;
+            font-family: var(--font-serif);
             font-size: var(--cantonese-size);
             line-height: 1.85;
-            letter-spacing: 0.8px;
+            letter-spacing: 1px;
             display: flex;
             flex-direction: column;
             gap: 22px;
@@ -323,25 +394,25 @@
         }
 
         .phrase-group.past {
-            color: #475569;
-            font-weight: 500;
-            opacity: 0.42;
+            color: var(--text-muted);
+            font-weight: 400;
+            opacity: 0.4;
         }
 
-        /* 最新句組：純白高光聚焦 */
+        /* 最新句組：純米白 + 莫蘭迪金微光 */
         .phrase-group.active-latest {
-            color: #ffffff;
+            color: var(--text-main);
             font-weight: 700;
             opacity: 1;
-            text-shadow: 0 0 16px rgba(255, 255, 255, 0.28);
+            text-shadow: 0 0 16px rgba(230, 226, 214, 0.25);
             animation: phrasePop 0.22s cubic-bezier(0.16, 1, 0.3, 1) forwards;
         }
 
         .phrase-item.interim {
-            color: #f8fafc;
+            color: var(--primary);
             font-weight: 700;
-            opacity: 0.9;
-            text-shadow: 0 0 16px rgba(255, 255, 255, 0.28);
+            opacity: 0.95;
+            text-shadow: 0 0 16px rgba(184, 155, 114, 0.35);
             display: inline;
             background: transparent;
             border: none;
@@ -367,29 +438,34 @@
 
         #fontToast {
             position: fixed;
-            top: 62px;
+            top: 72px;
             right: 24px;
-            background: rgba(15, 23, 42, 0.95);
-            border: 1px solid rgba(56, 189, 248, 0.3);
-            color: #38bdf8;
-            font-size: 0.82rem;
+            background: #18191B;
+            border: 1px solid var(--primary);
+            color: var(--primary);
+            font-size: 0.75rem;
+            font-family: var(--font-mono);
+            letter-spacing: 2px;
+            text-transform: uppercase;
             padding: 6px 14px;
-            border-radius: 6px;
+            border-radius: 4px;
             pointer-events: none;
             opacity: 0;
             transform: translateY(-4px);
             transition: all 0.25s ease;
             z-index: 40;
-            font-family: "Noto Sans HK", sans-serif;
+            box-shadow: 0 8px 20px rgba(0, 0, 0, 0.6);
         }
 
         #fontToast.show { opacity: 1; transform: translateY(0); }
 
+        /* 彈窗樣式改為 Cinematic Studio */
         .modal-overlay {
             position: fixed;
             top: 0; left: 0; width: 100vw; height: 100vh;
-            background: rgba(0, 0, 0, 0.85);
-            backdrop-filter: blur(10px);
+            background: rgba(18, 18, 19, 0.92);
+            backdrop-filter: blur(14px);
+            -webkit-backdrop-filter: blur(14px);
             z-index: 100;
             display: none;
             align-items: center;
@@ -400,34 +476,38 @@
         .modal-overlay.active { display: flex; }
 
         .modal-window {
-            background: #0d1117;
-            border: 1px solid var(--card-border);
+            background: var(--surface);
+            border: 1px solid var(--border);
             width: 100%;
             max-width: 680px;
             max-height: 85vh;
-            border-radius: 14px;
+            border-radius: 6px;
             display: flex;
             flex-direction: column;
             overflow: hidden;
+            box-shadow: var(--shadow-depth), var(--inner-glow);
         }
 
         .modal-header {
-            padding: 14px 18px;
+            padding: 16px 20px;
             display: flex;
             justify-content: space-between;
             align-items: center;
-            border-bottom: 1px solid var(--card-border);
-            font-family: "Noto Sans HK", sans-serif;
-            font-size: 0.95rem;
-            color: #f1f5f9;
+            border-bottom: 1px solid var(--border);
+            font-family: var(--font-title);
+            font-size: 1.15rem;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            color: var(--text-main);
+            background: #1E1F21;
         }
 
         .modal-body {
-            padding: 20px;
+            padding: 24px;
             overflow-y: auto;
             flex: 1;
             line-height: 2.6;
-            background: #080a0e;
+            background: #141416;
             display: flex;
             flex-wrap: wrap;
             gap: 2px;
@@ -437,16 +517,16 @@
             display: inline-flex;
             flex-direction: column-reverse;
             align-items: center;
-            margin: 2px 4px;
+            margin: 2px 5px;
             line-height: 1;
         }
 
         ruby.jp-ruby rt.c-rt {
             display: block;
-            font-size: 0.82rem;
+            font-size: 0.8rem;
             line-height: 1;
-            font-family: "Noto Sans HK", sans-serif;
-            color: var(--ruby);
+            font-family: var(--font-mono);
+            color: var(--primary);
             margin-bottom: 6px;
         }
 
@@ -454,169 +534,169 @@
             display: block;
             font-size: 1.65rem;
             font-weight: 600;
-            color: #f8fafc;
+            font-family: var(--font-serif);
+            color: var(--text-main);
         }
 
         span.jp-punct {
             font-size: 1.65rem;
             line-height: 1.2;
-            color: #64748b;
+            color: var(--text-muted);
             margin: 0 3px;
         }
 
         .modal-footer {
-            padding: 12px 18px;
-            border-top: 1px solid var(--card-border);
+            padding: 14px 20px;
+            border-top: 1px solid var(--border);
             display: flex;
             justify-content: space-between;
             align-items: center;
+            background: #1C1D1F;
         }
 
         #qrContainer {
-            background: #ffffff;
+            background: var(--text-main);
             padding: 12px;
-            border-radius: 12px;
+            border-radius: 4px;
             display: flex;
             align-items: center;
             justify-content: center;
             margin: 0 auto;
+            border: 1px solid rgba(0,0,0,0.8);
         }
 
         #roomLinkText {
-            font-family: monospace;
-            font-size: 0.76rem;
-            color: #94a3b8;
+            font-family: var(--font-mono);
+            font-size: 0.72rem;
+            color: var(--text-muted);
             word-break: break-all;
             cursor: pointer;
-            background: rgba(255, 255, 255, 0.04);
-            padding: 8px 12px;
-            border-radius: 6px;
-            border: 1px solid rgba(255, 255, 255, 0.08);
+            background: #101011;
+            padding: 10px 14px;
+            border-radius: 4px;
+            border: 1px solid var(--border);
             width: 100%;
             text-align: center;
+            transition: all 0.2s ease;
         }
 
-        /* 純數字房間碼與金鑰卡片 */
+        #roomLinkText:hover {
+            color: var(--text-main);
+            border-color: var(--primary);
+        }
+
+        /* 房間碼與金鑰卡片 */
         .pin-display-box {
             display: flex;
-            gap: 10px;
+            gap: 12px;
             width: 100%;
             justify-content: center;
         }
 
         .pin-item {
-            background: rgba(255, 255, 255, 0.04);
-            border: 1px solid rgba(56, 189, 248, 0.25);
-            padding: 8px 10px;
-            border-radius: 8px;
+            background: #101011;
+            border: 1px solid var(--border);
+            padding: 12px 10px;
+            border-radius: 4px;
             display: flex;
             flex-direction: column;
             align-items: center;
             flex: 1;
+            box-shadow: inset 0 2px 10px rgba(0,0,0,0.8);
         }
 
         .pin-label {
-            font-size: 0.72rem;
-            color: #94a3b8;
-            margin-bottom: 2px;
+            font-size: 0.68rem;
+            color: var(--text-muted);
+            font-family: var(--font-mono);
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            margin-bottom: 4px;
         }
 
         .pin-val {
-            font-family: monospace;
-            font-size: 1.25rem;
+            font-family: var(--font-mono);
+            font-size: 1.35rem;
             font-weight: 700;
-            color: #38bdf8;
-            letter-spacing: 1.8px;
+            color: var(--primary);
+            letter-spacing: 3px;
         }
 
         .input-group {
             display: flex;
             flex-direction: column;
-            gap: 6px;
+            gap: 8px;
             width: 100%;
             text-align: left;
         }
 
         .input-label {
-            font-size: 0.82rem;
-            color: #94a3b8;
-            font-family: "Noto Sans HK", sans-serif;
+            font-size: 0.72rem;
+            color: var(--text-muted);
+            font-family: var(--font-mono);
+            letter-spacing: 2px;
+            text-transform: uppercase;
         }
 
         .app-input {
             width: 100%;
-            background: rgba(255, 255, 255, 0.05);
-            border: 1px solid rgba(255, 255, 255, 0.15);
-            padding: 10px 14px;
-            border-radius: 8px;
-            color: #ffffff;
-            font-size: 0.95rem;
+            background: #121213;
+            border: 1px solid var(--border);
+            padding: 12px 16px;
+            border-radius: 4px;
+            color: var(--primary);
+            font-family: var(--font-mono);
+            font-size: 1.1rem;
+            letter-spacing: 2px;
             outline: none;
-            transition: all 0.2s ease;
+            transition: all 0.3s ease;
+            box-shadow: inset 0 2px 10px rgba(0,0,0,0.8);
         }
 
         .app-input:focus {
-            border-color: #38bdf8;
-            background: rgba(255, 255, 255, 0.08);
-            box-shadow: 0 0 10px rgba(56, 189, 248, 0.25);
+            border-color: var(--primary);
+            box-shadow: inset 0 2px 10px rgba(0,0,0,0.8), 0 0 0 1px var(--primary);
         }
 
-     .join-icon-action-btn {
-    width: 52px;
-    height: 52px;
-    margin: 6px auto 0 auto;
-    border-radius: 14px;
-    border: 1px solid rgba(56, 189, 248, 0.3);
-    background: linear-gradient(145deg, rgba(15, 23, 42, 0.8), rgba(8, 12, 20, 0.95));
-    color: #38bdf8;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    cursor: pointer;
-    box-shadow: 
-        0 4px 16px rgba(0, 0, 0, 0.5),
-        inset 0 1px 0 rgba(255, 255, 255, 0.08);
-    transition: all 0.28s cubic-bezier(0.16, 1, 0.3, 1);
-    outline: none;
-    position: relative;
-    overflow: hidden;
-}
+        .join-icon-action-btn {
+            width: 52px;
+            height: 52px;
+            margin: 8px auto 0 auto;
+            border-radius: 4px;
+            border: 1px solid var(--primary);
+            background: var(--surface-light);
+            color: var(--primary);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+            transition: all 0.28s ease;
+            outline: none;
+            position: relative;
+        }
 
-/* 懸停狀態：柔和的天藍色霓虹微光與向右輕微微動 */
-.join-icon-action-btn:hover {
-    border-color: rgba(56, 189, 248, 0.7);
-    color: #ffffff;
-    background: linear-gradient(145deg, rgba(2, 132, 199, 0.25), rgba(15, 23, 42, 0.9));
-    box-shadow: 
-        0 0 22px rgba(56, 189, 248, 0.35),
-        inset 0 0 12px rgba(56, 189, 248, 0.15);
-    transform: translateY(-2px);
-}
+        .join-icon-action-btn:hover {
+            border-color: var(--primary-hover);
+            color: #121212;
+            background: var(--primary);
+            box-shadow: 0 8px 20px rgba(184, 155, 114, 0.25);
+            transform: translateY(-2px);
+        }
 
-.join-icon-action-btn:active {
-    transform: translateY(1px) scale(0.94);
-    box-shadow: 0 0 10px rgba(56, 189, 248, 0.2);
-}
+        .join-icon-action-btn:active {
+            transform: translateY(1px) scale(0.96);
+        }
 
-/* SVG 圖示細節與推進動畫 */
-.join-icon-action-btn svg {
-    width: 22px;
-    height: 22px;
-    transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
-}
+        .join-icon-action-btn svg {
+            width: 22px;
+            height: 22px;
+            transition: transform 0.25s ease;
+        }
 
-.join-icon-action-btn:hover svg {
-    transform: translateX(2px);
-}
-
-.join-icon-action-btn .node-ring {
-    stroke-opacity: 0.6;
-    transition: stroke-opacity 0.25s ease;
-}
-
-.join-icon-action-btn:hover .node-ring {
-    stroke-opacity: 1;
-}
+        .join-icon-action-btn:hover svg {
+            transform: translateX(2px);
+        }
     </style>
 </head>
 <body>
@@ -633,7 +713,7 @@
                         <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
                         <line x1="12" y1="19" x2="12" y2="23"></line>
                     </svg>
-                    <span class="brand-title">實時粵語提詞</span>
+                    <span class="brand-title">SyncCast <span>CANTO PROMPTER</span></span>
                     <span id="statusDot" class="status-dot"></span>
                 </div>
                 
@@ -715,31 +795,31 @@
 
     <!-- 廣播分享視窗 (純數字房間號 + 保留原 QR 碼) -->
     <div id="qrModal" class="modal-overlay" onclick="closeModalOnBackdrop(event)">
-        <div class="modal-window" style="max-width: 360px; text-align: center;">
+        <div class="modal-window" style="max-width: 380px; text-align: center;">
             <div class="modal-header">
-                <span style="font-weight: 600;">廣播邀請與配對</span>
+                <span style="font-weight: 500;">Studio Broadcast / 廣播配對</span>
                 <button class="icon-btn" style="width:28px; height:28px;" onclick="closeQrModal()">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
                 </button>
             </div>
-            <div class="modal-body" style="display:flex; flex-direction:column; align-items:center; gap:14px; padding: 20px;">
+            <div class="modal-body" style="display:flex; flex-direction:column; align-items:center; gap:16px; padding: 24px;">
                 <div id="qrContainer"></div>
 
-                <!-- 專為無相機電腦設計的「純數字房間號」與「密鑰」 -->
+                <!-- 純數字房間號與密鑰 -->
                 <div class="pin-display-box">
                     <div class="pin-item">
-                        <span class="pin-label">純數字房間號</span>
+                        <span class="pin-label">Room Code</span>
                         <span id="qrRoomCodeDisplay" class="pin-val">------</span>
                     </div>
                     <div class="pin-item">
-                        <span class="pin-label">連線密鑰</span>
-                        <span id="qrSecretKeyDisplay" class="pin-val" style="color: #f59e0b;">------</span>
+                        <span class="pin-label">Secret Key</span>
+                        <span id="qrSecretKeyDisplay" class="pin-val" style="color: var(--primary);">------</span>
                     </div>
                 </div>
 
                 <div id="roomLinkText" onclick="copyShareLink()" title="點擊複製完整連結"></div>
-                <div style="font-size: 0.75rem; color: #64748b; line-height: 1.4;">
-                    無相機電腦？請在該電腦瀏覽器打開首頁，點擊頂部「加入」圖標輸入上方純數字房間號即可。
+                <div style="font-size: 0.72rem; color: var(--text-muted); line-height: 1.5; font-family: var(--font-mono);">
+                    無相機電腦可直接於瀏覽器開啟首頁，點選「加入」輸入純數字房間號同步字幕。
                 </div>
             </div>
         </div>
@@ -747,31 +827,30 @@
 
     <!-- 加入房間彈窗 (純數字輸入友好) -->
     <div id="joinModal" class="modal-overlay" onclick="closeModalOnBackdrop(event)">
-        <div class="modal-window" style="max-width: 380px;">
+        <div class="modal-window" style="max-width: 400px;">
             <div class="modal-header">
-                <span style="font-weight: 600;">加入房間觀看 (無相機專用)</span>
+                <span style="font-weight: 500;">Join Session / 加入房間</span>
                 <button class="icon-btn" style="width:28px; height:28px;" onclick="closeJoinModal()">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
                 </button>
             </div>
-            <div class="modal-body" style="display:flex; flex-direction:column; gap:16px; padding:22px;">
+            <div class="modal-body" style="display:flex; flex-direction:column; gap:16px; padding:24px;">
                 <div class="input-group">
-                    <label class="input-label">房間號</label>
-                    <input id="inputRoomId" type="text" inputmode="numeric" pattern="[0-9]*" class="app-input" placeholder="請輸入 6 位數字" autocomplete="off" />
+                    <label class="input-label">Room Access Code</label>
+                    <input id="inputRoomId" type="text" inputmode="numeric" pattern="[0-9]*" class="app-input" placeholder="6 位數字房間號" autocomplete="off" />
                 </div>
                 <div class="input-group">
-                    <label class="input-label">連線密鑰</label>
+                    <label class="input-label">Secret Key</label>
                     <input id="inputSecretKey" type="text" class="app-input" placeholder="輸入連線密鑰" autocomplete="off" />
                 </div>
                
-           <button class="join-icon-action-btn" title="立即連線" aria-label="立即連線" onclick="submitJoinRoom()">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <!-- 連線接點 + 前進發射箭頭 -->
-        <path class="arrow-stem" d="M4 12h11"></path>
-        <path class="arrow-head" d="M11 8l4 4-4 4"></path>
-        <path class="node-ring" d="M19 8v8"></path>
-    </svg>
-</button>
+                <button class="join-icon-action-btn" title="立即連線" aria-label="立即連線" onclick="submitJoinRoom()">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path class="arrow-stem" d="M4 12h11"></path>
+                        <path class="arrow-head" d="M11 8l4 4-4 4"></path>
+                        <path class="node-ring" d="M19 8v8"></path>
+                    </svg>
+                </button>
             </div>
         </div>
     </div>
@@ -780,15 +859,15 @@
     <div id="phoneticModal" class="modal-overlay" onclick="closeModalOnBackdrop(event)">
         <div class="modal-window">
             <div class="modal-header">
-                <span>粵拼注音與朗讀</span>
+                <span>Phonetic & Reading / 粵拼注音與朗讀</span>
                 <button class="icon-btn" style="width:28px; height:28px;" onclick="closePhoneticModal()">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
                 </button>
             </div>
             <div id="modalContent" class="modal-body"></div>
             <div class="modal-footer">
-                <span id="ttsStatus" style="font-size: 0.82rem; color: #94a3b8;">就緒</span>
-                <button id="ttsPlayBtn" class="icon-btn" style="background:#0284c7; color:#fff;" onclick="speakCurrentText()">
+                <span id="ttsStatus" style="font-size: 0.82rem; color: var(--text-muted); font-family: var(--font-mono); text-transform: uppercase;">READY</span>
+                <button id="ttsPlayBtn" class="icon-btn" style="background:var(--primary); color:#121212; border-color:transparent;" onclick="speakCurrentText()">
                     <svg viewBox="0 0 24 24" fill="currentColor"><polygon points="6 3 20 12 6 21 6 3"></polygon></svg>
                 </button>
             </div>
@@ -850,7 +929,6 @@
         const isReceiverMode = Boolean(joinRoom && joinKey);
 
         let currentMode = isReceiverMode ? 'receive' : 'solo';
-        // 純數字 6 位房間號
         let currentRoomId = joinRoom || '';
         let currentSecretKey = joinKey || '';
 
@@ -877,12 +955,12 @@
                 toggleBtn.style.display = 'flex';
             } else if (currentMode === 'receive') {
                 btnJoinModal.classList.add('mode-active');
-                toggleBtn.style.display = 'none'; // 接收端純觀看
+                toggleBtn.style.display = 'none';
                 statusDot.classList.add('receive');
             }
         }
 
-        /* ------------------ 2. 靜態 3D 背景 ------------------ */
+        /* ------------------ 2. 靜態 3D 背景 (調整為 Morandi 工業深色) ------------------ */
         const canvas = document.getElementById('threeCanvas');
         const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
         renderer.setSize(window.innerWidth, window.innerHeight);
@@ -895,8 +973,8 @@
         const machineGroup = new THREE.Group();
         scene.add(machineGroup);
 
-        const hoodMat = new THREE.MeshStandardMaterial({ color: 0x141822, metalness: 0.8, roughness: 0.3 });
-        const bezelMat = new THREE.MeshStandardMaterial({ color: 0x222a38, metalness: 0.85, roughness: 0.25 });
+        const hoodMat = new THREE.MeshStandardMaterial({ color: 0x18191B, metalness: 0.85, roughness: 0.35 });
+        const bezelMat = new THREE.MeshStandardMaterial({ color: 0x242426, metalness: 0.9, roughness: 0.25 });
 
         const chassis = new THREE.Mesh(new THREE.BoxGeometry(19.5, 23.5, 2.0), hoodMat);
         chassis.position.z = -1.2;
@@ -917,8 +995,8 @@
         rightHood.rotation.y = 0.15;
         machineGroup.add(rightHood);
 
-        scene.add(new THREE.AmbientLight(0xffffff, 0.65));
-        const keyLight = new THREE.DirectionalLight(0xbae6fd, 0.85);
+        scene.add(new THREE.AmbientLight(0xffffff, 0.4));
+        const keyLight = new THREE.DirectionalLight(0xB89B72, 0.65);
         keyLight.position.set(10, 15, 18);
         scene.add(keyLight);
 
@@ -1380,7 +1458,6 @@
             }
             currentMode = 'broadcast';
 
-            // 確保產生 6 位純數字房間號
             if (!currentRoomId) currentRoomId = String(Math.floor(100000 + Math.random() * 900000));
             if (!currentSecretKey) currentSecretKey = Math.random().toString(36).substring(2, 8).toUpperCase();
 
@@ -1417,8 +1494,8 @@
                 text: currentUrl,
                 width: 170,
                 height: 170,
-                colorDark: "#000000",
-                colorLight: "#ffffff",
+                colorDark: "#18191B",
+                colorLight: "#E6E2D6",
                 correctLevel: QRCode.CorrectLevel.M
             });
         }
@@ -1438,19 +1515,6 @@
         function openJoinModal() { joinModal.classList.add('active'); }
         function closeJoinModal() { joinModal.classList.remove('active'); }
 
-        function handleFastPaste(e) {
-            const val = e.target.value.trim();
-            try {
-                if (val.includes('room=') && val.includes('#')) {
-                    const u = new URL(val);
-                    const r = u.searchParams.get('room');
-                    const k = u.hash.replace('#', '');
-                    if (r) document.getElementById('inputRoomId').value = r.replace(/\D/g, '');
-                    if (k) document.getElementById('inputSecretKey').value = k;
-                }
-            } catch (err) {}
-        }
-
         async function submitJoinRoom() {
             let r = document.getElementById('inputRoomId').value.replace(/\D/g, '').trim();
             const k = document.getElementById('inputSecretKey').value.trim();
@@ -1466,7 +1530,6 @@
             currentRoomId = r;
             currentSecretKey = k;
 
-            // 保持網址列純淨並同步
             const newUrl = `${window.location.origin}${window.location.pathname}?room=${currentRoomId}#${currentSecretKey}`;
             window.history.replaceState(null, '', newUrl);
 
@@ -1545,18 +1608,18 @@
             currentPureText = cleanString(fullText);
 
             if (!fullText) {
-                modalContent.innerHTML = "<div style='color:#64748b; font-size:1rem; padding:10px;'>暫無文字</div>";
+                modalContent.innerHTML = "<div style='color:var(--text-muted); font-size:1rem; padding:10px; font-family:var(--font-mono);'>NO TEXT RECORDED</div>";
                 modal.classList.add('active');
                 return;
             }
 
-            modalContent.innerHTML = "<div style='color:#94a3b8; font-size:1rem; width:100%; text-align:center; padding:30px 0;'>粵拼注音生成中...</div>";
-            ttsStatus.innerText = "標音中";
+            modalContent.innerHTML = "<div style='color:var(--primary); font-size:0.9rem; width:100%; text-align:center; padding:30px 0; font-family:var(--font-mono); letter-spacing:2px;'>GENERATING PHONETICS...</div>";
+            ttsStatus.innerText = "PROCESSING";
             modal.classList.add('active');
 
             const rubyHTML = await fetchJyutpingRubyHTML(fullText);
             modalContent.innerHTML = rubyHTML;
-            ttsStatus.innerText = "就緒";
+            ttsStatus.innerText = "READY";
         }
 
         function closePhoneticModal() {
@@ -1578,9 +1641,9 @@
             utter.lang = 'zh-HK';
             utter.rate = 0.85;
 
-            utter.onstart = () => ttsStatus.innerText = "朗讀中";
-            utter.onend = () => ttsStatus.innerText = "完畢";
-            utter.onerror = () => ttsStatus.innerText = "就緒";
+            utter.onstart = () => ttsStatus.innerText = "PLAYING";
+            utter.onend = () => ttsStatus.innerText = "FINISHED";
+            utter.onerror = () => ttsStatus.innerText = "READY";
 
             window.speechSynthesis.speak(utter);
         }
@@ -1588,7 +1651,7 @@
         /* ------------------ 9. 桌面置頂懸浮字幕條 ------------------ */
         let pipWindow = null;
 
-       async function togglePipPrompter() {
+        async function togglePipPrompter() {
             if (pipWindow && !pipWindow.closed) {
                 pipWindow.close();
                 pipWindow = null;
@@ -1601,7 +1664,6 @@
             }
 
             try {
-                // 取得目前螢幕的可用全寬度與原點
                 const availLeft = window.screen.availLeft ?? 0;
                 const availTop = window.screen.availTop ?? 0;
                 const availW = window.screen.availWidth || window.screen.width || window.innerWidth;
@@ -1613,18 +1675,14 @@
                     height: targetH
                 });
 
-                // 強制覆寫邊界，撐滿 100% 寬度並貼齊底端
                 const snapToFullWidthBottom = () => {
                     try {
                         const winH = pipWindow.outerHeight || targetH;
-                        // 1. 強制重設為螢幕 100% 可用寬度
                         pipWindow.resizeTo(availW, winH);
-                        // 2. 移動至最左側 (availLeft) 並置底
                         pipWindow.moveTo(availLeft, availTop + availH - winH);
                     } catch (e) {}
                 };
 
-                // 分段觸發以繞過瀏覽器在視窗載入初期的尺寸限制
                 snapToFullWidthBottom();
                 requestAnimationFrame(snapToFullWidthBottom);
                 setTimeout(snapToFullWidthBottom, 100);
@@ -1642,7 +1700,7 @@
                     html, body {
                         margin: 0 !important;
                         padding: 0 !important;
-                        background: #05070a !important;
+                        background: #121213 !important;
                         height: 100vh !important;
                         width: 100vw !important;
                         overflow: hidden !important;
@@ -1650,7 +1708,7 @@
                         align-items: center !important;
                         justify-content: center !important;
                     }
-                    .viewport-container::before {
+                    .viewport-container::before, .viewport-container::after {
                         display: none !important;
                     }
                     .scroll-body {
@@ -1676,19 +1734,20 @@
                         white-space: nowrap !important;
                         overflow: hidden !important;
                         text-overflow: ellipsis !important;
+                        font-family: var(--font-serif) !important;
                     }
                     .phrase-group.past {
                         display: none !important;
                     }
                     .phrase-group.active-latest {
                         display: inline !important;
-                        color: #ffffff !important;
+                        color: #E6E2D6 !important;
                         font-weight: 700 !important;
-                        text-shadow: 0 0 16px rgba(255, 255, 255, 0.45) !important;
+                        text-shadow: 0 0 16px rgba(230, 226, 214, 0.45) !important;
                     }
                     .phrase-item.interim {
                         display: inline !important;
-                        color: #38bdf8 !important;
+                        color: #B89B72 !important;
                     }
                     .bottom-safe-spacer {
                         display: none !important;
