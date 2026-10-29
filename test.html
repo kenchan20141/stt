@@ -3,11 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>實時粵語提詞器</title>
+    <title>實時粵語提詞器 - Cinematic Studio</title>
 
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+HK:wght@400;500;700&family=Noto+Serif+HK:wght@600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Noto+Sans+HK:wght@400;500;700&family=Noto+Serif+HK:wght@500;700&family=Oswald:wght@400;500;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
 
     <!-- Three.js 3D 核心庫 -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -28,11 +28,26 @@
 
     <style>
         :root {
-            --bg: #05070a;
-            --canto-bg: #090a0f;
-            --card-border: rgba(255, 255, 255, 0.08);
-            --ruby: #f59e0b;
-            --accent: #38bdf8;
+            /* Morandi Cinematic Studio Palette */
+            --bg-base: #18191B;       
+            --surface: #242426;       
+            --surface-light: #2F3033; 
+            --primary: #B89B72;       
+            --primary-hover: #CDB38B;
+            --text-main: #E6E2D6;     
+            --text-muted: #858480;    
+            --border: #38383A;        
+            --accent-red: #A85751;
+            --accent-green: #4E8765;
+            --canto-bg: #121213;
+
+            --font-title: 'Oswald', sans-serif;
+            --font-mono: 'Space Mono', monospace;
+            --font-sans: 'Inter', "Noto Sans HK", sans-serif;
+            --font-serif: "Noto Serif HK", serif;
+
+            --shadow-depth: 0 24px 50px rgba(0, 0, 0, 0.7);
+            --inner-glow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
             --cantonese-size: 2.15rem;
         }
 
@@ -45,8 +60,10 @@
         }
 
         body {
-            background-color: var(--bg);
-            color: #ffffff;
+            background-color: var(--bg-base);
+            background-image: radial-gradient(circle at 50% 0%, #222428 0%, var(--bg-base) 85%);
+            color: var(--text-main);
+            font-family: var(--font-sans);
             height: 100vh;
             height: 100dvh;
             display: flex;
@@ -54,6 +71,23 @@
             justify-content: center;
             overflow: hidden;
             -webkit-font-smoothing: antialiased;
+        }
+
+        /* 35MM 膠片旁印水印裝飾 */
+        body::before {
+            content: "35MM // CINE-SYNC FORMAT ▻ KODAK VISION3";
+            position: fixed;
+            top: 50%;
+            left: 20px;
+            transform: translateY(-50%) rotate(-90deg);
+            transform-origin: left center;
+            font-size: 10px;
+            font-family: var(--font-mono);
+            letter-spacing: 6px;
+            color: rgba(133, 132, 128, 0.28);
+            white-space: nowrap;
+            pointer-events: none;
+            z-index: 2;
         }
 
         #threeCanvas {
@@ -64,156 +98,237 @@
             height: 100vh;
             z-index: 1;
             pointer-events: none;
+            opacity: 0.65;
         }
 
         .teleprompter-rig {
             position: relative;
             z-index: 10;
             width: 100%;
-            max-width: 900px;
+            max-width: 920px;
             height: 100vh;
             height: 100dvh;
-            max-height: 960px;
+            max-height: 940px;
             display: flex;
             flex-direction: column;
-            padding: 20px 24px 28px 24px;
+            padding: 24px 20px 28px 20px;
             box-sizing: border-box;
             pointer-events: auto;
         }
 
-        @media (max-width: 768px) {
-            .teleprompter-rig {
-                max-width: 100%;
-                height: 100dvh;
-                padding: 10px 8px 16px 8px;
-            }
-        }
-
+        /* 電影工作室風格機箱外觀 */
         .rig-screen-enclosure {
             flex: 1;
             display: flex;
             flex-direction: column;
-            background: #090a0f;
-            border-radius: 14px;
-            border: 2px solid #1e2638;
-            box-shadow: 
-                0 0 0 1px rgba(0, 0, 0, 0.8),
-                0 20px 45px rgba(0, 0, 0, 0.9),
-                inset 0 0 20px rgba(0, 0, 0, 0.85);
+            background: var(--surface);
+            border-radius: 6px;
+            border: 1px solid rgba(0, 0, 0, 0.85);
+            box-shadow: var(--shadow-depth), var(--inner-glow);
             overflow: hidden;
             position: relative;
             min-height: 0;
         }
 
+        /* 頂部導航控制列 */
         header {
-            padding: 12px 20px;
+            padding: 14px 24px;
             display: flex;
             justify-content: space-between;
             align-items: center;
-            border-bottom: 1px solid var(--card-border);
-            background: #090a0f;
+            border-bottom: 1px solid var(--border);
+            background: #1C1D1F;
             z-index: 30;
             flex-shrink: 0;
+            gap: 12px;
+            min-height: 60px;
         }
 
         .brand-meta {
             display: flex;
             align-items: center;
             gap: 12px;
+            flex-shrink: 0;
+            min-width: 0;
+        }
+
+        .brand-logo-icon {
+            display: none;
+            color: var(--primary);
+            width: 20px;
+            height: 20px;
+            flex-shrink: 0;
         }
 
         .brand-title {
-            font-size: 0.95rem;
-            font-weight: 700;
-            color: #94a3b8;
-            letter-spacing: 0.8px;
-            font-family: "Noto Sans HK", sans-serif;
+            font-size: 1.05rem;
+            font-weight: 500;
+            color: var(--text-main);
+            letter-spacing: 2px;
+            font-family: var(--font-title);
+            text-transform: uppercase;
+            white-space: nowrap;
         }
 
-        /* 極簡狀態呼吸指示燈 */
+        .brand-title span {
+            color: var(--primary);
+            font-size: 0.8rem;
+            font-family: var(--font-mono);
+            letter-spacing: 1px;
+            margin-left: 6px;
+        }
+
+        /* 狀態指示燈 */
         .status-dot {
-            width: 8px;
-            height: 8px;
+            width: 7px;
+            height: 7px;
             border-radius: 50%;
-            background: #334155;
+            background: var(--border);
+            flex-shrink: 0;
             transition: all 0.3s ease;
         }
 
         .status-dot.broadcast {
-            background: #10b981;
-            box-shadow: 0 0 10px #10b981;
-            animation: pulseDot 1.8s infinite;
+            background: var(--primary);
+            box-shadow: 0 0 10px var(--primary);
+            animation: pulseDot 2s infinite ease-in-out;
         }
 
         .status-dot.receive {
-            background: #38bdf8;
-            box-shadow: 0 0 10px #38bdf8;
-            animation: pulseDot 1.8s infinite;
+            background: var(--primary-hover);
+            box-shadow: 0 0 10px var(--primary-hover);
+            animation: pulseDot 2s infinite ease-in-out;
         }
 
         @keyframes pulseDot {
-            0%, 100% { opacity: 1; transform: scale(1); }
-            50% { opacity: 0.45; transform: scale(0.85); }
-        }
-
-        .char-counter {
-            font-family: "Noto Sans HK", sans-serif;
-            font-size: 0.76rem;
-            color: #64748b;
-            background: rgba(255, 255, 255, 0.05);
-            padding: 2px 8px;
-            border-radius: 4px;
-            border: 1px solid rgba(255, 255, 255, 0.08);
+            0%, 100% { opacity: 0.9; transform: scale(1); }
+            50% { opacity: 0.3; transform: scale(0.85); }
         }
 
         .btn-group {
             display: flex;
             align-items: center;
-            gap: 10px;
+            gap: 8px;
+            flex-shrink: 0;
+            flex-wrap: nowrap;
         }
 
         .icon-btn {
-            background: rgba(255, 255, 255, 0.06);
-            border: 1px solid var(--card-border);
-            color: #cbd5e1;
-            width: 38px;
-            height: 38px;
-            border-radius: 8px;
+            background: var(--surface-light);
+            border: 1px solid var(--border);
+            color: var(--text-muted);
+            width: 40px;
+            height: 40px;
+            border-radius: 4px;
             display: flex;
             align-items: center;
             justify-content: center;
             cursor: pointer;
-            transition: all 0.2s ease;
+            transition: all 0.25s ease;
             outline: none;
             position: relative;
+            flex-shrink: 0;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.3);
         }
 
-        .icon-btn:hover { background: rgba(255, 255, 255, 0.12); color: #ffffff; }
-        .icon-btn:active { transform: scale(0.94); }
-        .icon-btn svg { width: 18px; height: 18px; stroke-width: 2; }
+        .icon-btn:hover {
+            background: #38393D;
+            color: var(--text-main);
+            border-color: #4E4F54;
+            transform: translateY(-1px);
+        }
 
-        /* 模式切換高亮 */
+        .icon-btn:active {
+            transform: scale(0.95);
+        }
+
+        .icon-btn svg {
+            width: 18px;
+            height: 18px;
+            stroke-width: 2;
+        }
+
         .icon-btn.mode-active {
-            background: rgba(56, 189, 248, 0.15);
-            border-color: rgba(56, 189, 248, 0.45);
-            color: #38bdf8;
+            background: rgba(184, 155, 114, 0.15);
+            border-color: var(--primary);
+            color: var(--primary);
+            box-shadow: inset 0 0 12px rgba(184, 155, 114, 0.15);
         }
 
         .power-btn {
-            background: #ef4444;
-            border: 1px solid rgba(255, 255, 255, 0.25);
+            background: rgba(168, 87, 81, 0.2);
+            border: 1px solid var(--accent-red);
+            color: var(--accent-red);
+            width: 40px;
+            height: 40px;
+            border-radius: 4px;
+            flex-shrink: 0;
+        }
+
+        .power-btn:hover {
+            background: rgba(168, 87, 81, 0.35);
             color: #ffffff;
-            width: 42px;
-            height: 42px;
-            border-radius: 50%;
-            box-shadow: 0 0 16px rgba(239, 68, 68, 0.35);
+            border-color: #c96b65;
         }
 
         .power-btn.active {
-            background: #10b981;
-            box-shadow: 0 0 16px rgba(16, 185, 129, 0.45);
+            background: var(--primary);
+            color: #121212;
+            border-color: var(--primary);
+            box-shadow: 0 0 18px rgba(184, 155, 114, 0.4);
         }
 
+        .power-btn.active:hover {
+            background: var(--primary-hover);
+        }
+
+        /* 響應式佈局 */
+        @media (max-width: 640px) {
+            body::before { display: none; }
+            .teleprompter-rig {
+                max-width: 100%;
+                height: 100dvh;
+                padding: 6px 6px 10px 6px;
+            }
+
+            .rig-screen-enclosure {
+                border-radius: 4px;
+            }
+
+            header {
+                padding: 8px 12px;
+                min-height: 50px;
+                gap: 8px;
+            }
+
+            .brand-title { display: none; }
+            .brand-logo-icon { display: flex; }
+
+            .btn-group { gap: 5px; }
+
+            .icon-btn {
+                width: 34px;
+                height: 34px;
+            }
+
+            .icon-btn svg {
+                width: 16px;
+                height: 16px;
+            }
+
+            .power-btn {
+                width: 34px;
+                height: 34px;
+            }
+
+            #btnPip { display: none !important; }
+
+            .scroll-body {
+                padding: 16px 18px 40px 18px !important;
+            }
+        }
+
+        /* 視口取景框 */
         .viewport-container {
             flex: 1;
             display: flex;
@@ -223,14 +338,28 @@
             min-height: 0; 
             background-color: var(--canto-bg);
             position: relative;
+            box-shadow: inset 0 8px 32px rgba(0, 0, 0, 0.85);
+        }
+
+        /* 攝影機取景十字準線刻度裝飾 */
+        .viewport-container::after {
+            content: "";
+            position: absolute;
+            inset: 16px;
+            border: 1px solid rgba(230, 226, 214, 0.08);
+            pointer-events: none;
+            background: 
+                linear-gradient(to right, rgba(230, 226, 214, 0.12) 1px, transparent 1px) 50% 50% / 24px 1px no-repeat,
+                linear-gradient(to bottom, rgba(230, 226, 214, 0.12) 1px, transparent 1px) 50% 50% / 1px 24px no-repeat;
+            z-index: 2;
         }
 
         .viewport-container::before {
             content: "";
             position: absolute;
             top: 0; left: 0; right: 0;
-            height: 36px;
-            background: linear-gradient(to bottom, #090a0f 25%, transparent);
+            height: 40px;
+            background: linear-gradient(to bottom, #121213 25%, transparent);
             z-index: 10;
             pointer-events: none;
         }
@@ -240,16 +369,16 @@
             overflow-y: auto;
             scroll-behavior: smooth;
             -webkit-overflow-scrolling: touch;
-            padding: 24px 28px 48px 28px;
+            padding: 28px 36px 54px 36px;
             position: relative;
             z-index: 1;
         }
 
         .cantonese-stream {
-            font-family: "Noto Serif HK", serif;
+            font-family: var(--font-serif);
             font-size: var(--cantonese-size);
             line-height: 1.85;
-            letter-spacing: 0.8px;
+            letter-spacing: 1px;
             display: flex;
             flex-direction: column;
             gap: 22px;
@@ -265,26 +394,46 @@
         }
 
         .phrase-group.past {
-            color: #475569;
-            font-weight: 500;
-            opacity: 0.42;
+            color: var(--text-muted);
+            font-weight: 400;
+            opacity: 0.4;
         }
 
-        /* 最新句組：純白高光聚焦 */
+        /* 最新句組：純米白 + 莫蘭迪金微光 */
         .phrase-group.active-latest {
-            color: #ffffff;
+            color: var(--text-main);
             font-weight: 700;
             opacity: 1;
-            text-shadow: 0 0 16px rgba(255, 255, 255, 0.28);
-            animation: phrasePop 0.22s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+            text-shadow: 0 0 16px rgba(230, 226, 214, 0.25);
         }
 
-        /* 移除任何藍色條柱或背景塊，保持乾淨純文字 */
+        /* 專門為手機端設計的字元平滑噴吐 CSS 動畫 */
+        .char-reveal {
+            display: inline-block;
+            opacity: 0;
+            transform: translateY(4px) scale(0.96);
+            animation: charPop 0.22s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+            will-change: transform, opacity;
+        }
+
+        @keyframes charPop {
+            0% {
+                opacity: 0;
+                transform: translateY(6px) scale(0.92);
+                filter: blur(1px);
+            }
+            100% {
+                opacity: 1;
+                transform: translateY(0) scale(1);
+                filter: blur(0);
+            }
+        }
+
         .phrase-item.interim {
-            color: #f8fafc;
+            color: var(--primary);
             font-weight: 700;
-            opacity: 0.9;
-            text-shadow: 0 0 16px rgba(255, 255, 255, 0.28);
+            opacity: 0.95;
+            text-shadow: 0 0 16px rgba(184, 155, 114, 0.35);
             display: inline;
             background: transparent;
             border: none;
@@ -296,11 +445,6 @@
             display: none;
         }
 
-        @keyframes phrasePop {
-            0% { opacity: 0; transform: translateY(6px); }
-            100% { opacity: 1; transform: translateY(0); }
-        }
-
         .bottom-safe-spacer {
             height: calc(140px + env(safe-area-inset-bottom, 24px));
             width: 100%;
@@ -310,59 +454,68 @@
 
         #fontToast {
             position: fixed;
-            top: 62px;
+            top: 72px;
             right: 24px;
-            background: rgba(15, 23, 42, 0.95);
-            border: 1px solid rgba(56, 189, 248, 0.3);
-            color: #38bdf8;
-            font-size: 0.82rem;
+            background: #18191B;
+            border: 1px solid var(--primary);
+            color: var(--primary);
+            font-size: 0.75rem;
+            font-family: var(--font-mono);
+            letter-spacing: 2px;
+            text-transform: uppercase;
             padding: 6px 14px;
-            border-radius: 6px;
+            border-radius: 4px;
             pointer-events: none;
             opacity: 0;
             transform: translateY(-4px);
             transition: all 0.25s ease;
             z-index: 40;
-            font-family: "Noto Sans HK", sans-serif;
+            box-shadow: 0 8px 20px rgba(0, 0, 0, 0.6);
         }
 
         #fontToast.show { opacity: 1; transform: translateY(0); }
 
+        /* 彈窗樣式改為 Cinematic Studio */
         .modal-overlay {
             position: fixed;
             top: 0; left: 0; width: 100vw; height: 100vh;
-            background: rgba(0, 0, 0, 0.85);
-            backdrop-filter: blur(10px);
+            background: rgba(18, 18, 19, 0.92);
+            backdrop-filter: blur(14px);
+            -webkit-backdrop-filter: blur(14px);
             z-index: 100;
             display: none;
             align-items: center;
             justify-content: center;
-            padding: 20px;
+            padding: 16px;
         }
 
         .modal-overlay.active { display: flex; }
 
         .modal-window {
-            background: #0d1117;
-            border: 1px solid var(--card-border);
+            background: var(--surface);
+            border: 1px solid var(--border);
             width: 100%;
             max-width: 680px;
-            max-height: 82vh;
-            border-radius: 14px;
+            max-height: 85vh;
+            border-radius: 6px;
             display: flex;
             flex-direction: column;
             overflow: hidden;
+            box-shadow: var(--shadow-depth), var(--inner-glow);
         }
 
         .modal-header {
-            padding: 14px 20px;
+            padding: 16px 20px;
             display: flex;
             justify-content: space-between;
             align-items: center;
-            border-bottom: 1px solid var(--card-border);
-            font-family: "Noto Sans HK", sans-serif;
-            font-size: 0.95rem;
-            color: #f1f5f9;
+            border-bottom: 1px solid var(--border);
+            font-family: var(--font-title);
+            font-size: 1.15rem;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            color: var(--text-main);
+            background: #1E1F21;
         }
 
         .modal-body {
@@ -370,7 +523,7 @@
             overflow-y: auto;
             flex: 1;
             line-height: 2.6;
-            background: #080a0e;
+            background: #141416;
             display: flex;
             flex-wrap: wrap;
             gap: 2px;
@@ -380,16 +533,16 @@
             display: inline-flex;
             flex-direction: column-reverse;
             align-items: center;
-            margin: 2px 4px;
+            margin: 2px 5px;
             line-height: 1;
         }
 
         ruby.jp-ruby rt.c-rt {
             display: block;
-            font-size: 0.82rem;
+            font-size: 0.8rem;
             line-height: 1;
-            font-family: "Noto Sans HK", sans-serif;
-            color: var(--ruby);
+            font-family: var(--font-mono);
+            color: var(--primary);
             margin-bottom: 6px;
         }
 
@@ -397,47 +550,168 @@
             display: block;
             font-size: 1.65rem;
             font-weight: 600;
-            color: #f8fafc;
+            font-family: var(--font-serif);
+            color: var(--text-main);
         }
 
         span.jp-punct {
             font-size: 1.65rem;
             line-height: 1.2;
-            color: #64748b;
+            color: var(--text-muted);
             margin: 0 3px;
         }
 
         .modal-footer {
-            padding: 12px 20px;
-            border-top: 1px solid var(--card-border);
+            padding: 14px 20px;
+            border-top: 1px solid var(--border);
             display: flex;
             justify-content: space-between;
             align-items: center;
+            background: #1C1D1F;
         }
 
-        /* 極簡 QR 視窗樣式 */
         #qrContainer {
-            background: #ffffff;
-            padding: 14px;
-            border-radius: 12px;
+            background: var(--text-main);
+            padding: 12px;
+            border-radius: 4px;
             display: flex;
             align-items: center;
             justify-content: center;
             margin: 0 auto;
+            border: 1px solid rgba(0,0,0,0.8);
         }
 
         #roomLinkText {
-            font-family: monospace;
-            font-size: 0.8rem;
-            color: #38bdf8;
+            font-family: var(--font-mono);
+            font-size: 0.72rem;
+            color: var(--text-muted);
             word-break: break-all;
             cursor: pointer;
-            background: rgba(255, 255, 255, 0.04);
-            padding: 8px 12px;
-            border-radius: 6px;
-            border: 1px solid rgba(255, 255, 255, 0.08);
+            background: #101011;
+            padding: 10px 14px;
+            border-radius: 4px;
+            border: 1px solid var(--border);
             width: 100%;
             text-align: center;
+            transition: all 0.2s ease;
+        }
+
+        #roomLinkText:hover {
+            color: var(--text-main);
+            border-color: var(--primary);
+        }
+
+        /* 房間碼與金鑰卡片 */
+        .pin-display-box {
+            display: flex;
+            gap: 12px;
+            width: 100%;
+            justify-content: center;
+        }
+
+        .pin-item {
+            background: #101011;
+            border: 1px solid var(--border);
+            padding: 12px 10px;
+            border-radius: 4px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            flex: 1;
+            box-shadow: inset 0 2px 10px rgba(0,0,0,0.8);
+        }
+
+        .pin-label {
+            font-size: 0.68rem;
+            color: var(--text-muted);
+            font-family: var(--font-mono);
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            margin-bottom: 4px;
+        }
+
+        .pin-val {
+            font-family: var(--font-mono);
+            font-size: 1.35rem;
+            font-weight: 700;
+            color: var(--primary);
+            letter-spacing: 3px;
+        }
+
+        .input-group {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            width: 100%;
+            text-align: left;
+        }
+
+        .input-label {
+            font-size: 0.72rem;
+            color: var(--text-muted);
+            font-family: var(--font-mono);
+            letter-spacing: 2px;
+            text-transform: uppercase;
+        }
+
+        .app-input {
+            width: 100%;
+            background: #121213;
+            border: 1px solid var(--border);
+            padding: 12px 16px;
+            border-radius: 4px;
+            color: var(--primary);
+            font-family: var(--font-mono);
+            font-size: 1.1rem;
+            letter-spacing: 2px;
+            outline: none;
+            transition: all 0.3s ease;
+            box-shadow: inset 0 2px 10px rgba(0,0,0,0.8);
+        }
+
+        .app-input:focus {
+            border-color: var(--primary);
+            box-shadow: inset 0 2px 10px rgba(0,0,0,0.8), 0 0 0 1px var(--primary);
+        }
+
+        .join-icon-action-btn {
+            width: 52px;
+            height: 52px;
+            margin: 8px auto 0 auto;
+            border-radius: 4px;
+            border: 1px solid var(--primary);
+            background: var(--surface-light);
+            color: var(--primary);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+            transition: all 0.28s ease;
+            outline: none;
+            position: relative;
+        }
+
+        .join-icon-action-btn:hover {
+            border-color: var(--primary-hover);
+            color: #121212;
+            background: var(--primary);
+            box-shadow: 0 8px 20px rgba(184, 155, 114, 0.25);
+            transform: translateY(-2px);
+        }
+
+        .join-icon-action-btn:active {
+            transform: translateY(1px) scale(0.96);
+        }
+
+        .join-icon-action-btn svg {
+            width: 22px;
+            height: 22px;
+            transition: transform 0.25s ease;
+        }
+
+        .join-icon-action-btn:hover svg {
+            transform: translateX(2px);
         }
     </style>
 </head>
@@ -449,19 +723,22 @@
         <div class="rig-screen-enclosure">
             <header>
                 <div class="brand-meta">
-                    <span class="brand-title">實時粵語提詞</span>
+                    <svg class="brand-logo-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path>
+                        <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
+                        <line x1="12" y1="19" x2="12" y2="23"></line>
+                    </svg>
+                    <span class="brand-title">SyncCast <span>CANTO PROMPTER</span></span>
                     <span id="statusDot" class="status-dot"></span>
-                    <span id="charCount" class="char-counter">0 字</span>
                 </div>
+                
                 <div class="btn-group">
-                    <!-- 按鈕 1：個人版 -->
                     <button id="btnSolo" class="icon-btn mode-active" title="個人版" onclick="switchToSoloMode()">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
                             <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
                             <circle cx="12" cy="7" r="4"></circle>
                         </svg>
                     </button>
-                    <!-- 按鈕 2：廣播版 (老師用) -->
                     <button id="btnBroadcast" class="icon-btn" title="廣播版" onclick="switchToBroadcastMode()">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
                             <path d="M4.9 19.1C1 15.2 1 8.8 4.9 4.9"></path>
@@ -471,14 +748,19 @@
                             <path d="M19.1 4.9C23 8.8 23 15.1 19.1 19"></path>
                         </svg>
                     </button>
-                    <!-- 粵拼注音與朗讀 -->
+                    <button id="btnJoinModal" class="icon-btn" title="輸入數字代碼加入" onclick="openJoinModal()">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"></path>
+                            <polyline points="10 17 15 12 10 7"></polyline>
+                            <line x1="15" y1="12" x2="3" y2="12"></line>
+                        </svg>
+                    </button>
                     <button class="icon-btn" title="粵拼注音" onclick="openPhoneticModal()">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
                             <path d="M3 18v-6a9 9 0 0 1 18 0v6"></path>
                             <path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z"></path>
                         </svg>
                     </button>
-                    <!-- 字體大小 -->
                     <button class="icon-btn" title="字體大小" onclick="cycleFontSize()">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
                             <path d="M3.5 17.5L6.5 9.5L9.5 17.5"></path>
@@ -487,7 +769,13 @@
                             <path d="M14 13.5H19"></path>
                         </svg>
                     </button>
-                    <!-- 麥克風開關 -->
+                    <button id="btnPip" class="icon-btn" title="螢幕底置頂字幕" onclick="togglePipPrompter()">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+                            <rect x="2" y="4" width="20" height="13" rx="2"></rect>
+                            <path d="M2 17h20"></path>
+                            <line x1="7" y1="20" x2="17" y2="20"></line>
+                        </svg>
+                    </button>
                     <button id="toggleBtn" class="icon-btn power-btn" title="開關" onclick="toggleSpeech()">
                         <svg id="playIcon" viewBox="0 0 24 24" fill="currentColor">
                             <path d="M8 5.14v13.72a1 1 0 0 0 1.5.86l11-6.86a1 1 0 0 0 0-1.72l-11-6.86a1 1 0 0 0-1.5.86z"></path>
@@ -513,34 +801,80 @@
         </div>
     </main>
 
-    <!-- 極簡 QR 彈窗 (僅保留 CODE 與 網址) -->
+    <!-- 廣播分享視窗 -->
     <div id="qrModal" class="modal-overlay" onclick="closeModalOnBackdrop(event)">
-        <div class="modal-window" style="max-width: 340px; text-align: center;">
-            <div class="modal-header" style="justify-content: flex-end; border: none; padding-bottom: 0;">
+        <div class="modal-window" style="max-width: 380px; text-align: center;">
+            <div class="modal-header">
+                <span style="font-weight: 500;">Studio Broadcast / 廣播配對</span>
                 <button class="icon-btn" style="width:28px; height:28px;" onclick="closeQrModal()">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
                 </button>
             </div>
-            <div class="modal-body" style="display:flex; flex-direction:column; align-items:center; gap:16px; padding-top: 8px;">
+            <div class="modal-body" style="display:flex; flex-direction:column; align-items:center; gap:16px; padding: 24px;">
                 <div id="qrContainer"></div>
-                <div id="roomLinkText" onclick="copyShareLink()" title="點擊複製"></div>
+
+                <div class="pin-display-box">
+                    <div class="pin-item">
+                        <span class="pin-label">Room Code</span>
+                        <span id="qrRoomCodeDisplay" class="pin-val">------</span>
+                    </div>
+                    <div class="pin-item">
+                        <span class="pin-label">Secret Key</span>
+                        <span id="qrSecretKeyDisplay" class="pin-val" style="color: var(--primary);">------</span>
+                    </div>
+                </div>
+
+                <div id="roomLinkText" onclick="copyShareLink()" title="點擊複製完整連結"></div>
+                <div style="font-size: 0.72rem; color: var(--text-muted); line-height: 1.5; font-family: var(--font-mono);">
+                    無相機電腦可直接於瀏覽器開啟首頁，點選「加入」輸入純數字房間號同步字幕。
+                </div>
             </div>
         </div>
     </div>
 
-    <!-- 粵拼彈窗 -->
+    <!-- 加入房間彈窗 -->
+    <div id="joinModal" class="modal-overlay" onclick="closeModalOnBackdrop(event)">
+        <div class="modal-window" style="max-width: 400px;">
+            <div class="modal-header">
+                <span style="font-weight: 500;">Join Session / 加入房間</span>
+                <button class="icon-btn" style="width:28px; height:28px;" onclick="closeJoinModal()">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                </button>
+            </div>
+            <div class="modal-body" style="display:flex; flex-direction:column; gap:16px; padding:24px;">
+                <div class="input-group">
+                    <label class="input-label">Room Access Code</label>
+                    <input id="inputRoomId" type="text" inputmode="numeric" pattern="[0-9]*" class="app-input" placeholder="6 位數字房間號" autocomplete="off" />
+                </div>
+                <div class="input-group">
+                    <label class="input-label">Secret Key</label>
+                    <input id="inputSecretKey" type="text" class="app-input" placeholder="輸入連線密鑰" autocomplete="off" />
+                </div>
+               
+                <button class="join-icon-action-btn" title="立即連線" aria-label="立即連線" onclick="submitJoinRoom()">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path class="arrow-stem" d="M4 12h11"></path>
+                        <path class="arrow-head" d="M11 8l4 4-4 4"></path>
+                        <path class="node-ring" d="M19 8v8"></path>
+                    </svg>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 粵拼注音彈窗 -->
     <div id="phoneticModal" class="modal-overlay" onclick="closeModalOnBackdrop(event)">
         <div class="modal-window">
             <div class="modal-header">
-                <span>粵拼注音與朗讀</span>
+                <span>Phonetic & Reading / 粵拼注音與朗讀</span>
                 <button class="icon-btn" style="width:28px; height:28px;" onclick="closePhoneticModal()">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
                 </button>
             </div>
             <div id="modalContent" class="modal-body"></div>
             <div class="modal-footer">
-                <span id="ttsStatus" style="font-size: 0.82rem; color: #94a3b8;">就緒</span>
-                <button id="ttsPlayBtn" class="icon-btn" style="background:#0284c7; color:#fff;" onclick="speakCurrentText()">
+                <span id="ttsStatus" style="font-size: 0.82rem; color: var(--text-muted); font-family: var(--font-mono); text-transform: uppercase;">READY</span>
+                <button id="ttsPlayBtn" class="icon-btn" style="background:var(--primary); color:#121212; border-color:transparent;" onclick="speakCurrentText()">
                     <svg viewBox="0 0 24 24" fill="currentColor"><polygon points="6 3 20 12 6 21 6 3"></polygon></svg>
                 </button>
             </div>
@@ -597,17 +931,18 @@
 
         /* ------------------ 1. 運行模式設定 (個人 / 廣播 / 接收) ------------------ */
         const urlParams = new URLSearchParams(window.location.search);
-        const joinRoom = urlParams.get('room');
+        const joinRoom = urlParams.get('room') ? urlParams.get('room').replace(/\D/g, '') : null;
         const joinKey = window.location.hash.replace('#', '');
         const isReceiverMode = Boolean(joinRoom && joinKey);
 
-        let currentMode = isReceiverMode ? 'receive' : 'solo'; // solo, broadcast, receive
+        let currentMode = isReceiverMode ? 'receive' : 'solo';
         let currentRoomId = joinRoom || '';
         let currentSecretKey = joinKey || '';
 
         const statusDot = document.getElementById('statusDot');
         const btnSolo = document.getElementById('btnSolo');
         const btnBroadcast = document.getElementById('btnBroadcast');
+        const btnJoinModal = document.getElementById('btnJoinModal');
         const toggleBtn = document.getElementById('toggleBtn');
 
         let mqttClient = null;
@@ -615,6 +950,7 @@
         function updateUIState() {
             btnSolo.classList.remove('mode-active');
             btnBroadcast.classList.remove('mode-active');
+            btnJoinModal.classList.remove('mode-active');
             statusDot.className = 'status-dot';
 
             if (currentMode === 'solo') {
@@ -625,9 +961,8 @@
                 statusDot.classList.add('broadcast');
                 toggleBtn.style.display = 'flex';
             } else if (currentMode === 'receive') {
-                btnSolo.style.display = 'none';
-                btnBroadcast.style.display = 'none';
-                toggleBtn.style.display = 'none'; // 接收端純觀看
+                btnJoinModal.classList.add('mode-active');
+                toggleBtn.style.display = 'none';
                 statusDot.classList.add('receive');
             }
         }
@@ -645,8 +980,8 @@
         const machineGroup = new THREE.Group();
         scene.add(machineGroup);
 
-        const hoodMat = new THREE.MeshStandardMaterial({ color: 0x141822, metalness: 0.8, roughness: 0.3 });
-        const bezelMat = new THREE.MeshStandardMaterial({ color: 0x222a38, metalness: 0.85, roughness: 0.25 });
+        const hoodMat = new THREE.MeshStandardMaterial({ color: 0x18191B, metalness: 0.85, roughness: 0.35 });
+        const bezelMat = new THREE.MeshStandardMaterial({ color: 0x242426, metalness: 0.9, roughness: 0.25 });
 
         const chassis = new THREE.Mesh(new THREE.BoxGeometry(19.5, 23.5, 2.0), hoodMat);
         chassis.position.z = -1.2;
@@ -667,8 +1002,8 @@
         rightHood.rotation.y = 0.15;
         machineGroup.add(rightHood);
 
-        scene.add(new THREE.AmbientLight(0xffffff, 0.65));
-        const keyLight = new THREE.DirectionalLight(0xbae6fd, 0.85);
+        scene.add(new THREE.AmbientLight(0xffffff, 0.4));
+        const keyLight = new THREE.DirectionalLight(0xB89B72, 0.65);
         keyLight.position.set(10, 15, 18);
         scene.add(keyLight);
 
@@ -710,14 +1045,13 @@
             toastTimer = setTimeout(() => fontToast.classList.remove('show'), 1500);
         }
 
-        /* ------------------ 4. 粵語句組引擎 (純白高光聚焦) ------------------ */
+        /* ------------------ 4. 粵語句組引擎 (支援手機偽流式字元噴吐) ------------------ */
         const QUESTION_ENDINGS = /(點解|係咪|係唔係|係未|得唔得|好唔好|幾時|邊個|邊度|邊處|點樣|點做|點算|成點|做咩|做乜|做乜嘢|嗎|下話|得未|好未|係咪呀|係唔係呀|點樣呀|做咩呀|邊個呀|幾時呀)$/;
         const EXCLAMATION_ENDINGS = /(太好喇|好犀利|超勁|正呀|好正|利害|搞錯|痴線|唔係卦|救命|嘩|哇|好嘢|真係誇張|真係正|勁呀|正話|好痛呀|好正呀)$/;
 
         const cantoScroll = document.getElementById('cantoScroll');
         const cantoStream = document.getElementById('cantoStream');
         const interimPart = document.getElementById('interimPart');
-        const charCount = document.getElementById('charCount');
 
         let autoScrollCanto = true;
         let confirmedPlainHistory = "";
@@ -736,6 +1070,11 @@
         });
 
         function scrollCantoToBottom() {
+            if (pipWindow && !pipWindow.closed) {
+                cantoScroll.scrollTop = 0;
+                return;
+            }
+
             if (autoScrollCanto) {
                 requestAnimationFrame(() => {
                     cantoScroll.scrollTop = cantoScroll.scrollHeight;
@@ -870,8 +1209,6 @@
                     group.elem.classList.add('past');
                 }
             });
-            const totalChars = groupList.reduce((acc, g) => acc + cleanString(g.fullText).length, 0);
-            charCount.textContent = `${totalChars} 字`;
         }
 
         function createNewGroup() {
@@ -879,7 +1216,7 @@
             groupElem.className = 'phrase-group active-latest';
             cantoStream.insertBefore(groupElem, interimPart);
 
-            const newGroup = { elem: groupElem, clauses: [], validCount: 0, fullText: "" };
+            const newGroup = { elem: groupElem, clauses: [], validCount: 0, fullText: "", animatedLen: 0 };
             groupList.push(newGroup);
 
             if (groupList.length > 50) {
@@ -890,13 +1227,67 @@
             return newGroup;
         }
 
+        /* 
+           【核心亮點：手機端偽流式動畫引擎】
+           若在電腦懸浮窗(PiP)中，保持原樣直接賦值以保證橫向排版及平滑滾動；
+           若在手機或常規視窗下，比對新增的字元，透過 DocumentFragment 逐字打包 .char-reveal 進行電影級流式噴吐！
+        */
+        function applyStreamingContent(elem, newText, groupObj) {
+            if (pipWindow && !pipWindow.closed) {
+                elem.textContent = newText;
+                return;
+            }
+
+            const oldLen = groupObj.animatedLen || 0;
+            const newChars = Array.from(newText);
+            
+            if (newChars.length <= oldLen) {
+                elem.textContent = newText;
+                groupObj.animatedLen = newChars.length;
+                return;
+            }
+
+            const fragment = document.createDocumentFragment();
+            const addedChars = newChars.slice(oldLen);
+
+            addedChars.forEach((ch, idx) => {
+                const span = document.createElement('span');
+                span.className = 'char-reveal';
+                span.textContent = ch;
+                span.style.animationDelay = `${idx * 28}ms`;
+                fragment.appendChild(span);
+            });
+
+            elem.appendChild(fragment);
+            groupObj.animatedLen = newChars.length;
+        }
+
         function finalizeCurrentGroup() {
             clearTimeout(longPauseTimer);
             longPauseTimer = null;
             if (!currentGroup) return;
 
             currentGroup.fullText = renderGroupText(currentGroup, true);
-            currentGroup.elem.textContent = currentGroup.fullText;
+            applyStreamingContent(currentGroup.elem, currentGroup.fullText, currentGroup);
+
+            // 超長走馬燈計算 (懸浮窗)
+            if (pipWindow && !pipWindow.closed) {
+                cantoScroll.scrollLeft = 0;
+                currentGroup.elem.classList.remove('pip-marquee');
+
+                requestAnimationFrame(() => {
+                    const containerWidth = cantoScroll.clientWidth - 48;
+                    const textWidth = currentGroup.elem.scrollWidth;
+
+                    if (textWidth > containerWidth) {
+                        const distance = textWidth - containerWidth + 30;
+                        const duration = Math.max(6, distance / 45);
+                        currentGroup.elem.style.setProperty('--marquee-dist', `-${distance}px`);
+                        currentGroup.elem.style.setProperty('--marquee-duration', `${duration}s`);
+                        currentGroup.elem.classList.add('pip-marquee');
+                    }
+                });
+            }
 
             if (currentMode === 'broadcast') {
                 broadcastSecurePayload({ type: 'finalize', fullText: currentGroup.fullText });
@@ -928,7 +1319,7 @@
                 if (isValidSentence) currentGroup.validCount++;
 
                 currentGroup.fullText = renderGroupText(currentGroup, false);
-                currentGroup.elem.textContent = currentGroup.fullText;
+                applyStreamingContent(currentGroup.elem, currentGroup.fullText, currentGroup);
 
                 confirmedPlainHistory += cleanClause;
                 if (confirmedPlainHistory.length > 1000) confirmedPlainHistory = confirmedPlainHistory.slice(-600);
@@ -960,26 +1351,33 @@
             let delta = extractNonOverlappingDelta(convertToHK(interim.trim()));
             interimPart.textContent = delta || "";
             if (currentMode === 'broadcast') broadcastSecurePayload({ type: 'interim', text: delta || "" });
-            if (delta) scrollCantoToBottom();
+
+            if (pipWindow && !pipWindow.closed) {
+                requestAnimationFrame(() => {
+                    if (cantoScroll.scrollWidth > cantoScroll.clientWidth) {
+                        cantoScroll.scrollLeft = cantoScroll.scrollWidth - cantoScroll.clientWidth + 10;
+                    }
+                });
+            } else if (delta) {
+                scrollCantoToBottom();
+            }
         }
 
-       function handleSpeechFinal(finalText) {
-    if (!finalText || !finalText.trim()) return;
-    const cleanFinal = cleanString(finalText);
-    const now = Date.now();
-    if (cleanFinal === lastFinalCleanText && (now - lastFinalTimestamp < 1800)) {
-        interimPart.textContent = "";
-        // 【修復】通知接收端清空 interim
-        if (currentMode === 'broadcast') broadcastSecurePayload({ type: 'interim', text: "" });
-        return;
-    }
-    lastFinalCleanText = cleanFinal;
-    lastFinalTimestamp = now;
-    interimPart.textContent = "";
-    // 【修復】通知接收端清空 interim
-    if (currentMode === 'broadcast') broadcastSecurePayload({ type: 'interim', text: "" });
-    commitSpeechDelta(finalText);
-}
+        function handleSpeechFinal(finalText) {
+            if (!finalText || !finalText.trim()) return;
+            const cleanFinal = cleanString(finalText);
+            const now = Date.now();
+            if (cleanFinal === lastFinalCleanText && (now - lastFinalTimestamp < 1800)) {
+                interimPart.textContent = "";
+                if (currentMode === 'broadcast') broadcastSecurePayload({ type: 'interim', text: "" });
+                return;
+            }
+            lastFinalCleanText = cleanFinal;
+            lastFinalTimestamp = now;
+            interimPart.textContent = "";
+            if (currentMode === 'broadcast') broadcastSecurePayload({ type: 'interim', text: "" });
+            commitSpeechDelta(finalText);
+        }
 
         const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
         let recognition = null;
@@ -1080,50 +1478,52 @@
             interimPart.textContent = "";
         }
 
-        /* ------------------ 6. 端到端加密雲端廣播連線 ------------------ */
+        /* ------------------ 6. 純數字房間加密傳輸 ------------------ */
         async function broadcastSecurePayload(payload) {
             if (mqttClient && mqttClient.connected && currentMode === 'broadcast') {
                 const encryptedString = await encryptPayload(payload);
-                mqttClient.publish(`canto/${currentRoomId}`, encryptedString);
+                mqttClient.publish(`canto/room_${currentRoomId}`, encryptedString);
             }
         }
 
         async function initReceiverCloud() {
             await initEncryptionKey(currentSecretKey);
+            if (mqttClient) {
+                try { mqttClient.end(); } catch (e) {}
+            }
             mqttClient = mqtt.connect('wss://broker.emqx.io:8084/mqtt', { clean: true });
             
             mqttClient.on('connect', () => {
-                mqttClient.subscribe(`canto/${currentRoomId}`);
+                mqttClient.subscribe(`canto/room_${currentRoomId}`);
+                showToast("已成功同步房間");
             });
 
-           mqttClient.on('message', async (topic, msg) => {
-    const data = await decryptPayload(msg.toString());
-    if (!data) return;
+            mqttClient.on('message', async (topic, msg) => {
+                const data = await decryptPayload(msg.toString());
+                if (!data) return;
 
-    if (data.type === 'interim') {
-        interimPart.textContent = data.text;
-        if (data.text) scrollCantoToBottom();
-    } else if (data.type === 'update_group') {
-        // 【修復】接收到正式文字時，立即清空臨時暫存區
-        interimPart.textContent = ""; 
+                if (data.type === 'interim') {
+                    interimPart.textContent = data.text;
+                    if (data.text) scrollCantoToBottom();
+                } else if (data.type === 'update_group') {
+                    interimPart.textContent = ""; 
 
-        if (!currentGroup) currentGroup = createNewGroup();
-        currentGroup.fullText = data.fullText;
-        currentGroup.elem.textContent = data.fullText;
-        refreshGroupHighlights();
-        scrollCantoToBottom();
-    } else if (data.type === 'finalize') {
-        // 【修復】結束句組時也確保清空臨時暫存區
-        interimPart.textContent = ""; 
+                    if (!currentGroup) currentGroup = createNewGroup();
+                    currentGroup.fullText = data.fullText;
+                    applyStreamingContent(currentGroup.elem, data.fullText, currentGroup);
+                    refreshGroupHighlights();
+                    scrollCantoToBottom();
+                } else if (data.type === 'finalize') {
+                    interimPart.textContent = ""; 
 
-        if (currentGroup) {
-            currentGroup.fullText = data.fullText;
-            currentGroup.elem.textContent = data.fullText;
-            currentGroup = null;
-            refreshGroupHighlights();
-        }
-    }
-});
+                    if (currentGroup) {
+                        currentGroup.fullText = data.fullText;
+                        applyStreamingContent(currentGroup.elem, data.fullText, currentGroup);
+                        currentGroup = null;
+                        refreshGroupHighlights();
+                    }
+                }
+            });
         }
 
         async function switchToBroadcastMode() {
@@ -1133,8 +1533,8 @@
             }
             currentMode = 'broadcast';
 
-            if (!currentRoomId) currentRoomId = 'r_' + Math.floor(100000 + Math.random() * 900000);
-            if (!currentSecretKey) currentSecretKey = Math.random().toString(36).substring(2, 12);
+            if (!currentRoomId) currentRoomId = String(Math.floor(100000 + Math.random() * 900000));
+            if (!currentSecretKey) currentSecretKey = Math.random().toString(36).substring(2, 8).toUpperCase();
 
             await initEncryptionKey(currentSecretKey);
 
@@ -1158,33 +1558,65 @@
 
         function setupMinimalQR() {
             const currentUrl = `${window.location.origin}${window.location.pathname}?room=${currentRoomId}#${currentSecretKey}`;
-            const linkElem = document.getElementById('roomLinkText');
-            linkElem.innerText = currentUrl;
+            
+            document.getElementById('roomLinkText').innerText = currentUrl;
+            document.getElementById('qrRoomCodeDisplay').innerText = currentRoomId;
+            document.getElementById('qrSecretKeyDisplay').innerText = currentSecretKey;
 
             const qrContainer = document.getElementById('qrContainer');
             qrContainer.innerHTML = "";
             new QRCode(qrContainer, {
                 text: currentUrl,
-                width: 190,
-                height: 190,
-                colorDark: "#000000",
-                colorLight: "#ffffff",
+                width: 170,
+                height: 170,
+                colorDark: "#18191B",
+                colorLight: "#E6E2D6",
                 correctLevel: QRCode.CorrectLevel.M
             });
         }
 
         function copyShareLink() {
-            const text = document.getElementById('roomLinkText').innerText;
-            navigator.clipboard.writeText(text).then(() => {
-                showToast("已複製連結");
+            const currentUrl = `${window.location.origin}${window.location.pathname}?room=${currentRoomId}#${currentSecretKey}`;
+            const shareText = `【粵語提詞器同步】\n純數字房間號：${currentRoomId}\n密鑰：${currentSecretKey}\n連結：${currentUrl}`;
+            navigator.clipboard.writeText(shareText).then(() => {
+                showToast("已複製房間資訊");
+            }).catch(() => {
+                navigator.clipboard.writeText(currentUrl).then(() => showToast("已複製連結"));
             });
+        }
+
+        /* ------------------ 純數字房間手動加入機制 ------------------ */
+        const joinModal = document.getElementById('joinModal');
+        function openJoinModal() { joinModal.classList.add('active'); }
+        function closeJoinModal() { joinModal.classList.remove('active'); }
+
+        async function submitJoinRoom() {
+            let r = document.getElementById('inputRoomId').value.replace(/\D/g, '').trim();
+            const k = document.getElementById('inputSecretKey').value.trim();
+
+            if (!r || r.length < 4) {
+                return alert("請填寫正確的純數字房間號碼！");
+            }
+            if (!k) {
+                return alert("請填寫連線密鑰！");
+            }
+
+            currentMode = 'receive';
+            currentRoomId = r;
+            currentSecretKey = k;
+
+            const newUrl = `${window.location.origin}${window.location.pathname}?room=${currentRoomId}#${currentSecretKey}`;
+            window.history.replaceState(null, '', newUrl);
+
+            updateUIState();
+            closeJoinModal();
+            await initReceiverCloud();
         }
 
         const qrModal = document.getElementById('qrModal');
         function openQrModal() { qrModal.classList.add('active'); }
         function closeQrModal() { qrModal.classList.remove('active'); }
 
-        // 初始化
         updateUIState();
         if (isReceiverMode) {
             initReceiverCloud();
@@ -1251,18 +1683,18 @@
             currentPureText = cleanString(fullText);
 
             if (!fullText) {
-                modalContent.innerHTML = "<div style='color:#64748b; font-size:1rem; padding:10px;'>暫無文字</div>";
+                modalContent.innerHTML = "<div style='color:var(--text-muted); font-size:1rem; padding:10px; font-family:var(--font-mono);'>NO TEXT RECORDED</div>";
                 modal.classList.add('active');
                 return;
             }
 
-            modalContent.innerHTML = "<div style='color:#94a3b8; font-size:1rem; width:100%; text-align:center; padding:30px 0;'>粵拼注音生成中...</div>";
-            ttsStatus.innerText = "標音中";
+            modalContent.innerHTML = "<div style='color:var(--primary); font-size:0.9rem; width:100%; text-align:center; padding:30px 0; font-family:var(--font-mono); letter-spacing:2px;'>GENERATING PHONETICS...</div>";
+            ttsStatus.innerText = "PROCESSING";
             modal.classList.add('active');
 
             const rubyHTML = await fetchJyutpingRubyHTML(fullText);
             modalContent.innerHTML = rubyHTML;
-            ttsStatus.innerText = "就緒";
+            ttsStatus.innerText = "READY";
         }
 
         function closePhoneticModal() {
@@ -1273,6 +1705,7 @@
         function closeModalOnBackdrop(event) {
             if (event.target === modal) closePhoneticModal();
             if (event.target === qrModal) closeQrModal();
+            if (event.target === joinModal) closeJoinModal();
         }
 
         function speakCurrentText() {
@@ -1283,12 +1716,184 @@
             utter.lang = 'zh-HK';
             utter.rate = 0.85;
 
-            utter.onstart = () => ttsStatus.innerText = "朗讀中";
-            utter.onend = () => ttsStatus.innerText = "完畢";
-            utter.onerror = () => ttsStatus.innerText = "就緒";
+            utter.onstart = () => ttsStatus.innerText = "PLAYING";
+            utter.onend = () => ttsStatus.innerText = "FINISHED";
+            utter.onerror = () => ttsStatus.innerText = "READY";
 
             window.speechSynthesis.speak(utter);
         }
+
+        /* ------------------ 9. 桌面置頂懸浮字幕條 ------------------ */
+        let pipWindow = null;
+
+        async function togglePipPrompter() {
+            if (pipWindow && !pipWindow.closed) {
+                pipWindow.close();
+                pipWindow = null;
+                return;
+            }
+
+            if (!('documentPictureInPicture' in window)) {
+                alert('您的瀏覽器尚未支援 Document Picture-in-Picture。\n請在電腦使用最新版 Chrome 或 Edge 瀏覽器！');
+                return;
+            }
+
+            try {
+                const availLeft = window.screen.availLeft ?? 0;
+                const availTop = window.screen.availTop ?? 0;
+                const availW = window.screen.availWidth || window.screen.width || window.innerWidth;
+                const availH = window.screen.availHeight || window.screen.height || window.innerHeight;
+                
+                const targetH = 92;
+
+                pipWindow = await window.documentPictureInPicture.requestWindow({
+                    width: availW,
+                    height: targetH
+                });
+
+                const snapToFullWidthBottom = () => {
+                    try {
+                        const winH = pipWindow.outerHeight || targetH;
+                        pipWindow.resizeTo(availW, winH);
+                        pipWindow.moveTo(availLeft, availTop + availH - winH);
+                    } catch (e) {}
+                };
+
+                snapToFullWidthBottom();
+                requestAnimationFrame(snapToFullWidthBottom);
+                setTimeout(snapToFullWidthBottom, 100);
+                setTimeout(snapToFullWidthBottom, 300);
+
+                document.querySelectorAll('link[rel="stylesheet"]').forEach(link => {
+                    pipWindow.document.head.appendChild(link.cloneNode(true));
+                });
+                document.querySelectorAll('style').forEach(style => {
+                    pipWindow.document.head.appendChild(style.cloneNode(true));
+                });
+
+                const pipStyle = pipWindow.document.createElement('style');
+                pipStyle.textContent = `
+                    html, body {
+                        margin: 0 !important;
+                        padding: 0 !important;
+                        background: #121213 !important;
+                        height: 100% !important;
+                        width: 100vw !important;
+                        overflow: hidden !important;
+                        display: flex !important;
+                        align-items: center !important;
+                        justify-content: center !important;
+                    }
+
+                    .viewport-container::before, .viewport-container::after,
+                    .bottom-safe-spacer {
+                        display: none !important;
+                        height: 0 !important;
+                        width: 0 !important;
+                        margin: 0 !important;
+                        padding: 0 !important;
+                    }
+
+                    .scroll-body {
+                        height: 100% !important;
+                        width: 100% !important;
+                        padding: 0 28px !important;
+                        margin: 0 !important;
+                        box-sizing: border-box !important;
+                        overflow-x: auto !important;
+                        overflow-y: hidden !important;
+                        scrollbar-width: none !important;
+                        display: flex !important;
+                        flex-direction: row !important;
+                        align-items: center !important;
+                        justify-content: center !important;
+                    }
+                    .scroll-body::-webkit-scrollbar {
+                        display: none !important;
+                    }
+
+                    .cantonese-stream {
+                        display: flex !important;
+                        flex-direction: row !important;
+                        align-items: center !important;
+                        justify-content: center !important;
+                        white-space: nowrap !important;
+                        gap: 0 !important;
+                        margin: 0 auto !important;
+                        padding: 0 !important;
+                        height: 100% !important;
+                        font-size: var(--cantonese-size, 1.95rem) !important;
+                        line-height: 1 !important;
+                        font-family: var(--font-serif) !important;
+                    }
+
+                    .phrase-group.past {
+                        display: none !important;
+                    }
+
+                    #cantoStream:has(#interimPart:not(:empty)) .phrase-group.active-latest {
+                        display: none !important;
+                    }
+
+                    .phrase-item.interim {
+                        display: inline-block !important;
+                        color: #B89B72 !important;
+                        font-weight: 700 !important;
+                        text-shadow: 0 0 16px rgba(184, 155, 114, 0.35) !important;
+                        white-space: nowrap !important;
+                        line-height: 1 !important;
+                        vertical-align: middle !important;
+                        text-overflow: clip !important;
+                    }
+                    .phrase-item.interim:empty {
+                        display: none !important;
+                    }
+
+                    .phrase-group.active-latest {
+                        display: inline-block !important;
+                        color: #E6E2D6 !important;
+                        font-weight: 700 !important;
+                        text-shadow: 0 0 16px rgba(230, 226, 214, 0.45) !important;
+                        white-space: nowrap !important;
+                        line-height: 1 !important;
+                        vertical-align: middle !important;
+                        text-overflow: clip !important;
+                        margin: 0 auto !important;
+                    }
+
+                    .phrase-group.active-latest.pip-marquee {
+                        margin: 0 !important;
+                        animation: pipMarquee var(--marquee-duration, 8s) cubic-bezier(0.25, 0.1, 0.25, 1) infinite !important;
+                    }
+
+                    @keyframes pipMarquee {
+                        0%, 20% { transform: translateX(0); }
+                        78%, 92% { transform: translateX(var(--marquee-dist, -50%)); }
+                        100% { transform: translateX(0); }
+                    }
+                `;
+                pipWindow.document.head.appendChild(pipStyle);
+
+                const cantoScrollElem = document.getElementById('cantoScroll');
+                const viewportContainer = document.querySelector('.viewport-container');
+                pipWindow.document.body.appendChild(cantoScrollElem);
+
+                const btnPip = document.getElementById('btnPip');
+                if (btnPip) btnPip.classList.add('mode-active');
+
+                pipWindow.addEventListener('pagehide', () => {
+                    if (viewportContainer && cantoScrollElem) {
+                        viewportContainer.appendChild(cantoScrollElem);
+                    }
+                    pipWindow = null;
+                    if (btnPip) btnPip.classList.remove('mode-active');
+                    scrollCantoToBottom();
+                });
+
+            } catch (err) {
+                console.error('開啟置頂字幕視窗失敗:', err);
+            }
+        }
     </script>
 </body>
-</html>
+                                                                                                    </html>
