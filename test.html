@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>實時粵語提詞器 (雲端廣播版)</title>
+    <title>實時粵語提詞器</title>
 
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -21,7 +21,7 @@
     <!-- 繁體字強制校準庫 -->
     <script src="https://cdn.jsdelivr.net/npm/opencc-js@1.0.5/dist/umd/full.min.js"></script>
 
-    <!-- MQTT WebSocket 穿透廣播庫（解決任何網絡不通問題） -->
+    <!-- 雲端穿透傳輸庫 (MQTT over WSS) -->
     <script src="https://unpkg.com/mqtt@5.3.5/dist/mqtt.min.js"></script>
     <!-- QRCode 生成庫 -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
@@ -96,7 +96,10 @@
             background: #090a0f;
             border-radius: 14px;
             border: 2px solid #1e2638;
-            box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.8), 0 20px 45px rgba(0, 0, 0, 0.9);
+            box-shadow: 
+                0 0 0 1px rgba(0, 0, 0, 0.8),
+                0 20px 45px rgba(0, 0, 0, 0.9),
+                inset 0 0 20px rgba(0, 0, 0, 0.85);
             overflow: hidden;
             position: relative;
             min-height: 0;
@@ -116,7 +119,7 @@
         .brand-meta {
             display: flex;
             align-items: center;
-            gap: 10px;
+            gap: 12px;
         }
 
         .brand-title {
@@ -127,24 +130,30 @@
             font-family: "Noto Sans HK", sans-serif;
         }
 
-        .status-badge {
-            font-family: "Noto Sans HK", sans-serif;
-            font-size: 0.75rem;
-            padding: 3px 8px;
-            border-radius: 4px;
-            background: rgba(239, 68, 68, 0.15);
-            color: #ef4444;
-            border: 1px solid rgba(239, 68, 68, 0.3);
-            display: flex;
-            align-items: center;
-            gap: 4px;
-            transition: all 0.3s;
+        /* 極簡狀態呼吸指示燈 */
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #334155;
+            transition: all 0.3s ease;
         }
 
-        .status-badge.connected {
-            background: rgba(16, 185, 129, 0.15);
-            color: #10b981;
-            border-color: rgba(16, 185, 129, 0.3);
+        .status-dot.broadcast {
+            background: #10b981;
+            box-shadow: 0 0 10px #10b981;
+            animation: pulseDot 1.8s infinite;
+        }
+
+        .status-dot.receive {
+            background: #38bdf8;
+            box-shadow: 0 0 10px #38bdf8;
+            animation: pulseDot 1.8s infinite;
+        }
+
+        @keyframes pulseDot {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.45; transform: scale(0.85); }
         }
 
         .char-counter {
@@ -176,11 +185,19 @@
             cursor: pointer;
             transition: all 0.2s ease;
             outline: none;
+            position: relative;
         }
 
         .icon-btn:hover { background: rgba(255, 255, 255, 0.12); color: #ffffff; }
         .icon-btn:active { transform: scale(0.94); }
         .icon-btn svg { width: 18px; height: 18px; stroke-width: 2; }
+
+        /* 模式切換高亮 */
+        .icon-btn.mode-active {
+            background: rgba(56, 189, 248, 0.15);
+            border-color: rgba(56, 189, 248, 0.45);
+            color: #38bdf8;
+        }
 
         .power-btn {
             background: #ef4444;
@@ -253,6 +270,7 @@
             opacity: 0.42;
         }
 
+        /* 最新句組：純白高光聚焦 */
         .phrase-group.active-latest {
             color: #ffffff;
             font-weight: 700;
@@ -261,19 +279,22 @@
             animation: phrasePop 0.22s cubic-bezier(0.16, 1, 0.3, 1) forwards;
         }
 
+        /* 移除任何藍色條柱或背景塊，保持乾淨純文字 */
         .phrase-item.interim {
-            color: #38bdf8;
-            font-weight: 600;
-            background: rgba(56, 189, 248, 0.08);
-            border-left: 3px solid #38bdf8;
-            padding: 2px 10px;
-            border-radius: 0 6px 6px 0;
-            display: inline-block;
-            margin-top: 4px;
-            align-self: flex-start;
+            color: #f8fafc;
+            font-weight: 700;
+            opacity: 0.9;
+            text-shadow: 0 0 16px rgba(255, 255, 255, 0.28);
+            display: inline;
+            background: transparent;
+            border: none;
+            padding: 0;
+            margin: 0;
         }
 
-        .phrase-item.interim:empty { display: none; }
+        .phrase-item.interim:empty {
+            display: none;
+        }
 
         @keyframes phrasePop {
             0% { opacity: 0; transform: translateY(6px); }
@@ -348,7 +369,42 @@
             padding: 24px;
             overflow-y: auto;
             flex: 1;
+            line-height: 2.6;
             background: #080a0e;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 2px;
+        }
+
+        ruby.jp-ruby {
+            display: inline-flex;
+            flex-direction: column-reverse;
+            align-items: center;
+            margin: 2px 4px;
+            line-height: 1;
+        }
+
+        ruby.jp-ruby rt.c-rt {
+            display: block;
+            font-size: 0.82rem;
+            line-height: 1;
+            font-family: "Noto Sans HK", sans-serif;
+            color: var(--ruby);
+            margin-bottom: 6px;
+        }
+
+        ruby.jp-ruby span.c-char {
+            display: block;
+            font-size: 1.65rem;
+            font-weight: 600;
+            color: #f8fafc;
+        }
+
+        span.jp-punct {
+            font-size: 1.65rem;
+            line-height: 1.2;
+            color: #64748b;
+            margin: 0 3px;
         }
 
         .modal-footer {
@@ -359,12 +415,29 @@
             align-items: center;
         }
 
+        /* 極簡 QR 視窗樣式 */
         #qrContainer {
             background: #ffffff;
-            padding: 16px;
-            border-radius: 10px;
-            display: inline-block;
+            padding: 14px;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
             margin: 0 auto;
+        }
+
+        #roomLinkText {
+            font-family: monospace;
+            font-size: 0.8rem;
+            color: #38bdf8;
+            word-break: break-all;
+            cursor: pointer;
+            background: rgba(255, 255, 255, 0.04);
+            padding: 8px 12px;
+            border-radius: 6px;
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            width: 100%;
+            text-align: center;
         }
     </style>
 </head>
@@ -377,24 +450,36 @@
             <header>
                 <div class="brand-meta">
                     <span class="brand-title">實時粵語提詞</span>
-                    <span id="roleBadge" class="status-badge">連線中...</span>
+                    <span id="statusDot" class="status-dot"></span>
                     <span id="charCount" class="char-counter">0 字</span>
                 </div>
                 <div class="btn-group">
-                    <button id="broadcastBtn" class="icon-btn" title="學生端同步 QR 碼" onclick="openBroadcastModal()">
+                    <!-- 按鈕 1：個人版 -->
+                    <button id="btnSolo" class="icon-btn mode-active" title="個人版" onclick="switchToSoloMode()">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
-                            <path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"></path>
-                            <polyline points="16 6 12 2 8 6"></polyline>
-                            <line x1="12" y1="2" x2="12" y2="15"></line>
+                            <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+                            <circle cx="12" cy="7" r="4"></circle>
                         </svg>
                     </button>
-                    <button class="icon-btn" title="粵拼注音與朗讀" onclick="openPhoneticModal()">
+                    <!-- 按鈕 2：廣播版 (老師用) -->
+                    <button id="btnBroadcast" class="icon-btn" title="廣播版" onclick="switchToBroadcastMode()">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M4.9 19.1C1 15.2 1 8.8 4.9 4.9"></path>
+                            <path d="M7.8 16.2c-2.3-2.3-2.3-6.1 0-8.5"></path>
+                            <circle cx="12" cy="12" r="2"></circle>
+                            <path d="M16.2 7.8c2.3 2.3 2.3 6.1 0 8.5"></path>
+                            <path d="M19.1 4.9C23 8.8 23 15.1 19.1 19"></path>
+                        </svg>
+                    </button>
+                    <!-- 粵拼注音與朗讀 -->
+                    <button class="icon-btn" title="粵拼注音" onclick="openPhoneticModal()">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
                             <path d="M3 18v-6a9 9 0 0 1 18 0v6"></path>
                             <path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z"></path>
                         </svg>
                     </button>
-                    <button class="icon-btn" title="切換字體大小" onclick="cycleFontSize()">
+                    <!-- 字體大小 -->
+                    <button class="icon-btn" title="字體大小" onclick="cycleFontSize()">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
                             <path d="M3.5 17.5L6.5 9.5L9.5 17.5"></path>
                             <path d="M4.8 14.5H8.2"></path>
@@ -402,7 +487,8 @@
                             <path d="M14 13.5H19"></path>
                         </svg>
                     </button>
-                    <button id="toggleBtn" class="icon-btn power-btn" title="啟動收音" onclick="toggleSpeech()">
+                    <!-- 麥克風開關 -->
+                    <button id="toggleBtn" class="icon-btn power-btn" title="開關" onclick="toggleSpeech()">
                         <svg id="playIcon" viewBox="0 0 24 24" fill="currentColor">
                             <path d="M8 5.14v13.72a1 1 0 0 0 1.5.86l11-6.86a1 1 0 0 0 0-1.72l-11-6.86a1 1 0 0 0-1.5.86z"></path>
                         </svg>
@@ -427,19 +513,17 @@
         </div>
     </main>
 
-    <!-- 廣播分享視窗 -->
-    <div id="broadcastModal" class="modal-overlay" onclick="closeModalOnBackdrop(event)">
-        <div class="modal-window" style="max-width: 420px; text-align: center;">
-            <div class="modal-header">
-                <span>學生手機同步 (掃描連線)</span>
-                <button class="icon-btn" style="width:28px; height:28px;" onclick="closeBroadcastModal()">
+    <!-- 極簡 QR 彈窗 (僅保留 CODE 與 網址) -->
+    <div id="qrModal" class="modal-overlay" onclick="closeModalOnBackdrop(event)">
+        <div class="modal-window" style="max-width: 340px; text-align: center;">
+            <div class="modal-header" style="justify-content: flex-end; border: none; padding-bottom: 0;">
+                <button class="icon-btn" style="width:28px; height:28px;" onclick="closeQrModal()">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
                 </button>
             </div>
-            <div class="modal-body" style="display:flex; flex-direction:column; align-items:center; gap:16px;">
-                <p style="font-size:0.85rem; color:#94a3b8;">讓學生直接掃描下方二維碼，即可接收老師端實時字幕：</p>
+            <div class="modal-body" style="display:flex; flex-direction:column; align-items:center; gap:16px; padding-top: 8px;">
                 <div id="qrContainer"></div>
-                <div style="font-family: monospace; font-size: 0.8rem; color: #38bdf8; word-break: break-all; padding: 0 10px;" id="roomLinkText"></div>
+                <div id="roomLinkText" onclick="copyShareLink()" title="點擊複製"></div>
             </div>
         </div>
     </div>
@@ -464,29 +548,91 @@
     </div>
 
     <script>
-        /* ------------------ 0. 模式判定與雲端房間設定 ------------------ */
+        /* ------------------ 0. 端到端加密引擎 (AES-256-GCM) ------------------ */
+        let cryptoKey = null;
+
+        async function initEncryptionKey(keyString) {
+            const enc = new TextEncoder();
+            const keyHash = await crypto.subtle.digest('SHA-256', enc.encode(keyString));
+            cryptoKey = await crypto.subtle.importKey(
+                'raw',
+                keyHash,
+                { name: 'AES-GCM' },
+                false,
+                ['encrypt', 'decrypt']
+            );
+        }
+
+        async function encryptPayload(plainObj) {
+            if (!cryptoKey) return JSON.stringify(plainObj);
+            const iv = crypto.getRandomValues(new Uint8Array(12));
+            const enc = new TextEncoder();
+            const cipherBuffer = await crypto.subtle.encrypt(
+                { name: 'AES-GCM', iv },
+                cryptoKey,
+                enc.encode(JSON.stringify(plainObj))
+            );
+            return JSON.stringify({
+                iv: Array.from(iv).map(b => b.toString(16).padStart(2, '0')).join(''),
+                cipher: btoa(String.fromCharCode(...new Uint8Array(cipherBuffer)))
+            });
+        }
+
+        async function decryptPayload(rawMsgString) {
+            try {
+                const packet = JSON.parse(rawMsgString);
+                if (!cryptoKey || !packet.iv || !packet.cipher) return packet;
+                const iv = new Uint8Array(packet.iv.match(/.{1,2}/g).map(b => parseInt(b, 16)));
+                const cipherBytes = Uint8Array.from(atob(packet.cipher), c => c.charCodeAt(0));
+                const decryptedBuffer = await crypto.subtle.decrypt(
+                    { name: 'AES-GCM', iv },
+                    cryptoKey,
+                    cipherBytes
+                );
+                return JSON.parse(new TextDecoder().decode(decryptedBuffer));
+            } catch (err) {
+                return null;
+            }
+        }
+
+        /* ------------------ 1. 運行模式設定 (個人 / 廣播 / 接收) ------------------ */
         const urlParams = new URLSearchParams(window.location.search);
-        let currentRoomId = urlParams.get('room');
-        const isStudentMode = Boolean(currentRoomId);
+        const joinRoom = urlParams.get('room');
+        const joinKey = window.location.hash.replace('#', '');
+        const isReceiverMode = Boolean(joinRoom && joinKey);
 
-        if (!currentRoomId) {
-            // 老師端隨機產生專屬房間號
-            currentRoomId = 'room_' + Math.floor(100000 + Math.random() * 900000);
-        }
+        let currentMode = isReceiverMode ? 'receive' : 'solo'; // solo, broadcast, receive
+        let currentRoomId = joinRoom || '';
+        let currentSecretKey = joinKey || '';
 
-        const roleBadge = document.getElementById('roleBadge');
+        const statusDot = document.getElementById('statusDot');
+        const btnSolo = document.getElementById('btnSolo');
+        const btnBroadcast = document.getElementById('btnBroadcast');
         const toggleBtn = document.getElementById('toggleBtn');
-        const broadcastBtn = document.getElementById('broadcastBtn');
 
-        if (isStudentMode) {
-            broadcastBtn.style.display = 'none'; // 學生無需廣播按鈕
-            toggleBtn.style.display = 'none';    // 學生無需收音開關
-            roleBadge.innerText = '學生端: 連接中...';
-        } else {
-            roleBadge.innerText = '老師端: 連接中...';
+        let mqttClient = null;
+
+        function updateUIState() {
+            btnSolo.classList.remove('mode-active');
+            btnBroadcast.classList.remove('mode-active');
+            statusDot.className = 'status-dot';
+
+            if (currentMode === 'solo') {
+                btnSolo.classList.add('mode-active');
+                toggleBtn.style.display = 'flex';
+            } else if (currentMode === 'broadcast') {
+                btnBroadcast.classList.add('mode-active');
+                statusDot.classList.add('broadcast');
+                toggleBtn.style.display = 'flex';
+            } else if (currentMode === 'receive') {
+                btnSolo.style.display = 'none';
+                btnBroadcast.style.display = 'none';
+                toggleBtn.style.display = 'none'; // 接收端純觀看
+                statusDot.classList.add('receive');
+            }
         }
 
-        /* ------------------ 1. 3D 背景 ------------------ */
+        /* ------------------ 2. 靜態 3D 背景 ------------------ */
         const canvas = document.getElementById('threeCanvas');
         const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
         renderer.setSize(window.innerWidth, window.innerHeight);
@@ -535,7 +681,7 @@
         });
         renderStatic3D();
 
-        /* ------------------ 2. 繁體字校準 ------------------ */
+        /* ------------------ 3. 繁體字校準 ------------------ */
         let hkConverter = null;
         try {
             if (window.OpenCC) {
@@ -564,7 +710,7 @@
             toastTimer = setTimeout(() => fontToast.classList.remove('show'), 1500);
         }
 
-        /* ------------------ 3. 粵語句組引擎 ------------------ */
+        /* ------------------ 4. 粵語句組引擎 (純白高光聚焦) ------------------ */
         const QUESTION_ENDINGS = /(點解|係咪|係唔係|係未|得唔得|好唔好|幾時|邊個|邊度|邊處|點樣|點做|點算|成點|做咩|做乜|做乜嘢|嗎|下話|得未|好未|係咪呀|係唔係呀|點樣呀|做咩呀|邊個呀|幾時呀)$/;
         const EXCLAMATION_ENDINGS = /(太好喇|好犀利|超勁|正呀|好正|利害|搞錯|痴線|唔係卦|救命|嘩|哇|好嘢|真係誇張|真係正|勁呀|正話|好痛呀|好正呀)$/;
 
@@ -752,8 +898,8 @@
             currentGroup.fullText = renderGroupText(currentGroup, true);
             currentGroup.elem.textContent = currentGroup.fullText;
 
-            if (!isStudentMode) {
-                publishCloudData({ type: 'finalize', fullText: currentGroup.fullText });
+            if (currentMode === 'broadcast') {
+                broadcastSecurePayload({ type: 'finalize', fullText: currentGroup.fullText });
             }
 
             currentGroup = null;
@@ -787,8 +933,8 @@
                 confirmedPlainHistory += cleanClause;
                 if (confirmedPlainHistory.length > 1000) confirmedPlainHistory = confirmedPlainHistory.slice(-600);
 
-                if (!isStudentMode) {
-                    publishCloudData({ type: 'update_group', fullText: currentGroup.fullText });
+                if (currentMode === 'broadcast') {
+                    broadcastSecurePayload({ type: 'update_group', fullText: currentGroup.fullText });
                 }
 
                 if (currentGroup.validCount >= MAX_VALID_SENTENCES_PER_GROUP) {
@@ -804,16 +950,16 @@
             }
         }
 
-        /* ------------------ 4. 語音辨識（老師端） ------------------ */
+        /* ------------------ 5. 語音辨識機制 ------------------ */
         function handleSpeechInterim(interim) {
             if (!interim || !interim.trim()) {
                 interimPart.textContent = "";
-                if (!isStudentMode) publishCloudData({ type: 'interim', text: "" });
+                if (currentMode === 'broadcast') broadcastSecurePayload({ type: 'interim', text: "" });
                 return;
             }
             let delta = extractNonOverlappingDelta(convertToHK(interim.trim()));
             interimPart.textContent = delta || "";
-            if (!isStudentMode) publishCloudData({ type: 'interim', text: delta || "" });
+            if (currentMode === 'broadcast') broadcastSecurePayload({ type: 'interim', text: delta || "" });
             if (delta) scrollCantoToBottom();
         }
 
@@ -867,7 +1013,7 @@
             }, 80);
         }
 
-        if (SpeechRecognition && !isStudentMode) {
+        if (SpeechRecognition && !isReceiverMode) {
             recognition = new SpeechRecognition();
             recognition.continuous = true;
             recognition.interimResults = true;
@@ -896,7 +1042,6 @@
                 if (e.error === 'not-allowed') {
                     userWantsListening = false;
                     stopListeningUI();
-                    alert("請允許麥克風權限以進行提詞。");
                 } else scheduleSafeRestart();
             };
 
@@ -909,7 +1054,7 @@
         }
 
         function toggleSpeech() {
-            if (!recognition) return alert("瀏覽器不支援語音辨識，請使用 Chrome、Safari 或 Edge。");
+            if (!recognition) return alert("瀏覽器不支援語音辨識。");
             if (userWantsListening) {
                 userWantsListening = false;
                 if (restartDebounce) clearTimeout(restartDebounce);
@@ -917,12 +1062,10 @@
                 releaseWakeLock();
                 try { recognition.stop(); } catch(e) {}
                 stopListeningUI();
-                showToast("已停止收音");
             } else {
                 userWantsListening = true;
                 acquireWakeLock();
                 scheduleSafeRestart();
-                showToast("收音已啟動");
             }
         }
 
@@ -933,74 +1076,81 @@
             interimPart.textContent = "";
         }
 
-        /* ------------------ 5. 雲端 MQTT 廣播引擎 (100% 穿透保證) ------------------ */
-        let mqttClient = null;
-        const TOPIC = `cantonese_teleprompter/${currentRoomId}`;
-
-        function initCloudSync() {
-            // 使用公開高可用 WebSocket Broker，走標準 443 SSL 埠，永不被校園網阻擋
-            mqttClient = mqtt.connect('wss://broker.emqx.io:8084/mqtt', {
-                clean: true,
-                connectTimeout: 4000,
-                reconnectPeriod: 2000
-            });
-
-            mqttClient.on('connect', () => {
-                roleBadge.classList.add('connected');
-                if (isStudentMode) {
-                    roleBadge.innerText = '學生端: 已連線';
-                    mqttClient.subscribe(TOPIC);
-                    showToast("已成功同步老師頻道！");
-                } else {
-                    roleBadge.innerText = '老師端: 廣播中';
-                    setupQRCode(currentRoomId);
-                }
-            });
-
-            mqttClient.on('message', (topic, message) => {
-                if (!isStudentMode) return;
-                try {
-                    const data = JSON.parse(message.toString());
-                    handleReceivedData(data);
-                } catch (e) {}
-            });
-
-            mqttClient.on('offline', () => {
-                roleBadge.classList.remove('connected');
-                roleBadge.innerText = '連線中斷...';
-            });
-        }
-
-        function publishCloudData(payload) {
-            if (mqttClient && mqttClient.connected) {
-                mqttClient.publish(TOPIC, JSON.stringify(payload));
+        /* ------------------ 6. 端到端加密雲端廣播連線 ------------------ */
+        async function broadcastSecurePayload(payload) {
+            if (mqttClient && mqttClient.connected && currentMode === 'broadcast') {
+                const encryptedString = await encryptPayload(payload);
+                mqttClient.publish(`canto/${currentRoomId}`, encryptedString);
             }
         }
 
-        function handleReceivedData(data) {
-            if (data.type === 'interim') {
-                interimPart.textContent = data.text;
-                if (data.text) scrollCantoToBottom();
-            } else if (data.type === 'update_group') {
-                if (!currentGroup) currentGroup = createNewGroup();
-                currentGroup.fullText = data.fullText;
-                currentGroup.elem.textContent = data.fullText;
-                refreshGroupHighlights();
-                scrollCantoToBottom();
-            } else if (data.type === 'finalize') {
-                if (currentGroup) {
+        async function initReceiverCloud() {
+            await initEncryptionKey(currentSecretKey);
+            mqttClient = mqtt.connect('wss://broker.emqx.io:8084/mqtt', { clean: true });
+            
+            mqttClient.on('connect', () => {
+                mqttClient.subscribe(`canto/${currentRoomId}`);
+            });
+
+            mqttClient.on('message', async (topic, msg) => {
+                const data = await decryptPayload(msg.toString());
+                if (!data) return;
+
+                if (data.type === 'interim') {
+                    interimPart.textContent = data.text;
+                    if (data.text) scrollCantoToBottom();
+                } else if (data.type === 'update_group') {
+                    if (!currentGroup) currentGroup = createNewGroup();
                     currentGroup.fullText = data.fullText;
                     currentGroup.elem.textContent = data.fullText;
-                    currentGroup = null;
                     refreshGroupHighlights();
+                    scrollCantoToBottom();
+                } else if (data.type === 'finalize') {
+                    if (currentGroup) {
+                        currentGroup.fullText = data.fullText;
+                        currentGroup.elem.textContent = data.fullText;
+                        currentGroup = null;
+                        refreshGroupHighlights();
+                    }
                 }
-            }
+            });
         }
 
-        function setupQRCode(roomId) {
-            const currentUrl = window.location.origin + window.location.pathname + '?room=' + roomId;
-            document.getElementById('roomLinkText').innerText = currentUrl;
-            
+        async function switchToBroadcastMode() {
+            if (currentMode === 'broadcast') {
+                openQrModal();
+                return;
+            }
+            currentMode = 'broadcast';
+
+            if (!currentRoomId) currentRoomId = 'r_' + Math.floor(100000 + Math.random() * 900000);
+            if (!currentSecretKey) currentSecretKey = Math.random().toString(36).substring(2, 12);
+
+            await initEncryptionKey(currentSecretKey);
+
+            if (!mqttClient) {
+                mqttClient = mqtt.connect('wss://broker.emqx.io:8084/mqtt', { clean: true });
+            }
+
+            updateUIState();
+            setupMinimalQR();
+            openQrModal();
+        }
+
+        function switchToSoloMode() {
+            currentMode = 'solo';
+            if (mqttClient) {
+                try { mqttClient.end(); } catch(e) {}
+                mqttClient = null;
+            }
+            updateUIState();
+        }
+
+        function setupMinimalQR() {
+            const currentUrl = `${window.location.origin}${window.location.pathname}?room=${currentRoomId}#${currentSecretKey}`;
+            const linkElem = document.getElementById('roomLinkText');
+            linkElem.innerText = currentUrl;
+
             const qrContainer = document.getElementById('qrContainer');
             qrContainer.innerHTML = "";
             new QRCode(qrContainer, {
@@ -1013,13 +1163,24 @@
             });
         }
 
-        const broadcastModal = document.getElementById('broadcastModal');
-        function openBroadcastModal() { broadcastModal.classList.add('active'); }
-        function closeBroadcastModal() { broadcastModal.classList.remove('active'); }
+        function copyShareLink() {
+            const text = document.getElementById('roomLinkText').innerText;
+            navigator.clipboard.writeText(text).then(() => {
+                showToast("已複製連結");
+            });
+        }
 
-        initCloudSync();
+        const qrModal = document.getElementById('qrModal');
+        function openQrModal() { qrModal.classList.add('active'); }
+        function closeQrModal() { qrModal.classList.remove('active'); }
 
-        /* ------------------ 6. 字體調節 ------------------ */
+        // 初始化
+        updateUIState();
+        if (isReceiverMode) {
+            initReceiverCloud();
+        }
+
+        /* ------------------ 7. 字體調節 ------------------ */
         const fontScales = [
             { name: "標準", canto: "2.15rem" },
             { name: "放大", canto: "2.60rem" },
@@ -1035,7 +1196,7 @@
             scrollCantoToBottom();
         }
 
-        /* ------------------ 7. 粵拼注音與朗讀 ------------------ */
+        /* ------------------ 8. 粵拼注音與朗讀 ------------------ */
         const modal = document.getElementById('phoneticModal');
         const modalContent = document.getElementById('modalContent');
         const ttsStatus = document.getElementById('ttsStatus');
@@ -1064,9 +1225,9 @@
                             continue;
                         }
                         if (rawJp) {
-                            html += `<ruby style="display:inline-flex; flex-direction:column-reverse; align-items:center; margin:2px 4px; line-height:1;"><span style="font-size:1.65rem; font-weight:600; color:#f8fafc;">${char}</span><rt style="font-size:0.82rem; color:var(--ruby); margin-bottom:6px;">${rawJp}</rt></ruby>`;
+                            html += `<ruby class="jp-ruby"><span class="c-char">${char}</span><rt class="c-rt">${rawJp}</rt></ruby>`;
                         } else {
-                            html += `<span style="font-size:1.65rem; color:#64748b; margin:0 3px;">${char}</span>`;
+                            html += `<span class="jp-punct">${char}</span>`;
                         }
                     }
                     return html;
@@ -1080,12 +1241,12 @@
             currentPureText = cleanString(fullText);
 
             if (!fullText) {
-                modalContent.innerHTML = "<div style='color:#64748b; padding:10px;'>暫無文字</div>";
+                modalContent.innerHTML = "<div style='color:#64748b; font-size:1rem; padding:10px;'>暫無文字</div>";
                 modal.classList.add('active');
                 return;
             }
 
-            modalContent.innerHTML = "<div style='color:#94a3b8; width:100%; text-align:center; padding:30px 0;'>粵拼注音生成中...</div>";
+            modalContent.innerHTML = "<div style='color:#94a3b8; font-size:1rem; width:100%; text-align:center; padding:30px 0;'>粵拼注音生成中...</div>";
             ttsStatus.innerText = "標音中";
             modal.classList.add('active');
 
@@ -1101,18 +1262,21 @@
 
         function closeModalOnBackdrop(event) {
             if (event.target === modal) closePhoneticModal();
-            if (event.target === broadcastModal) closeBroadcastModal();
+            if (event.target === qrModal) closeQrModal();
         }
 
         function speakCurrentText() {
             if (!('speechSynthesis' in window)) return;
             window.speechSynthesis.cancel();
+
             const utter = new SpeechSynthesisUtterance(currentPureText);
             utter.lang = 'zh-HK';
             utter.rate = 0.85;
+
             utter.onstart = () => ttsStatus.innerText = "朗讀中";
             utter.onend = () => ttsStatus.innerText = "完畢";
             utter.onerror = () => ttsStatus.innerText = "就緒";
+
             window.speechSynthesis.speak(utter);
         }
     </script>
