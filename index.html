@@ -596,48 +596,57 @@
         /**
          * 前綴滑動去重算法：防止瀏覽器連續語音重複拋出舊字
          */
-        function extractNonOverlappingDelta(incomingText) {
-            if (!incomingText) return "";
-            const cleanIncoming = cleanString(incomingText);
-            if (!cleanIncoming) return "";
-            if (!confirmedPlainHistory) return incomingText.trim();
+       /**
+ * 前綴滑動與子串去重算法（強化版：徹底攔截歷史回流重複）
+ */
+function extractNonOverlappingDelta(incomingText) {
+    if (!incomingText) return "";
+    const cleanIncoming = cleanString(incomingText);
+    if (!cleanIncoming) return "";
+    if (!confirmedPlainHistory) return incomingText.trim();
 
-            const tailCheck = confirmedPlainHistory.slice(-Math.max(cleanIncoming.length + 15, 60));
-            if (tailCheck.endsWith(cleanIncoming)) {
-                return "";
-            }
+    // 1. 如果收到的文字（大於 3 字）已經完全出現在最近歷史中，100% 是引擎重複回拋，直接丟棄！
+    const recentHistory = confirmedPlainHistory.slice(-200);
+    if (cleanIncoming.length >= 3 && recentHistory.includes(cleanIncoming)) {
+        return "";
+    }
 
-            const maxLen = Math.min(tailCheck.length, cleanIncoming.length);
-            let overlapLen = 0;
-            for (let len = maxLen; len >= 1; len--) {
-                if (tailCheck.endsWith(cleanIncoming.slice(0, len))) {
-                    overlapLen = len;
-                    break;
-                }
-            }
+    // 2. 如果歷史尾端完全等於即時輸入，直接丟棄
+    if (recentHistory.endsWith(cleanIncoming)) {
+        return "";
+    }
 
-            if (overlapLen === cleanIncoming.length) {
-                return "";
-            }
-
-            if (overlapLen > 0) {
-                let cleanCount = 0;
-                let cutIndex = 0;
-                for (let i = 0; i < incomingText.length; i++) {
-                    if (!/[，。？！、\s\.,!\?…—]/.test(incomingText[i])) {
-                        cleanCount++;
-                    }
-                    if (cleanCount === overlapLen) {
-                        cutIndex = i + 1;
-                        break;
-                    }
-                }
-                return incomingText.slice(cutIndex).trim();
-            }
-
-            return incomingText.trim();
+    // 3. 滑動窗口比對尾端重疊
+    const maxLen = Math.min(recentHistory.length, cleanIncoming.length);
+    let overlapLen = 0;
+    for (let len = maxLen; len >= 1; len--) {
+        if (recentHistory.endsWith(cleanIncoming.slice(0, len))) {
+            overlapLen = len;
+            break;
         }
+    }
 
+    if (overlapLen === cleanIncoming.length) {
+        return "";
+    }
+
+    if (overlapLen > 0) {
+        let cleanCount = 0;
+        let cutIndex = 0;
+        for (let i = 0; i < incomingText.length; i++) {
+            if (!/[，。？！、\s\.,!\?…—]/.test(incomingText[i])) {
+                cleanCount++;
+            }
+            if (cleanCount === overlapLen) {
+                cutIndex = i + 1;
+                break;
+            }
+        }
+        return incomingText.slice(cutIndex).trim();
+    }
+
+    return incomingText.trim();
+}
         /**
          * 即使沒有語音停頓，亦依據粵語連詞與語氣助詞智能切分（杜絕一大坨無標點文字）
          */
@@ -869,60 +878,61 @@ function splitIntoSemanticClauses(rawText) {
         /**
          * 提交說話片段（嚴格執行：短停頓同組用標點分開、五字以下不計數、每三句成一組、只有最新一個高光）
          */
-        function commitSpeechDelta(rawText) {
-            clearTimeout(longPauseTimer);
+      function commitSpeechDelta(rawText) {
+    clearTimeout(longPauseTimer);
 
-            let delta = convertToHK(rawText).trim();
-            delta = extractNonOverlappingDelta(delta);
-            if (!delta) return;
+    let delta = convertToHK(rawText).trim();
+    delta = extractNonOverlappingDelta(delta);
+    if (!delta) return;
 
-            // 智能斷句分析（處理無停頓長句或多子句情況）
-            const semanticClauses = splitIntoSemanticClauses(delta);
-            if (semanticClauses.length === 0) return;
+    // 智能斷句分析
+    const semanticClauses = splitIntoSemanticClauses(delta);
+    if (semanticClauses.length === 0) return;
 
-            for (const clause of semanticClauses) {
-                const cleanLen = cleanString(clause).length;
-                if (cleanLen === 0) continue;
+    for (const clause of semanticClauses) {
+        const cleanLen = cleanString(clause).length;
+        if (cleanLen === 0) continue;
 
-                // 核心規則：若小於等於 5 字，不計算作獨立大句子；大於 5 字才計算一句
-                const isValidSentence = cleanLen > 5;
-
-                // 若當前無句組（或上一組已滿3句被封閉），建立全新句組
-                if (!currentGroup) {
-                    currentGroup = createNewGroup();
-                }
-
-                // 放入當前句組中（同一句組，短停頓放在一起）
-                currentGroup.clauses.push(clause);
-                if (isValidSentence) {
-                    currentGroup.validCount++;
-                }
-
-                // 即時重新渲染：組內新句與舊句自動加上逗號等合適標點分隔！
-                currentGroup.fullText = renderGroupText(currentGroup, false);
-                currentGroup.elem.textContent = currentGroup.fullText;
-
-                confirmedPlainHistory += cleanString(clause);
-                if (confirmedPlainHistory.length > 350) {
-                    confirmedPlainHistory = confirmedPlainHistory.slice(-250);
-                }
-
-                // 核心規則：如果集滿 3 句有效句子（中間可能穿插有 5 字以下的句子，總共可達 4~5 句），強制結算當前句組！
-                if (currentGroup.validCount >= MAX_VALID_SENTENCES_PER_GROUP) {
-                    finalizeCurrentGroup();
-                }
-            }
-
-            refreshGroupHighlights();
-            scrollCantoToBottom();
-
-            // 若當前句組未集滿 3 句，啟動自然長停頓計時器（1.4 秒無聲判定思考或話題完結）
-            if (currentGroup) {
-                longPauseTimer = setTimeout(() => {
-                    finalizeCurrentGroup();
-                }, LONG_PAUSE_THRESHOLD);
-            }
+        const cleanClause = cleanString(clause);
+        // 【雙重防護】：若該小句已經出現在最近的歷史結尾，不重複寫入
+        if (confirmedPlainHistory.endsWith(cleanClause)) {
+            continue;
         }
+
+        const isValidSentence = cleanLen > 5;
+
+        if (!currentGroup) {
+            currentGroup = createNewGroup();
+        }
+
+        currentGroup.clauses.push(clause);
+        if (isValidSentence) {
+            currentGroup.validCount++;
+        }
+
+        currentGroup.fullText = renderGroupText(currentGroup, false);
+        currentGroup.elem.textContent = currentGroup.fullText;
+
+        // 加大歷史記錄長度，由原本的 350 改為 1000，確保長篇提詞不會遺忘已說過的字
+        confirmedPlainHistory += cleanClause;
+        if (confirmedPlainHistory.length > 1000) {
+            confirmedPlainHistory = confirmedPlainHistory.slice(-600);
+        }
+
+        if (currentGroup.validCount >= MAX_VALID_SENTENCES_PER_GROUP) {
+            finalizeCurrentGroup();
+        }
+    }
+
+    refreshGroupHighlights();
+    scrollCantoToBottom();
+
+    if (currentGroup) {
+        longPauseTimer = setTimeout(() => {
+            finalizeCurrentGroup();
+        }, LONG_PAUSE_THRESHOLD);
+    }
+}
 
         /* ------------------ 3. 語音辨識機制（Web Speech API） ------------------ */
 
@@ -1054,20 +1064,17 @@ function splitIntoSemanticClauses(rawText) {
                 }
             };
 
-            recognition.onend = () => {
-                isEngineRunning = false;
-                const pending = interimPart.textContent;
-                interimPart.textContent = "";
-                if (pending && cleanString(pending)) {
-                    commitSpeechDelta(pending);
-                }
+          recognition.onend = () => {
+    isEngineRunning = false;
+    // 斷開時直接清空未定稿的暫存區，絕不強行寫入主提詞流，避免無標點重複文字湧現
+    interimPart.textContent = "";
 
-                if (userWantsListening) {
-                    scheduleSafeRestart();
-                } else {
-                    stopListeningUI();
-                }
-            };
+    if (userWantsListening) {
+        scheduleSafeRestart();
+    } else {
+        stopListeningUI();
+    }
+};
         }
 
         function stopListeningSession() {
