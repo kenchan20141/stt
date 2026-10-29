@@ -1062,7 +1062,13 @@
             autoScrollCanto = (cantoScroll.scrollHeight - cantoScroll.scrollTop - cantoScroll.clientHeight) < 120;
         });
 
-        function scrollCantoToBottom() {
+      function scrollCantoToBottom() {
+            // 【核心防護】：如果是置頂懸浮窗模式，垂直方向永遠鎖定歸零，絕不向上頂起！
+            if (pipWindow && !pipWindow.closed) {
+                cantoScroll.scrollTop = 0;
+                return;
+            }
+
             if (autoScrollCanto) {
                 requestAnimationFrame(() => {
                     cantoScroll.scrollTop = cantoScroll.scrollHeight;
@@ -1215,13 +1221,32 @@
             return newGroup;
         }
 
-        function finalizeCurrentGroup() {
+       function finalizeCurrentGroup() {
             clearTimeout(longPauseTimer);
             longPauseTimer = null;
             if (!currentGroup) return;
 
             currentGroup.fullText = renderGroupText(currentGroup, true);
             currentGroup.elem.textContent = currentGroup.fullText;
+
+            // 【超長走馬燈計算】：確認停頓時，若句子超出螢幕，自動平滑走字
+            if (pipWindow && !pipWindow.closed) {
+                cantoScroll.scrollLeft = 0; // 重設滾動
+                currentGroup.elem.classList.remove('pip-marquee');
+
+                requestAnimationFrame(() => {
+                    const containerWidth = cantoScroll.clientWidth - 48;
+                    const textWidth = currentGroup.elem.scrollWidth;
+
+                    if (textWidth > containerWidth) {
+                        const distance = textWidth - containerWidth + 30;
+                        const duration = Math.max(6, distance / 45); // 依字數計算最舒適的閱讀滑行秒數
+                        currentGroup.elem.style.setProperty('--marquee-dist', `-${distance}px`);
+                        currentGroup.elem.style.setProperty('--marquee-duration', `${duration}s`);
+                        currentGroup.elem.classList.add('pip-marquee');
+                    }
+                });
+            }
 
             if (currentMode === 'broadcast') {
                 broadcastSecurePayload({ type: 'finalize', fullText: currentGroup.fullText });
@@ -1276,7 +1301,7 @@
         }
 
         /* ------------------ 5. 語音辨識機制 ------------------ */
-        function handleSpeechInterim(interim) {
+       function handleSpeechInterim(interim) {
             if (!interim || !interim.trim()) {
                 interimPart.textContent = "";
                 if (currentMode === 'broadcast') broadcastSecurePayload({ type: 'interim', text: "" });
@@ -1285,9 +1310,18 @@
             let delta = extractNonOverlappingDelta(convertToHK(interim.trim()));
             interimPart.textContent = delta || "";
             if (currentMode === 'broadcast') broadcastSecurePayload({ type: 'interim', text: delta || "" });
-            if (delta) scrollCantoToBottom();
-        }
 
+            // 【向左平滑推移】：如果在懸浮窗模式，將捲軸錨定在最右側，最新講的字永遠在視野內
+            if (pipWindow && !pipWindow.closed) {
+                requestAnimationFrame(() => {
+                    if (cantoScroll.scrollWidth > cantoScroll.clientWidth) {
+                        cantoScroll.scrollLeft = cantoScroll.scrollWidth - cantoScroll.clientWidth + 10;
+                    }
+                });
+            } else if (delta) {
+                scrollCantoToBottom();
+            }
+        }
         function handleSpeechFinal(finalText) {
             if (!finalText || !finalText.trim()) return;
             const cleanFinal = cleanString(finalText);
@@ -1648,7 +1682,7 @@
             window.speechSynthesis.speak(utter);
         }
 
-        /* ------------------ 9. 桌面置頂懸浮字幕條 ------------------ */
+    /* ------------------ 9. 桌面置頂懸浮字幕條 ------------------ */
         let pipWindow = null;
 
         async function togglePipPrompter() {
@@ -1668,7 +1702,9 @@
                 const availTop = window.screen.availTop ?? 0;
                 const availW = window.screen.availWidth || window.screen.width || window.innerWidth;
                 const availH = window.screen.availHeight || window.screen.height || window.innerHeight;
-                const targetH = 80;
+                
+                // 設定為 92px，扣除系統標題列後實質內容高度為 58px，完全符合單行黃金比例
+                const targetH = 92;
 
                 pipWindow = await window.documentPictureInPicture.requestWindow({
                     width: availW,
@@ -1701,56 +1737,112 @@
                         margin: 0 !important;
                         padding: 0 !important;
                         background: #121213 !important;
-                        height: 100vh !important;
+                        height: 100% !important;
                         width: 100vw !important;
                         overflow: hidden !important;
                         display: flex !important;
-                        align-items: center !important;
+                        align-items: center !important;     /* 垂直絕對置中 */
                         justify-content: center !important;
                     }
-                    .viewport-container::before, .viewport-container::after {
+
+                    /* 排除所有底部 spacer 與雜項元素 */
+                    .viewport-container::before, .viewport-container::after,
+                    .bottom-safe-spacer {
                         display: none !important;
+                        height: 0 !important;
+                        width: 0 !important;
+                        margin: 0 !important;
+                        padding: 0 !important;
                     }
+
+                    /* 外層容器：徹底鎖死 Y 軸滾動，只允許 X 軸向左推移 */
                     .scroll-body {
                         height: 100% !important;
                         width: 100% !important;
-                        padding: 0 24px !important;
+                        padding: 0 28px !important;
                         margin: 0 !important;
                         box-sizing: border-box !important;
-                        overflow: hidden !important;
+                        overflow-x: auto !important;
+                        overflow-y: hidden !important;       /* 鎖死 Y 軸 */
+                        scrollbar-width: none !important;
                         display: flex !important;
-                        align-items: center !important;
+                        flex-direction: row !important;      /* 必須是橫向 row */
+                        align-items: center !important;     /* 垂直絕對置中 */
                         justify-content: center !important;
                     }
+                    .scroll-body::-webkit-scrollbar {
+                        display: none !important;
+                    }
+
+                    /* 文字串流容器：強制橫向，解除 column 頂部對齊問題 */
                     .cantonese-stream {
                         display: flex !important;
-                        align-items: center !important;
+                        flex-direction: row !important;      /* 強制橫向排版 */
+                        align-items: center !important;     /* 垂直絕對置中 */
                         justify-content: center !important;
-                        text-align: center !important;
-                        gap: 8px !important;
-                        width: 100% !important;
-                        font-size: var(--cantonese-size, 2.15rem) !important;
-                        line-height: 1.25 !important;
                         white-space: nowrap !important;
-                        overflow: hidden !important;
-                        text-overflow: ellipsis !important;
+                        gap: 0 !important;
+                        margin: 0 auto !important;
+                        padding: 0 !important;
+                        height: 100% !important;
+                        font-size: var(--cantonese-size, 1.95rem) !important;
+                        line-height: 1 !important;          /* 緊湊行高，解決上下溢出 */
                         font-family: var(--font-serif) !important;
                     }
+
                     .phrase-group.past {
                         display: none !important;
                     }
+
+                    /* 臨時句子出現時隱藏上一句 */
+                    #cantoStream:has(#interimPart:not(:empty)) .phrase-group.active-latest {
+                        display: none !important;
+                    }
+
+                    /* 臨時文字：向左推移、無省略號、垂直居中 */
+                    .phrase-item.interim {
+                        display: inline-block !important;
+                        color: #B89B72 !important;
+                        font-weight: 700 !important;
+                        text-shadow: 0 0 16px rgba(184, 155, 114, 0.35) !important;
+                        white-space: nowrap !important;
+                        line-height: 1 !important;
+                        vertical-align: middle !important;
+                        text-overflow: clip !important;
+                    }
+                    .phrase-item.interim:empty {
+                        display: none !important;
+                    }
+
+                    /* 確認文字：基準置中、無省略號、垂直居中 */
                     .phrase-group.active-latest {
-                        display: inline !important;
+                        display: inline-block !important;
                         color: #E6E2D6 !important;
                         font-weight: 700 !important;
                         text-shadow: 0 0 16px rgba(230, 226, 214, 0.45) !important;
+                        white-space: nowrap !important;
+                        line-height: 1 !important;
+                        vertical-align: middle !important;
+                        text-overflow: clip !important;
+                        margin: 0 auto !important;
                     }
-                    .phrase-item.interim {
-                        display: inline !important;
-                        color: #B89B72 !important;
+
+                    /* 超長確認句：影院走馬燈動畫 */
+                    .phrase-group.active-latest.pip-marquee {
+                        margin: 0 !important;
+                        animation: pipMarquee var(--marquee-duration, 8s) cubic-bezier(0.25, 0.1, 0.25, 1) infinite !important;
                     }
-                    .bottom-safe-spacer {
-                        display: none !important;
+
+                    @keyframes pipMarquee {
+                        0%, 20% {
+                            transform: translateX(0); /* 前 20% 時間停在句首 */
+                        }
+                        78%, 92% {
+                            transform: translateX(var(--marquee-dist, -50%)); /* 平緩滑動至句尾停留 */
+                        }
+                        100% {
+                            transform: translateX(0); /* 返回句首 */
+                        }
                     }
                 `;
                 pipWindow.document.head.appendChild(pipStyle);
