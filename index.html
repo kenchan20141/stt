@@ -561,21 +561,62 @@
             box-shadow: 0 0 10px rgba(56, 189, 248, 0.25);
         }
 
-        .primary-action-btn {
-            background: #0284c7;
-            color: #ffffff;
-            border: none;
-            padding: 11px 20px;
-            border-radius: 8px;
-            font-weight: 600;
-            font-size: 0.95rem;
-            cursor: pointer;
-            width: 100%;
-            transition: all 0.2s ease;
-        }
+     .join-icon-action-btn {
+    width: 52px;
+    height: 52px;
+    margin: 6px auto 0 auto;
+    border-radius: 14px;
+    border: 1px solid rgba(56, 189, 248, 0.3);
+    background: linear-gradient(145deg, rgba(15, 23, 42, 0.8), rgba(8, 12, 20, 0.95));
+    color: #38bdf8;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    box-shadow: 
+        0 4px 16px rgba(0, 0, 0, 0.5),
+        inset 0 1px 0 rgba(255, 255, 255, 0.08);
+    transition: all 0.28s cubic-bezier(0.16, 1, 0.3, 1);
+    outline: none;
+    position: relative;
+    overflow: hidden;
+}
 
-        .primary-action-btn:hover { background: #0369a1; }
-        .primary-action-btn:active { transform: scale(0.98); }
+/* 懸停狀態：柔和的天藍色霓虹微光與向右輕微微動 */
+.join-icon-action-btn:hover {
+    border-color: rgba(56, 189, 248, 0.7);
+    color: #ffffff;
+    background: linear-gradient(145deg, rgba(2, 132, 199, 0.25), rgba(15, 23, 42, 0.9));
+    box-shadow: 
+        0 0 22px rgba(56, 189, 248, 0.35),
+        inset 0 0 12px rgba(56, 189, 248, 0.15);
+    transform: translateY(-2px);
+}
+
+.join-icon-action-btn:active {
+    transform: translateY(1px) scale(0.94);
+    box-shadow: 0 0 10px rgba(56, 189, 248, 0.2);
+}
+
+/* SVG 圖示細節與推進動畫 */
+.join-icon-action-btn svg {
+    width: 22px;
+    height: 22px;
+    transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.join-icon-action-btn:hover svg {
+    transform: translateX(2px);
+}
+
+.join-icon-action-btn .node-ring {
+    stroke-opacity: 0.6;
+    transition: stroke-opacity 0.25s ease;
+}
+
+.join-icon-action-btn:hover .node-ring {
+    stroke-opacity: 1;
+}
     </style>
 </head>
 <body>
@@ -723,7 +764,14 @@
                     <input id="inputSecretKey" type="text" class="app-input" placeholder="輸入連線密鑰" autocomplete="off" />
                 </div>
                
-                <button class="primary-action-btn" onclick="submitJoinRoom()">連線</button>
+           <button class="join-icon-action-btn" title="立即連線" aria-label="立即連線" onclick="submitJoinRoom()">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <!-- 連線接點 + 前進發射箭頭 -->
+        <path class="arrow-stem" d="M4 12h11"></path>
+        <path class="arrow-head" d="M11 8l4 4-4 4"></path>
+        <path class="node-ring" d="M19 8v8"></path>
+    </svg>
+</button>
             </div>
         </div>
     </div>
