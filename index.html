@@ -269,7 +269,6 @@
             animation: phrasePop 0.22s cubic-bezier(0.16, 1, 0.3, 1) forwards;
         }
 
-        /* 移除任何藍色條柱或背景塊，保持乾淨純文字 */
         .phrase-item.interim {
             color: #f8fafc;
             font-weight: 700;
@@ -405,7 +404,7 @@
             align-items: center;
         }
 
-        /* 極簡 QR 視窗樣式 */
+        /* QR 視窗樣式 */
         #qrContainer {
             background: #ffffff;
             padding: 14px;
@@ -418,8 +417,8 @@
 
         #roomLinkText {
             font-family: monospace;
-            font-size: 0.8rem;
-            color: #38bdf8;
+            font-size: 0.78rem;
+            color: #94a3b8;
             word-break: break-all;
             cursor: pointer;
             background: rgba(255, 255, 255, 0.04);
@@ -429,6 +428,88 @@
             width: 100%;
             text-align: center;
         }
+
+        /* 房間代碼卡片 */
+        .pin-display-box {
+            display: flex;
+            gap: 12px;
+            width: 100%;
+            justify-content: center;
+        }
+
+        .pin-item {
+            background: rgba(255, 255, 255, 0.04);
+            border: 1px solid rgba(56, 189, 248, 0.25);
+            padding: 8px 14px;
+            border-radius: 8px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            flex: 1;
+        }
+
+        .pin-label {
+            font-size: 0.72rem;
+            color: #94a3b8;
+            margin-bottom: 2px;
+        }
+
+        .pin-val {
+            font-family: monospace;
+            font-size: 1.15rem;
+            font-weight: 700;
+            color: #38bdf8;
+            letter-spacing: 1.2px;
+        }
+
+        /* 常用表單輸入樣式 */
+        .input-group {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            width: 100%;
+            text-align: left;
+        }
+
+        .input-label {
+            font-size: 0.82rem;
+            color: #94a3b8;
+            font-family: "Noto Sans HK", sans-serif;
+        }
+
+        .app-input {
+            width: 100%;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            padding: 10px 14px;
+            border-radius: 8px;
+            color: #ffffff;
+            font-size: 0.95rem;
+            outline: none;
+            transition: all 0.2s ease;
+        }
+
+        .app-input:focus {
+            border-color: #38bdf8;
+            background: rgba(255, 255, 255, 0.08);
+            box-shadow: 0 0 10px rgba(56, 189, 248, 0.25);
+        }
+
+        .primary-action-btn {
+            background: #0284c7;
+            color: #ffffff;
+            border: none;
+            padding: 11px 20px;
+            border-radius: 8px;
+            font-weight: 600;
+            font-size: 0.95rem;
+            cursor: pointer;
+            width: 100%;
+            transition: all 0.2s ease;
+        }
+
+        .primary-action-btn:hover { background: #0369a1; }
+        .primary-action-btn:active { transform: scale(0.98); }
     </style>
 </head>
 <body>
@@ -443,14 +524,14 @@
                     <span id="statusDot" class="status-dot"></span>
                 </div>
                 <div class="btn-group">
-                    <!-- 按鈕 1：個人版 -->
+                    <!-- 個人版 -->
                     <button id="btnSolo" class="icon-btn mode-active" title="個人版" onclick="switchToSoloMode()">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
                             <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
                             <circle cx="12" cy="7" r="4"></circle>
                         </svg>
                     </button>
-                    <!-- 按鈕 2：廣播版 (老師用) -->
+                    <!-- 廣播版 (主持發布) -->
                     <button id="btnBroadcast" class="icon-btn" title="廣播版" onclick="switchToBroadcastMode()">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
                             <path d="M4.9 19.1C1 15.2 1 8.8 4.9 4.9"></path>
@@ -458,6 +539,14 @@
                             <circle cx="12" cy="12" r="2"></circle>
                             <path d="M16.2 7.8c2.3 2.3 2.3 6.1 0 8.5"></path>
                             <path d="M19.1 4.9C23 8.8 23 15.1 19.1 19"></path>
+                        </svg>
+                    </button>
+                    <!-- 加入觀看 (專為無相機電腦/接收端設計) -->
+                    <button id="btnJoinModal" class="icon-btn" title="輸入代碼加入觀看" onclick="openJoinModal()">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"></path>
+                            <polyline points="10 17 15 12 10 7"></polyline>
+                            <line x1="15" y1="12" x2="3" y2="12"></line>
                         </svg>
                     </button>
                     <!-- 粵拼注音與朗讀 -->
@@ -476,16 +565,14 @@
                             <path d="M14 13.5H19"></path>
                         </svg>
                     </button>
-
-<!-- 按鈕：置頂懸浮字幕條 -->
-<button id="btnPip" class="icon-btn" title="螢幕底置頂字幕" onclick="togglePipPrompter()">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
-        <rect x="2" y="4" width="20" height="13" rx="2"></rect>
-        <path d="M2 17h20"></path>
-        <line x1="7" y1="20" x2="17" y2="20"></line>
-    </svg>
-</button>
-                    
+                    <!-- 螢幕底置頂懸浮字幕條 -->
+                    <button id="btnPip" class="icon-btn" title="螢幕底置頂字幕" onclick="togglePipPrompter()">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+                            <rect x="2" y="4" width="20" height="13" rx="2"></rect>
+                            <path d="M2 17h20"></path>
+                            <line x1="7" y1="20" x2="17" y2="20"></line>
+                        </svg>
+                    </button>
                     <!-- 麥克風開關 -->
                     <button id="toggleBtn" class="icon-btn power-btn" title="開關" onclick="toggleSpeech()">
                         <svg id="playIcon" viewBox="0 0 24 24" fill="currentColor">
@@ -512,22 +599,64 @@
         </div>
     </main>
 
-    <!-- 極簡 QR 彈窗 (僅保留 CODE 與 網址) -->
+    <!-- 廣播分享視窗 (保留 QR Code 與完整連結，額外新增無相機電腦專用短碼) -->
     <div id="qrModal" class="modal-overlay" onclick="closeModalOnBackdrop(event)">
-        <div class="modal-window" style="max-width: 340px; text-align: center;">
-            <div class="modal-header" style="justify-content: flex-end; border: none; padding-bottom: 0;">
+        <div class="modal-window" style="max-width: 360px; text-align: center;">
+            <div class="modal-header">
+                <span style="font-weight: 600;">廣播邀請與配對</span>
                 <button class="icon-btn" style="width:28px; height:28px;" onclick="closeQrModal()">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
                 </button>
             </div>
-            <div class="modal-body" style="display:flex; flex-direction:column; align-items:center; gap:16px; padding-top: 8px;">
+            <div class="modal-body" style="display:flex; flex-direction:column; align-items:center; gap:14px; padding: 20px;">
                 <div id="qrContainer"></div>
-                <div id="roomLinkText" onclick="copyShareLink()" title="點擊複製"></div>
+
+                <!-- 無相機電腦專用：超短代碼與金鑰 -->
+                <div class="pin-display-box">
+                    <div class="pin-item">
+                        <span class="pin-label">房間號</span>
+                        <span id="qrRoomCodeDisplay" class="pin-val">------</span>
+                    </div>
+                    <div class="pin-item">
+                        <span class="pin-label">密鑰</span>
+                        <span id="qrSecretKeyDisplay" class="pin-val" style="color: #f59e0b;">------</span>
+                    </div>
+                </div>
+
+                <div id="roomLinkText" onclick="copyShareLink()" title="點擊複製完整連結"></div>
+                <div style="font-size: 0.76rem; color: #64748b; line-height: 1.4;">
+                    電腦無相機？請在另一台電腦打開首頁，點擊頂部「加入」圖標輸入上方代碼即可。
+                </div>
             </div>
         </div>
     </div>
 
-    <!-- 粵拼彈窗 -->
+    <!-- 加入房間彈窗 (無相機電腦端專用) -->
+    <div id="joinModal" class="modal-overlay" onclick="closeModalOnBackdrop(event)">
+        <div class="modal-window" style="max-width: 380px;">
+            <div class="modal-header">
+                <span style="font-weight: 600;">加入房間觀看 (無相機專用)</span>
+                <button class="icon-btn" style="width:28px; height:28px;" onclick="closeJoinModal()">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                </button>
+            </div>
+            <div class="modal-body" style="display:flex; flex-direction:column; gap:16px; padding:22px;">
+                <div class="input-group">
+                    <label class="input-label">房間號 (例如 r_123456 或 123456)</label>
+                    <input id="inputRoomId" type="text" class="app-input" placeholder="輸入房間號碼" autocomplete="off" />
+                </div>
+                <div class="input-group">
+                    <label class="input-label">連線密鑰 (6 位字元)</label>
+                    <input id="inputSecretKey" type="text" class="app-input" placeholder="輸入連線密鑰" autocomplete="off" />
+                </div>
+                <div style="font-size: 0.76rem; color: #64748b; text-align: center;">或者直接在此貼上完整邀請連結：</div>
+                <input id="inputFastPaste" type="text" class="app-input" placeholder="在此貼上完整分享網址..." oninput="handleFastPaste(event)" />
+                <button class="primary-action-btn" onclick="submitJoinRoom()">立即連線觀看</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 粵拼注音彈窗 -->
     <div id="phoneticModal" class="modal-overlay" onclick="closeModalOnBackdrop(event)">
         <div class="modal-window">
             <div class="modal-header">
@@ -607,6 +736,7 @@
         const statusDot = document.getElementById('statusDot');
         const btnSolo = document.getElementById('btnSolo');
         const btnBroadcast = document.getElementById('btnBroadcast');
+        const btnJoinModal = document.getElementById('btnJoinModal');
         const toggleBtn = document.getElementById('toggleBtn');
 
         let mqttClient = null;
@@ -614,6 +744,7 @@
         function updateUIState() {
             btnSolo.classList.remove('mode-active');
             btnBroadcast.classList.remove('mode-active');
+            btnJoinModal.classList.remove('mode-active');
             statusDot.className = 'status-dot';
 
             if (currentMode === 'solo') {
@@ -624,8 +755,7 @@
                 statusDot.classList.add('broadcast');
                 toggleBtn.style.display = 'flex';
             } else if (currentMode === 'receive') {
-                btnSolo.style.display = 'none';
-                btnBroadcast.style.display = 'none';
+                btnJoinModal.classList.add('mode-active');
                 toggleBtn.style.display = 'none'; // 接收端純觀看
                 statusDot.classList.add('receive');
             }
@@ -1084,10 +1214,14 @@
 
         async function initReceiverCloud() {
             await initEncryptionKey(currentSecretKey);
+            if (mqttClient) {
+                try { mqttClient.end(); } catch (e) {}
+            }
             mqttClient = mqtt.connect('wss://broker.emqx.io:8084/mqtt', { clean: true });
             
             mqttClient.on('connect', () => {
                 mqttClient.subscribe(`canto/${currentRoomId}`);
+                showToast("已成功同步房間");
             });
 
             mqttClient.on('message', async (topic, msg) => {
@@ -1126,7 +1260,7 @@
             currentMode = 'broadcast';
 
             if (!currentRoomId) currentRoomId = 'r_' + Math.floor(100000 + Math.random() * 900000);
-            if (!currentSecretKey) currentSecretKey = Math.random().toString(36).substring(2, 12);
+            if (!currentSecretKey) currentSecretKey = Math.random().toString(36).substring(2, 8).toUpperCase();
 
             await initEncryptionKey(currentSecretKey);
 
@@ -1150,15 +1284,17 @@
 
         function setupMinimalQR() {
             const currentUrl = `${window.location.origin}${window.location.pathname}?room=${currentRoomId}#${currentSecretKey}`;
-            const linkElem = document.getElementById('roomLinkText');
-            linkElem.innerText = currentUrl;
+            
+            document.getElementById('roomLinkText').innerText = currentUrl;
+            document.getElementById('qrRoomCodeDisplay').innerText = currentRoomId;
+            document.getElementById('qrSecretKeyDisplay').innerText = currentSecretKey;
 
             const qrContainer = document.getElementById('qrContainer');
             qrContainer.innerHTML = "";
             new QRCode(qrContainer, {
                 text: currentUrl,
-                width: 190,
-                height: 190,
+                width: 175,
+                height: 175,
                 colorDark: "#000000",
                 colorLight: "#ffffff",
                 correctLevel: QRCode.CorrectLevel.M
@@ -1166,17 +1302,63 @@
         }
 
         function copyShareLink() {
-            const text = document.getElementById('roomLinkText').innerText;
-            navigator.clipboard.writeText(text).then(() => {
-                showToast("已複製連結");
+            const currentUrl = `${window.location.origin}${window.location.pathname}?room=${currentRoomId}#${currentSecretKey}`;
+            const shareText = `【粵語提詞器同步】\n房間號：${currentRoomId}\n密鑰：${currentSecretKey}\n連結：${currentUrl}`;
+            navigator.clipboard.writeText(shareText).then(() => {
+                showToast("已複製房間資訊");
+            }).catch(() => {
+                navigator.clipboard.writeText(currentUrl).then(() => showToast("已複製連結"));
             });
+        }
+
+        /* ------------------ 無相機電腦手動配對機制 ------------------ */
+        const joinModal = document.getElementById('joinModal');
+        function openJoinModal() { joinModal.classList.add('active'); }
+        function closeJoinModal() { joinModal.classList.remove('active'); }
+
+        function handleFastPaste(e) {
+            const val = e.target.value.trim();
+            try {
+                if (val.includes('room=') && val.includes('#')) {
+                    const u = new URL(val);
+                    const r = u.searchParams.get('room');
+                    const k = u.hash.replace('#', '');
+                    if (r) document.getElementById('inputRoomId').value = r;
+                    if (k) document.getElementById('inputSecretKey').value = k;
+                }
+            } catch (err) {}
+        }
+
+        async function submitJoinRoom() {
+            let r = document.getElementById('inputRoomId').value.trim();
+            const k = document.getElementById('inputSecretKey').value.trim();
+
+            if (!r || !k) {
+                return alert("請填寫房間號及連線密鑰！");
+            }
+
+            if (!r.startsWith('r_') && /^\d+$/.test(r)) {
+                r = 'r_' + r;
+            }
+
+            currentMode = 'receive';
+            currentRoomId = r;
+            currentSecretKey = k;
+
+            // 保持瀏覽器網址列同步，方便重整
+            const newUrl = `${window.location.origin}${window.location.pathname}?room=${currentRoomId}#${currentSecretKey}`;
+            window.history.replaceState(null, '', newUrl);
+
+            updateUIState();
+            closeJoinModal();
+            await initReceiverCloud();
         }
 
         const qrModal = document.getElementById('qrModal');
         function openQrModal() { qrModal.classList.add('active'); }
         function closeQrModal() { qrModal.classList.remove('active'); }
 
-        // 初始化
+        // 初始化模式
         updateUIState();
         if (isReceiverMode) {
             initReceiverCloud();
@@ -1265,6 +1447,7 @@
         function closeModalOnBackdrop(event) {
             if (event.target === modal) closePhoneticModal();
             if (event.target === qrModal) closeQrModal();
+            if (event.target === joinModal) closeJoinModal();
         }
 
         function speakCurrentText() {
@@ -1282,109 +1465,138 @@
             window.speechSynthesis.speak(utter);
         }
 
+        /* ------------------ 9. 桌面置頂懸浮字幕條 (全寬緊貼螢幕最底) ------------------ */
+        let pipWindow = null;
 
-/* ------------------ 9. 桌面置頂懸浮字幕條 (Document PiP) ------------------ */
-let pipWindow = null;
-
-async function togglePipPrompter() {
-    // 1. 如果懸浮視窗已經開啟，再次點擊則關閉
-    if (pipWindow && !pipWindow.closed) {
-        pipWindow.close();
-        pipWindow = null;
-        return;
-    }
-
-    // 2. 檢查瀏覽器是否支援 Document Picture-in-Picture
-    if (!('documentPictureInPicture' in window)) {
-        alert('您的瀏覽器尚未支援 Document Picture-in-Picture。\n請使用最新版 Chrome 或 Edge 瀏覽器！');
-        return;
-    }
-
-    try {
-        // 3. 請求開啟長條狀懸浮置頂視窗（預設長寬適合放在螢幕最底）
-        const screenW = window.screen.availWidth || 1200;
-        pipWindow = await window.documentPictureInPicture.requestWindow({
-            width: Math.min(screenW, 1100),
-            height: 160
-        });
-
-        // 4. 複製主頁面的所有字體外鏈與 CSS 樣式到懸浮視窗
-        document.querySelectorAll('link[rel="stylesheet"]').forEach(link => {
-            pipWindow.document.head.appendChild(link.cloneNode(true));
-        });
-
-        document.querySelectorAll('style').forEach(style => {
-            pipWindow.document.head.appendChild(style.cloneNode(true));
-        });
-
-        // 5. 注入專為「底部字幕長條」量身打造的專屬樣式
-        const pipStyle = pipWindow.document.createElement('style');
-        pipStyle.textContent = `
-            html, body {
-                margin: 0 !important;
-                padding: 0 !important;
-                background-color: #05070a !important;
-                height: 100vh !important;
-                overflow: hidden !important;
-                display: flex !important;
-                flex-direction: column !important;
-                justify-content: flex-end !important;
+        async function togglePipPrompter() {
+            if (pipWindow && !pipWindow.closed) {
+                pipWindow.close();
+                pipWindow = null;
+                return;
             }
-            .scroll-body {
-                height: 100% !important;
-                padding: 10px 24px 16px 24px !important;
-                box-sizing: border-box !important;
-                overflow-y: auto !important;
-                display: flex !important;
-                flex-direction: column !important;
-                justify-content: flex-end !important;
-            }
-            .bottom-safe-spacer {
-                display: none !important; /* 懸浮模式隱藏多餘墊高區 */
-            }
-            .cantonese-stream {
-                font-size: var(--cantonese-size, 2.15rem) !important;
-                line-height: 1.5 !important;
-                gap: 10px !important;
-            }
-            /* 滾動條極簡隱藏 */
-            .scroll-body::-webkit-scrollbar {
-                width: 4px;
-            }
-            .scroll-body::-webkit-scrollbar-thumb {
-                background: rgba(255, 255, 255, 0.2);
-                border-radius: 4px;
-            }
-        `;
-        pipWindow.document.head.appendChild(pipStyle);
 
-        // 6. 將滾動字幕容器轉移進懸浮視窗
-        const cantoScrollElem = document.getElementById('cantoScroll');
-        const viewportContainer = document.querySelector('.viewport-container');
-        pipWindow.document.body.appendChild(cantoScrollElem);
-
-        // 按鈕視覺高亮切換
-        const btnPip = document.getElementById('btnPip');
-        if (btnPip) btnPip.classList.add('mode-active');
-
-        // 滾動到底部
-        scrollCantoToBottom();
-
-        // 7. 當關閉懸浮視窗時，無縫移回原網頁
-        pipWindow.addEventListener('pagehide', () => {
-            if (viewportContainer && cantoScrollElem) {
-                viewportContainer.appendChild(cantoScrollElem);
+            if (!('documentPictureInPicture' in window)) {
+                alert('您的瀏覽器尚未支援 Document Picture-in-Picture。\n請使用最新版 Chrome 或 Edge 瀏覽器！');
+                return;
             }
-            pipWindow = null;
-            if (btnPip) btnPip.classList.remove('mode-active');
-            scrollCantoToBottom();
-        });
 
-    } catch (err) {
-        console.error('開啟置頂字幕視窗失敗:', err);
-    }
-}
-        
+            try {
+                // 寬度與可用螢幕完全等寬，高度專為「最新單句」設定（約 80px）
+                const screenW = window.screen.availWidth || window.screen.width || 1280;
+                const targetH = 80;
+
+                pipWindow = await window.documentPictureInPicture.requestWindow({
+                    width: screenW,
+                    height: targetH
+                });
+
+                // 自動將懸浮條移動至最底部且緊貼，完全消除間隙
+                const snapToBottom = () => {
+                    try {
+                        const availLeft = window.screen.availLeft ?? 0;
+                        const availTop = window.screen.availTop ?? 0;
+                        const availH = window.screen.availHeight || window.screen.height;
+                        const winH = pipWindow.outerHeight || targetH;
+                        pipWindow.moveTo(availLeft, availTop + availH - winH);
+                        pipWindow.resizeTo(screenW, winH);
+                    } catch (e) {}
+                };
+
+                snapToBottom();
+                setTimeout(snapToBottom, 60);
+                setTimeout(snapToBottom, 250);
+
+                // 複製字體與 CSS
+                document.querySelectorAll('link[rel="stylesheet"]').forEach(link => {
+                    pipWindow.document.head.appendChild(link.cloneNode(true));
+                });
+                document.querySelectorAll('style').forEach(style => {
+                    pipWindow.document.head.appendChild(style.cloneNode(true));
+                });
+
+                // 專屬懸浮底條樣式：隱藏歷史舊句，最新一句居中全寬顯示
+                const pipStyle = pipWindow.document.createElement('style');
+                pipStyle.textContent = `
+                    html, body {
+                        margin: 0 !important;
+                        padding: 0 !important;
+                        background: #05070a !important;
+                        height: 100vh !important;
+                        width: 100vw !important;
+                        overflow: hidden !important;
+                        display: flex !important;
+                        align-items: center !important;
+                        justify-content: center !important;
+                    }
+                    .viewport-container::before {
+                        display: none !important;
+                    }
+                    .scroll-body {
+                        height: 100% !important;
+                        width: 100% !important;
+                        padding: 0 24px !important;
+                        margin: 0 !important;
+                        box-sizing: border-box !important;
+                        overflow: hidden !important;
+                        display: flex !important;
+                        align-items: center !important;
+                        justify-content: center !important;
+                    }
+                    .cantonese-stream {
+                        display: flex !important;
+                        align-items: center !important;
+                        justify-content: center !important;
+                        text-align: center !important;
+                        gap: 8px !important;
+                        width: 100% !important;
+                        font-size: var(--cantonese-size, 2.15rem) !important;
+                        line-height: 1.25 !important;
+                        white-space: nowrap !important;
+                        overflow: hidden !important;
+                        text-overflow: ellipsis !important;
+                    }
+                    /* 只顯示最新一句及即時語音，其餘歷史句子完全隱藏 */
+                    .phrase-group.past {
+                        display: none !important;
+                    }
+                    .phrase-group.active-latest {
+                        display: inline !important;
+                        color: #ffffff !important;
+                        font-weight: 700 !important;
+                        text-shadow: 0 0 16px rgba(255, 255, 255, 0.45) !important;
+                    }
+                    .phrase-item.interim {
+                        display: inline !important;
+                        color: #38bdf8 !important;
+                    }
+                    .bottom-safe-spacer {
+                        display: none !important;
+                    }
+                `;
+                pipWindow.document.head.appendChild(pipStyle);
+
+                // 容器移入懸浮視窗
+                const cantoScrollElem = document.getElementById('cantoScroll');
+                const viewportContainer = document.querySelector('.viewport-container');
+                pipWindow.document.body.appendChild(cantoScrollElem);
+
+                const btnPip = document.getElementById('btnPip');
+                if (btnPip) btnPip.classList.add('mode-active');
+
+                // 懸浮視窗關閉時自動還原
+                pipWindow.addEventListener('pagehide', () => {
+                    if (viewportContainer && cantoScrollElem) {
+                        viewportContainer.appendChild(cantoScrollElem);
+                    }
+                    pipWindow = null;
+                    if (btnPip) btnPip.classList.remove('mode-active');
+                    scrollCantoToBottom();
+                });
+
+            } catch (err) {
+                console.error('開啟置頂字幕視窗失敗:', err);
+            }
+        }
     </script>
 </body>
 </html>
