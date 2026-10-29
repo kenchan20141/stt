@@ -476,6 +476,16 @@
                             <path d="M14 13.5H19"></path>
                         </svg>
                     </button>
+
+<!-- 按鈕：置頂懸浮字幕條 -->
+<button id="btnPip" class="icon-btn" title="螢幕底置頂字幕" onclick="togglePipPrompter()">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="2" y="4" width="20" height="13" rx="2"></rect>
+        <path d="M2 17h20"></path>
+        <line x1="7" y1="20" x2="17" y2="20"></line>
+    </svg>
+</button>
+                    
                     <!-- 麥克風開關 -->
                     <button id="toggleBtn" class="icon-btn power-btn" title="開關" onclick="toggleSpeech()">
                         <svg id="playIcon" viewBox="0 0 24 24" fill="currentColor">
@@ -1271,6 +1281,110 @@
 
             window.speechSynthesis.speak(utter);
         }
+
+
+/* ------------------ 9. 桌面置頂懸浮字幕條 (Document PiP) ------------------ */
+let pipWindow = null;
+
+async function togglePipPrompter() {
+    // 1. 如果懸浮視窗已經開啟，再次點擊則關閉
+    if (pipWindow && !pipWindow.closed) {
+        pipWindow.close();
+        pipWindow = null;
+        return;
+    }
+
+    // 2. 檢查瀏覽器是否支援 Document Picture-in-Picture
+    if (!('documentPictureInPicture' in window)) {
+        alert('您的瀏覽器尚未支援 Document Picture-in-Picture。\n請使用最新版 Chrome 或 Edge 瀏覽器！');
+        return;
+    }
+
+    try {
+        // 3. 請求開啟長條狀懸浮置頂視窗（預設長寬適合放在螢幕最底）
+        const screenW = window.screen.availWidth || 1200;
+        pipWindow = await window.documentPictureInPicture.requestWindow({
+            width: Math.min(screenW, 1100),
+            height: 160
+        });
+
+        // 4. 複製主頁面的所有字體外鏈與 CSS 樣式到懸浮視窗
+        document.querySelectorAll('link[rel="stylesheet"]').forEach(link => {
+            pipWindow.document.head.appendChild(link.cloneNode(true));
+        });
+
+        document.querySelectorAll('style').forEach(style => {
+            pipWindow.document.head.appendChild(style.cloneNode(true));
+        });
+
+        // 5. 注入專為「底部字幕長條」量身打造的專屬樣式
+        const pipStyle = pipWindow.document.createElement('style');
+        pipStyle.textContent = `
+            html, body {
+                margin: 0 !important;
+                padding: 0 !important;
+                background-color: #05070a !important;
+                height: 100vh !important;
+                overflow: hidden !important;
+                display: flex !important;
+                flex-direction: column !important;
+                justify-content: flex-end !important;
+            }
+            .scroll-body {
+                height: 100% !important;
+                padding: 10px 24px 16px 24px !important;
+                box-sizing: border-box !important;
+                overflow-y: auto !important;
+                display: flex !important;
+                flex-direction: column !important;
+                justify-content: flex-end !important;
+            }
+            .bottom-safe-spacer {
+                display: none !important; /* 懸浮模式隱藏多餘墊高區 */
+            }
+            .cantonese-stream {
+                font-size: var(--cantonese-size, 2.15rem) !important;
+                line-height: 1.5 !important;
+                gap: 10px !important;
+            }
+            /* 滾動條極簡隱藏 */
+            .scroll-body::-webkit-scrollbar {
+                width: 4px;
+            }
+            .scroll-body::-webkit-scrollbar-thumb {
+                background: rgba(255, 255, 255, 0.2);
+                border-radius: 4px;
+            }
+        `;
+        pipWindow.document.head.appendChild(pipStyle);
+
+        // 6. 將滾動字幕容器轉移進懸浮視窗
+        const cantoScrollElem = document.getElementById('cantoScroll');
+        const viewportContainer = document.querySelector('.viewport-container');
+        pipWindow.document.body.appendChild(cantoScrollElem);
+
+        // 按鈕視覺高亮切換
+        const btnPip = document.getElementById('btnPip');
+        if (btnPip) btnPip.classList.add('mode-active');
+
+        // 滾動到底部
+        scrollCantoToBottom();
+
+        // 7. 當關閉懸浮視窗時，無縫移回原網頁
+        pipWindow.addEventListener('pagehide', () => {
+            if (viewportContainer && cantoScrollElem) {
+                viewportContainer.appendChild(cantoScrollElem);
+            }
+            pipWindow = null;
+            if (btnPip) btnPip.classList.remove('mode-active');
+            scrollCantoToBottom();
+        });
+
+    } catch (err) {
+        console.error('開啟置頂字幕視窗失敗:', err);
+    }
+}
+        
     </script>
 </body>
 </html>
