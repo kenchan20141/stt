@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>實時粵語提詞</title>
+    <title>實時粵語提詞器</title>
 
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -29,7 +29,7 @@
             
             --ruby: #f59e0b;
             --accent: #38bdf8;
-            --cantonese-size: 2.05rem;
+            --cantonese-size: 2.10rem;
         }
 
         * {
@@ -52,6 +52,7 @@
             -webkit-font-smoothing: antialiased;
         }
 
+        /* 靜態演播室底座背景 */
         #threeCanvas {
             position: fixed;
             top: 0;
@@ -75,6 +76,7 @@
             padding: 20px 24px 28px 24px;
             box-sizing: border-box;
             pointer-events: auto;
+            transform: none !important;
         }
 
         @media (max-width: 768px) {
@@ -95,7 +97,8 @@
             border: 2px solid #1e2638;
             box-shadow: 
                 0 0 0 1px rgba(0, 0, 0, 0.8),
-                0 20px 45px rgba(0, 0, 0, 0.9);
+                0 20px 45px rgba(0, 0, 0, 0.9),
+                inset 0 0 20px rgba(0, 0, 0, 0.85);
             overflow: hidden;
             position: relative;
             min-height: 0;
@@ -112,12 +115,28 @@
             flex-shrink: 0;
         }
 
+        .brand-meta {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
         .brand-title {
             font-size: 0.95rem;
             font-weight: 700;
             color: #94a3b8;
             letter-spacing: 0.8px;
             font-family: "Noto Sans HK", sans-serif;
+        }
+
+        .char-counter {
+            font-family: "Noto Sans HK", sans-serif;
+            font-size: 0.76rem;
+            color: #64748b;
+            background: rgba(255, 255, 255, 0.05);
+            padding: 2px 8px;
+            border-radius: 4px;
+            border: 1px solid rgba(255, 255, 255, 0.08);
         }
 
         .btn-group {
@@ -127,7 +146,7 @@
         }
 
         .icon-btn {
-            background: rgba(255, 255, 255, 0.05);
+            background: rgba(255, 255, 255, 0.06);
             border: 1px solid var(--card-border);
             color: #cbd5e1;
             width: 38px;
@@ -172,12 +191,11 @@
             position: relative;
         }
 
-        /* 頂部柔和漸隱罩（防止捲動邊界銳利生硬） */
         .viewport-container::before {
             content: "";
             position: absolute;
             top: 0; left: 0; right: 0;
-            height: 32px;
+            height: 36px;
             background: linear-gradient(to bottom, #090a0f 20%, transparent);
             z-index: 10;
             pointer-events: none;
@@ -188,12 +206,12 @@
             overflow-y: auto;
             scroll-behavior: smooth;
             -webkit-overflow-scrolling: touch;
-            padding: 24px 28px 40px 28px;
+            padding: 24px 28px 48px 28px;
             position: relative;
             z-index: 1;
         }
 
-        /* 自然語音流容器 */
+        /* 提詞流容器 */
         .cantonese-stream {
             font-family: "Noto Serif HK", serif;
             font-size: var(--cantonese-size);
@@ -205,26 +223,31 @@
             word-break: break-word;
         }
 
-        /* 歷史句子：柔和暗灰，退居背景，不造成眼力疲勞 */
-        .phrase-item.past {
-            color: #526075;
-            font-weight: 500;
-            transition: color 0.4s ease, opacity 0.4s ease;
-            opacity: 0.6;
+        /* 句子基礎項 */
+        .phrase-item {
+            display: block;
+            line-height: 1.85;
+            word-break: break-word;
+            transition: color 0.4s ease, opacity 0.4s ease, text-shadow 0.4s ease;
         }
 
-        /* 最新完成的一句：純白高光聚焦，眼睛一眼就能找到 */
-        .phrase-item.latest {
+        /* 歷史句子：溫和暗灰，自然退居背景 */
+        .phrase-item.past {
+            color: #4b5563;
+            font-weight: 500;
+            opacity: 0.45;
+        }
+
+        /* 最新的 2 至 3 句：共同保持純白高光聚焦，構成自然視讀區塊 */
+        .phrase-item.active-recent {
             color: #ffffff;
             font-weight: 700;
             opacity: 1;
             text-shadow: 0 0 16px rgba(255, 255, 255, 0.28);
-            animation: phrasePop 0.28s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-            position: relative;
-            display: inline-block;
+            animation: phraseNaturalPop 0.22s cubic-bezier(0.16, 1, 0.3, 1) forwards;
         }
 
-        /* 手機即時辨識中（或剛彈出的一小段）：帶天藍色柔和辨識標籤 */
+        /* 即時識別中（講話中）：柔和天藍色流光標籤 */
         .phrase-item.interim {
             color: #38bdf8;
             font-weight: 600;
@@ -232,6 +255,8 @@
             border-left: 3px solid #38bdf8;
             padding: 2px 10px;
             border-radius: 0 6px 6px 0;
+            display: inline-block;
+            margin-top: 4px;
             animation: fadeIn 0.15s ease forwards;
         }
 
@@ -239,7 +264,7 @@
             display: none;
         }
 
-        @keyframes phrasePop {
+        @keyframes phraseNaturalPop {
             0% { opacity: 0; transform: translateY(6px); }
             100% { opacity: 1; transform: translateY(0); }
         }
@@ -378,9 +403,12 @@
     <main id="teleprompterRig" class="teleprompter-rig">
         <div class="rig-screen-enclosure">
             <header>
-                <span class="brand-title">實時粵語提詞</span>
+                <div class="brand-meta">
+                    <span class="brand-title">實時粵語提詞</span>
+                    <span id="charCount" class="char-counter">0 字</span>
+                </div>
                 <div class="btn-group">
-                    <button class="icon-btn" title="粵拼注音" onclick="openPhoneticModal()">
+                    <button class="icon-btn" title="粵拼注音與朗讀" onclick="openPhoneticModal()">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
                             <path d="M3 18v-6a9 9 0 0 1 18 0v6"></path>
                             <path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z"></path>
@@ -394,7 +422,7 @@
                             <path d="M14 13.5H19"></path>
                         </svg>
                     </button>
-                    <button id="toggleBtn" class="icon-btn power-btn" title="啟動識別" onclick="toggleSpeech()">
+                    <button id="toggleBtn" class="icon-btn power-btn" title="啟動提詞" onclick="toggleSpeech()">
                         <svg id="playIcon" viewBox="0 0 24 24" fill="currentColor">
                             <path d="M8 5.14v13.72a1 1 0 0 0 1.5.86l11-6.86a1 1 0 0 0 0-1.72l-11-6.86a1 1 0 0 0-1.5.86z"></path>
                         </svg>
@@ -408,7 +436,7 @@
 
             <div id="fontToast">字體 標準</div>
 
-            <!-- 自然語意斷句提詞流 -->
+            <!-- 自然提詞主體流 -->
             <div class="viewport-container">
                 <div id="cantoScroll" class="scroll-body">
                     <div id="cantoStream" class="cantonese-stream">
@@ -445,7 +473,7 @@
     </div>
 
     <script>
-        /* ------------------ 0. 靜態 3D 背景 ------------------ */
+        /* ------------------ 0. 靜態 3D 機體背景（不隨滑鼠晃動） ------------------ */
         const canvas = document.getElementById('threeCanvas');
         const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
         renderer.setSize(window.innerWidth, window.innerHeight);
@@ -527,22 +555,32 @@
             toastTimer = setTimeout(() => fontToast.classList.remove('show'), 1500);
         }
 
-        /* ------------------ 2. 核心自然斷句與階梯流 ------------------ */
+        /* ------------------ 2. 粵語自然節奏斷句引擎 ------------------ */
+
+        // 粵語句尾疑問助詞及結構
+        const QUESTION_ENDINGS = /(點解|係咪|係唔係|係未|得唔得|好唔好|幾時|邊個|邊度|邊處|點樣|點做|點算|成點|咩|呀嘛|呀嗱|呢|嗎|得未|好未|係咪呀|係唔係呀|下話|呀)$/;
+        // 粵語句尾強烈感嘆詞
+        const EXCLAMATION_ENDINGS = /(太好喇|好犀利|超勁|正呀|好正|利害|搞錯|痴線|唔係卦|救命|嘩|哇|好嘢|真係誇張|真係正|勁呀)$/;
+        // 粵語收尾語氣詞（完整句意定稿）
+        const TERMINAL_PARTICLES = /(啦|喇|㗎|喎|囉|啫|咋|添|嘅|之嘛|喇喎|㗎啦|㗎喇|㗎咋|罷了|唔知呢)$/;
+
         const cantoScroll = document.getElementById('cantoScroll');
         const cantoStream = document.getElementById('cantoStream');
         const interimPart = document.getElementById('interimPart');
+        const charCount = document.getElementById('charCount');
 
-        let pauseTimer = null;
         let autoScrollCanto = true;
         let confirmedPlainHistory = "";
         let lastFinalCleanText = "";
         let lastFinalTimestamp = 0;
 
+        // 保存所有句子物件：{ text: string, elem: HTMLElement }
         const phrasesList = [];
-        const MAX_HISTORY_PHRASES = 40;
+        const MAX_HISTORY_PHRASES = 60;
+        const ACTIVE_RECENT_COUNT = 3; // 保持最新 2~3 句為「最新高光狀態」
 
         cantoScroll.addEventListener('scroll', () => {
-            autoScrollCanto = (cantoScroll.scrollHeight - cantoScroll.scrollTop - cantoScroll.clientHeight) < 140;
+            autoScrollCanto = (cantoScroll.scrollHeight - cantoScroll.scrollTop - cantoScroll.clientHeight) < 120;
         });
 
         function scrollCantoToBottom() {
@@ -554,157 +592,153 @@
         }
 
         /**
-         * 智慧標點附著：根據自然語意或停頓賦予最合適的標點
+         * 智慧標點附著：依照自然粵語音律與語義結尾判定
          */
-        function attachSmartPunctuation(text, isLongPause = false) {
+        function attachSmartPunctuation(text, isSentenceEnd = false) {
             let s = text.trim();
-            // 如果原本已經有標點，轉成全形標準標點
-            if (/[，。？！、\.,!\?]$/.test(s)) {
-                return s.replace(/\.$/, '。')
-                        .replace(/,$/, '，')
-                        .replace(/\?$/, '？')
-                        .replace(/!$/, '！');
-            }
+            if (!s) return "";
 
-            // 粵語常見疑問詞檢測
-            const questionSuffixes = /(點解|係咪|係唔係|咩|呀嘛|呢|邊度|幾時|點樣|嗎|嘛|阿|呀)$/;
-            if (questionSuffixes.test(s)) {
+            // 清理末尾原有標點後重新由語境裁定
+            s = s.replace(/[，。？！、\.,!\?]+$/g, '');
+
+            if (QUESTION_ENDINGS.test(s)) {
                 return s + '？';
             }
-
-            // 長停頓定稿為句號，短語句定稿為逗號
-            return isLongPause ? (s + '。') : (s + '，');
+            if (EXCLAMATION_ENDINGS.test(s)) {
+                return s + '！';
+            }
+            if (isSentenceEnd || TERMINAL_PARTICLES.test(s)) {
+                return s + '。';
+            }
+            return s + '，';
         }
 
         /**
-         * 杜絕重疊句子
+         * 最新 2~3 句保持「最新」高光，舊的才平滑褪暗
          */
-        function removeOverlap(rawText) {
-            if (!rawText || !confirmedPlainHistory) return rawText;
-            const cleanText = cleanString(rawText);
-            if (!cleanText) return "";
-
-            const maxCheck = Math.min(confirmedPlainHistory.length, cleanText.length, 30);
-            let overlapLen = 0;
-            for (let len = maxCheck; len >= 1; len--) {
-                if (confirmedPlainHistory.endsWith(cleanText.slice(0, len))) {
-                    overlapLen = len;
-                    break;
+        function refreshHighlightState() {
+            const total = phrasesList.length;
+            phrasesList.forEach((item, index) => {
+                if (index >= total - ACTIVE_RECENT_COUNT) {
+                    item.elem.classList.remove('past');
+                    item.elem.classList.add('active-recent');
+                } else {
+                    item.elem.classList.remove('active-recent');
+                    item.elem.classList.add('past');
                 }
-            }
+            });
 
-            if (overlapLen > 0) {
-                let counted = 0;
-                let cutIndex = 0;
-                for (let i = 0; i < rawText.length; i++) {
-                    if (!/[，。？！、\s\.,!\?]/.test(rawText[i])) counted++;
-                    if (counted === overlapLen) {
-                        cutIndex = i + 1;
-                        break;
-                    }
-                }
-                return rawText.slice(cutIndex).trim();
-            }
-            return rawText;
+            // 實時統計字數
+            const totalChars = phrasesList.reduce((acc, cur) => acc + cleanString(cur.text).length, 0);
+            charCount.textContent = `${totalChars} 字`;
         }
 
         /**
-         * 提交完整句子（依自然停頓或 isFinal 觸發，絕不生硬按字數截斷）
+         * 提交句子到提詞流（含「5字或以下不單獨成句」與「最新兩三句放在一起高光」機制）
          */
-        function commitSentence(rawText, isLongPause = false) {
+        function commitSentence(rawText, isSentenceEnd = false) {
             if (!rawText) return;
-            const deduplicated = removeOverlap(rawText);
-            let seg = convertToHK(deduplicated || '').trim();
-            if (!seg) return;
+            let seg = convertToHK(rawText).trim();
+            const cleanSeg = cleanString(seg);
+            if (!cleanSeg) return;
 
-            const plainSeg = cleanString(seg);
-            if (!plainSeg) return;
+            const charLen = cleanSeg.length;
 
-            // 智慧附著自然標點
-            seg = attachSmartPunctuation(seg, isLongPause);
+            // 核心規則：如果一句中只有五字或以下，則不當成獨立一句看待，合併到上一句
+            if (charLen <= 5 && phrasesList.length > 0) {
+                const lastItem = phrasesList[phrasesList.length - 1];
+                // 剔除上一句尾部的句號/問號/逗號，以逗號或自然銜接形式合併
+                let prevTextBase = lastItem.text.replace(/[，。？！、\.,!\?]+$/g, '');
+                const mergedPunct = attachSmartPunctuation(seg, isSentenceEnd);
+                
+                lastItem.text = `${prevTextBase}，${mergedPunct}`;
+                lastItem.elem.textContent = lastItem.text;
 
-            // 1. 先前「最新句子」平滑褪色轉為歷史暗調（不再刺激眼球）
-            const prevLatest = cantoStream.querySelector('.phrase-item.latest');
-            if (prevLatest) {
-                prevLatest.classList.remove('latest');
-                prevLatest.classList.add('past');
-            }
-
-            // 2. 建立新句子：明亮純白，成為當前第一焦點
-            const phraseElem = document.createElement('div');
-            phraseElem.className = 'phrase-item latest';
-            phraseElem.textContent = seg;
-
-            cantoStream.insertBefore(phraseElem, interimPart);
-
-            confirmedPlainHistory += plainSeg;
-            if (confirmedPlainHistory.length > 250) {
-                confirmedPlainHistory = confirmedPlainHistory.slice(-180);
-            }
-
-            phrasesList.push(phraseElem);
-            if (phrasesList.length > MAX_HISTORY_PHRASES) {
-                const old = phrasesList.shift();
-                if (old && old.parentNode) old.parentNode.removeChild(old);
-            }
-
-            scrollCantoToBottom();
-        }
-
-        /**
-         * 處理即時語音流（回歸附檔自然的語句感知）
-         */
-        function handleSpeechInterim(interimText) {
-            clearTimeout(pauseTimer);
-            if (!interimText || !interimText.trim()) {
-                interimPart.textContent = '';
+                confirmedPlainHistory += cleanSeg;
+                refreshHighlightState();
+                scrollCantoToBottom();
                 return;
             }
 
-            let pending = removeOverlap(interimText);
-            if (pending.trim()) {
-                // 手機跳出即時字時，帶藍色流光外觀
-                interimPart.textContent = convertToHK(pending.trim());
-                scrollCantoToBottom();
+            // 大於 5 字（或首句）：作為獨立句子壓入提詞流
+            const punctuatedText = attachSmartPunctuation(seg, isSentenceEnd);
 
-                // 講話自然微停頓（550ms 靜音即自然落句定稿）
-                pauseTimer = setTimeout(() => {
-                    commitPendingInterim(false);
-                }, 550);
-            } else {
-                interimPart.textContent = '';
+            const phraseElem = document.createElement('div');
+            phraseElem.className = 'phrase-item active-recent';
+            phraseElem.textContent = punctuatedText;
+
+            cantoStream.insertBefore(phraseElem, interimPart);
+
+            const phraseObj = { text: punctuatedText, elem: phraseElem };
+            phrasesList.push(phraseObj);
+
+            confirmedPlainHistory += cleanSeg;
+            if (confirmedPlainHistory.length > 300) {
+                confirmedPlainHistory = confirmedPlainHistory.slice(-200);
             }
+
+            if (phrasesList.length > MAX_HISTORY_PHRASES) {
+                const old = phrasesList.shift();
+                if (old && old.elem.parentNode) old.elem.parentNode.removeChild(old.elem);
+            }
+
+            refreshHighlightState();
+            scrollCantoToBottom();
+        }
+
+        /* ------------------ 3. 語音辨識機制（參考附檔優秀的 Delta 與去重邏輯） ------------------ */
+
+        function handleSpeechInterim(interim) {
+            if (!interim || !interim.trim()) {
+                interimPart.textContent = "";
+                return;
+            }
+            interimPart.textContent = convertToHK(interim.trim());
+            scrollCantoToBottom();
         }
 
         function handleSpeechFinal(finalText) {
-            clearTimeout(pauseTimer);
-            interimPart.textContent = '';
-
             if (!finalText || !finalText.trim()) return;
 
             const cleanFinal = cleanString(finalText);
             const now = Date.now();
 
-            // 2秒內完全重複之 finalText 不重複追加
-            if (cleanFinal === lastFinalCleanText && (now - lastFinalTimestamp < 2000)) return;
+            // 防重複觸發
+            if (cleanFinal === lastFinalCleanText && (now - lastFinalTimestamp < 1800)) {
+                interimPart.textContent = "";
+                return;
+            }
+
+            const cleanConfirmed = cleanString(confirmedPlainHistory);
+            const tailSlice = cleanConfirmed.slice(-Math.max(cleanFinal.length + 10, 50));
+            if (tailSlice.endsWith(cleanFinal)) {
+                interimPart.textContent = "";
+                return;
+            }
+
+            // 附檔經典去重：扣除與前文重疊的開頭
+            let delta = finalText.trim();
+            for (let i = delta.length; i >= 2; i--) {
+                const checkPrefix = cleanString(delta.slice(0, i));
+                if (checkPrefix.length >= 2 && tailSlice.endsWith(checkPrefix)) {
+                    delta = delta.slice(i).trim();
+                    break;
+                }
+            }
+
+            if (!cleanString(delta)) {
+                interimPart.textContent = "";
+                return;
+            }
 
             lastFinalCleanText = cleanFinal;
             lastFinalTimestamp = now;
+            interimPart.textContent = "";
 
-            // 語音引擎認定整句完結，以自然停頓收尾
-            commitSentence(finalText, true);
+            // 交由自然斷句引擎處理（判定是否 <= 5 字合併，或作為新句進入最新高光區）
+            commitSentence(delta, true);
         }
 
-        function commitPendingInterim(isLongPause = false) {
-            clearTimeout(pauseTimer);
-            const pending = interimPart.textContent;
-            interimPart.textContent = '';
-            if (pending && pending.trim()) {
-                commitSentence(pending, isLongPause);
-            }
-        }
-
-        /* ------------------ 3. 語音辨識機制（純離線無 PUTER） ------------------ */
         const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
         let recognition = null;
         let userWantsListening = false;
@@ -744,10 +778,10 @@
                             if (userWantsListening && !isEngineRunning && recognition) {
                                 try { recognition.start(); } catch(err) {}
                             }
-                        }, 80);
+                        }, 120);
                     }
                 }
-            }, 30);
+            }, 80);
         }
 
         document.addEventListener('visibilitychange', () => {
@@ -784,7 +818,6 @@
                         interim += trans;
                     }
                 }
-
                 if (interim) {
                     handleSpeechInterim(interim);
                 }
@@ -803,8 +836,14 @@
             };
 
             recognition.onend = () => {
-                commitPendingInterim(true);
                 isEngineRunning = false;
+                // 若仍有暫留的未完結 interim，於自然靜音時提交
+                const pending = interimPart.textContent;
+                interimPart.textContent = "";
+                if (pending && cleanString(pending)) {
+                    commitSentence(pending, true);
+                }
+
                 if (userWantsListening) {
                     scheduleSafeRestart();
                 } else {
@@ -816,7 +855,6 @@
         function stopListeningSession() {
             userWantsListening = false;
             if (restartDebounce) clearTimeout(restartDebounce);
-            commitPendingInterim(true);
             releaseWakeLock();
             try { recognition.stop(); } catch(e) {}
             stopListeningUI();
@@ -824,7 +862,7 @@
 
         function toggleSpeech() {
             if (!recognition) {
-                alert("此瀏覽器不支援 Web Speech API，建議使用 Safari 或 Chrome。");
+                alert("此瀏覽器不支援 Web Speech API，建議使用 Safari、Edge 或 Chrome。");
                 return;
             }
 
@@ -835,7 +873,7 @@
                 userWantsListening = true;
                 acquireWakeLock();
                 scheduleSafeRestart();
-                showToast("已啟動實時提詞");
+                showToast("提詞已啟動");
             }
         }
 
@@ -848,9 +886,9 @@
 
         /* ------------------ 4. 字體調節 ------------------ */
         const fontScales = [
-            { name: "標準", canto: "2.05rem" },
-            { name: "放大", canto: "2.45rem" },
-            { name: "特大", canto: "2.90rem" }
+            { name: "標準", canto: "2.10rem" },
+            { name: "放大", canto: "2.55rem" },
+            { name: "特大", canto: "3.05rem" }
         ];
         let currentScaleIdx = 0;
 
@@ -869,7 +907,7 @@
         let currentPureText = "";
 
         function getAllRecognizedText() {
-            return phrasesList.map(el => el.textContent).join('') + interimPart.textContent;
+            return phrasesList.map(item => item.text).join('') + interimPart.textContent;
         }
 
         async function fetchJyutpingRubyHTML(text) {
