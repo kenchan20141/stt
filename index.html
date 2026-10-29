@@ -195,25 +195,25 @@
             flex-shrink: 0;
         }
 
-        /* 自然文章式排版：新舊文字融為一體 */
+        /* 整篇文字自然排版：新舊文字天衣無縫連貫 */
         .cantonese-content {
             font-family: "Noto Serif HK", serif;
             font-size: var(--cantonese-size);
             font-weight: 700;
-            line-height: 1.9;
+            line-height: 1.95;
             letter-spacing: 0.5px;
             color: var(--cantonese);
             word-break: break-word;
             text-align: justify;
         }
 
-        /* 已辨識文字：純白、無背景 */
+        /* 已定稿文字：純白無底色 */
         .cantonese-content .confirmed-text {
             color: #f8fafc;
             background: transparent;
         }
 
-        /* 新準備辨識文字：純粹的行內灰底標註，無任何邊框、無陰影、無光柱 */
+        /* 新準備辨識文字：純粹的行內灰底標註，無框、無陰影、無光柱 */
         .cantonese-content .interim-text {
             background-color: #374151; /* 典雅深灰底色 */
             color: #f9fafb;
@@ -350,7 +350,7 @@
     <!-- 靜態 3D 背景 -->
     <canvas id="threeCanvas"></canvas>
 
-    <!-- 居中主體 -->
+    <!-- 居中提詞機主體 -->
     <main id="teleprompterRig" class="teleprompter-rig">
 
         <div class="rig-screen-enclosure">
@@ -386,7 +386,7 @@
 
             <div id="fontToast">字體 標準</div>
 
-            <!-- 純粹提詞主視圖：一段文字混合呈現 -->
+            <!-- 純粹提詞主視圖：新舊文字融為一體 -->
             <div class="viewport-container">
                 <div id="cantoScroll" class="scroll-body">
                     <div id="cantoneseContent" class="cantonese-content"><span id="confirmedPart" class="confirmed-text"></span><span id="interimPart" class="interim-text"></span></div>
@@ -505,7 +505,7 @@
             toastTimer = setTimeout(() => fontToast.classList.remove('show'), 1500);
         }
 
-        /* ------------------ 2. 自然語流串流與斷句引擎 ------------------ */
+        /* ------------------ 2. 去重流式分段提詞核心 ------------------ */
         const cantoScroll = document.getElementById('cantoScroll');
         const confirmedPart = document.getElementById('confirmedPart');
         const interimPart = document.getElementById('interimPart');
@@ -514,8 +514,12 @@
         let lastResultIndex = -1;
         let pauseTimer = null;
         let autoScrollCanto = true;
+        let currentTranscript = "";
+        
+        // 保存純漢字歷史記錄，用於與新語句比對重疊
+        let confirmedPlainHistory = "";
 
-        // 自然語意音步長度（11-13字切一小節，自然成句，不停頓亦能順滑輸出）
+        // 自然語意音步長度（12字左右切分短句，不停頓亦能順滑吐字）
         const CHUNK_LIMIT = 12;
         const TARGET_MAX_CHARS = 160;
 
@@ -529,49 +533,108 @@
             }
         }
 
-        // 維持滑動視窗字數
         function trimHistory() {
             if (confirmedPart.textContent.length > TARGET_MAX_CHARS) {
                 confirmedPart.textContent = confirmedPart.textContent.slice(-TARGET_MAX_CHARS);
             }
+            if (confirmedPlainHistory.length > 250) {
+                confirmedPlainHistory = confirmedPlainHistory.slice(-180);
+            }
         }
 
-        // 將文字正式轉為白色定稿
+        /**
+         * 核心去重函數：比對新輸入文本與上一句末尾是否重疊，剔除重複字句
+         */
+        function removeOverlap(rawText) {
+            if (!rawText || !confirmedPlainHistory) return rawText;
+
+            const cleanText = cleanString(rawText);
+            if (!cleanText) return "";
+
+            // 尋找已定稿末尾與新文本頭部的最長公共子串（最大比對 25 字）
+            const maxCheck = Math.min(confirmedPlainHistory.length, cleanText.length, 25);
+            let overlapLen = 0;
+            for (let len = maxCheck; len >= 1; len--) {
+                if (confirmedPlainHistory.endsWith(cleanText.slice(0, len))) {
+                    overlapLen = len;
+                    break;
+                }
+            }
+
+            if (overlapLen > 0) {
+                // 依據重疊的純字元數，剝離原始文字前端對應內容
+                let counted = 0;
+                let cutIndex = 0;
+                for (let i = 0; i < rawText.length; i++) {
+                    if (!/[，。？！、\s\.,!\?]/.test(rawText[i])) {
+                        counted++;
+                    }
+                    if (counted === overlapLen) {
+                        cutIndex = i + 1;
+                        break;
+                    }
+                }
+                return rawText.slice(cutIndex).trim();
+            }
+
+            return rawText;
+        }
+
+        /**
+         * 提交文字轉為白字定稿
+         */
         function commitChunk(text) {
-            let seg = convertToHK(text || '').trim();
+            const deduplicated = removeOverlap(text);
+            let seg = convertToHK(deduplicated || '').trim();
             if (!seg) return;
-            
-            // 去除多餘符號後加逗號
+
+            // 清理末端符號後加逗點
             seg = seg.replace(/[，。？！、\.,!\?]+$/g, '');
             if (!seg) return;
+
+            const plainSeg = cleanString(seg);
+            if (!plainSeg) return;
+
             seg += '，';
 
             confirmedPart.textContent += seg;
+            confirmedPlainHistory += plainSeg;
+
             trimHistory();
             scrollCantoToBottom();
         }
 
-        // 核心串流分段器：實時灰底顯示 + 自動自然斷句
+        /**
+         * 處理串流語音（解決不停頓不出字 + 徹底杜絕重覆）
+         */
         function processStreamText(fullTranscript, isFinal) {
             clearTimeout(pauseTimer);
+            currentTranscript = fullTranscript;
 
-            // 若說話未停但已超過自然音步長度，流暢切出前方文字轉白
+            // 若瀏覽器新開語意上下文導致長度縮水，重置游標
+            if (fullTranscript.length < committedOffset) {
+                committedOffset = 0;
+            }
+
+            // 超過自然音步時自動流式切句
             while ((fullTranscript.length - committedOffset) >= CHUNK_LIMIT) {
                 const chunk = fullTranscript.slice(committedOffset, committedOffset + CHUNK_LIMIT);
                 commitChunk(chunk);
                 committedOffset += CHUNK_LIMIT;
             }
 
-            // 剩下最新、準備辨識確認的文字：實時呈現灰底
-            const pending = fullTranscript.slice(committedOffset);
+            // 提取最新準備辨識的文字，並進行去重校準
+            let pending = fullTranscript.slice(committedOffset);
+            pending = removeOverlap(pending);
+
             if (pending.trim()) {
                 interimPart.textContent = convertToHK(pending.trim());
                 scrollCantoToBottom();
 
-                // 自然微停頓（420ms）：稍有停歇立刻收口定稿，灰底直接變白字
+                // 400ms 微停頓立刻收口定稿變白字
                 pauseTimer = setTimeout(() => {
                     commitRemaining();
-                }, 420);
+                }, 400);
             } else {
                 interimPart.textContent = '';
             }
@@ -579,14 +642,22 @@
             if (isFinal) {
                 commitRemaining();
                 committedOffset = 0;
+                currentTranscript = "";
             }
         }
 
+        /**
+         * 立即收口定稿：游標即時同步推進至 transcript 末端，杜絕二次重複觸發！
+         */
         function commitRemaining() {
             clearTimeout(pauseTimer);
+
+            // 關鍵：立刻將游標推進到底，避免同一個 transcript 被再次讀取
+            committedOffset = currentTranscript.length;
+
             const remaining = interimPart.textContent;
+            interimPart.textContent = '';
             if (remaining) {
-                interimPart.textContent = '';
                 commitChunk(remaining);
             }
         }
@@ -660,6 +731,7 @@
 
             recognition.onresult = (event) => {
                 for (let i = event.resultIndex; i < event.results.length; ++i) {
+                    // 若進入新的辨識索引，重置本地游標偏移
                     if (i !== lastResultIndex) {
                         lastResultIndex = i;
                         committedOffset = 0;
@@ -716,6 +788,7 @@
             } else {
                 userWantsListening = true;
                 committedOffset = 0;
+                currentTranscript = "";
                 lastResultIndex = -1;
                 acquireWakeLock();
                 scheduleSafeRestart();
