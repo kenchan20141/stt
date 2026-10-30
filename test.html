@@ -341,7 +341,6 @@
             box-shadow: inset 0 8px 32px rgba(0, 0, 0, 0.85);
         }
 
-        /* 攝影機取景十字準線刻度裝飾 */
         .viewport-container::after {
             content: "";
             position: absolute;
@@ -405,35 +404,14 @@
             font-weight: 700;
             opacity: 1;
             text-shadow: 0 0 16px rgba(230, 226, 214, 0.25);
-        }
-
-        /* 專門為手機端設計的字元平滑噴吐 CSS 動畫 */
-        .char-reveal {
-            display: inline-block;
-            opacity: 0;
-            transform: translateY(4px) scale(0.96);
-            animation: charPop 0.22s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-            will-change: transform, opacity;
-        }
-
-        @keyframes charPop {
-            0% {
-                opacity: 0;
-                transform: translateY(6px) scale(0.92);
-                filter: blur(1px);
-            }
-            100% {
-                opacity: 1;
-                transform: translateY(0) scale(1);
-                filter: blur(0);
-            }
+            animation: phrasePop 0.22s cubic-bezier(0.16, 1, 0.3, 1) forwards;
         }
 
         .phrase-item.interim {
-            color: var(--primary);
+            color: var(--primary-hover);
             font-weight: 700;
             opacity: 0.95;
-            text-shadow: 0 0 16px rgba(184, 155, 114, 0.35);
+            text-shadow: 0 0 16px rgba(205, 179, 139, 0.4);
             display: inline;
             background: transparent;
             border: none;
@@ -443,6 +421,11 @@
 
         .phrase-item.interim:empty {
             display: none;
+        }
+
+        @keyframes phrasePop {
+            0% { opacity: 0; transform: translateY(6px); }
+            100% { opacity: 1; transform: translateY(0); }
         }
 
         .bottom-safe-spacer {
@@ -601,7 +584,6 @@
             border-color: var(--primary);
         }
 
-        /* 房間碼與金鑰卡片 */
         .pin-display-box {
             display: flex;
             gap: 12px;
@@ -1045,7 +1027,7 @@
             toastTimer = setTimeout(() => fontToast.classList.remove('show'), 1500);
         }
 
-        /* ------------------ 4. 粵語句組引擎 (支援手機偽流式字元噴吐) ------------------ */
+        /* ------------------ 4. 粵語句組引擎 ------------------ */
         const QUESTION_ENDINGS = /(點解|係咪|係唔係|係未|得唔得|好唔好|幾時|邊個|邊度|邊處|點樣|點做|點算|成點|做咩|做乜|做乜嘢|嗎|下話|得未|好未|係咪呀|係唔係呀|點樣呀|做咩呀|邊個呀|幾時呀)$/;
         const EXCLAMATION_ENDINGS = /(太好喇|好犀利|超勁|正呀|好正|利害|搞錯|痴線|唔係卦|救命|嘩|哇|好嘢|真係誇張|真係正|勁呀|正話|好痛呀|好正呀)$/;
 
@@ -1066,7 +1048,9 @@
         const LONG_PAUSE_THRESHOLD = 1400;
 
         cantoScroll.addEventListener('scroll', () => {
-            autoScrollCanto = (cantoScroll.scrollHeight - cantoScroll.scrollTop - cantoScroll.clientHeight) < 120;
+            if (!pipWindow || pipWindow.closed) {
+                autoScrollCanto = (cantoScroll.scrollHeight - cantoScroll.scrollTop - cantoScroll.clientHeight) < 120;
+            }
         });
 
         function scrollCantoToBottom() {
@@ -1216,7 +1200,7 @@
             groupElem.className = 'phrase-group active-latest';
             cantoStream.insertBefore(groupElem, interimPart);
 
-            const newGroup = { elem: groupElem, clauses: [], validCount: 0, fullText: "", animatedLen: 0 };
+            const newGroup = { elem: groupElem, clauses: [], validCount: 0, fullText: "" };
             groupList.push(newGroup);
 
             if (groupList.length > 50) {
@@ -1227,39 +1211,40 @@
             return newGroup;
         }
 
-        /* 
-           【核心亮點：手機端偽流式動畫引擎】
-           若在電腦懸浮窗(PiP)中，保持原樣直接賦值以保證橫向排版及平滑滾動；
-           若在手機或常規視窗下，比對新增的字元，透過 DocumentFragment 逐字打包 .char-reveal 進行電影級流式噴吐！
-        */
-        function applyStreamingContent(elem, newText, groupObj) {
-            if (pipWindow && !pipWindow.closed) {
-                elem.textContent = newText;
-                return;
-            }
-
-            const oldLen = groupObj.animatedLen || 0;
-            const newChars = Array.from(newText);
-            
-            if (newChars.length <= oldLen) {
-                elem.textContent = newText;
-                groupObj.animatedLen = newChars.length;
-                return;
-            }
-
-            const fragment = document.createDocumentFragment();
-            const addedChars = newChars.slice(oldLen);
-
-            addedChars.forEach((ch, idx) => {
-                const span = document.createElement('span');
-                span.className = 'char-reveal';
-                span.textContent = ch;
-                span.style.animationDelay = `${idx * 28}ms`;
-                fragment.appendChild(span);
+        /* ------------------ PiP 懸浮視窗專用：走馬燈計算引擎 ------------------ */
+        function resetPipMarquee() {
+            groupList.forEach(g => {
+                if (g && g.elem) {
+                    g.elem.classList.remove('pip-marquee');
+                    g.elem.style.removeProperty('--marquee-dist');
+                    g.elem.style.removeProperty('--marquee-duration');
+                }
             });
+        }
 
-            elem.appendChild(fragment);
-            groupObj.animatedLen = newChars.length;
+        function applyPipMarqueeIfNeeded(groupElem) {
+            if (!pipWindow || pipWindow.closed || !groupElem) return;
+
+            groupElem.classList.remove('pip-marquee');
+            groupElem.style.removeProperty('--marquee-dist');
+            groupElem.style.removeProperty('--marquee-duration');
+            cantoScroll.scrollLeft = 0;
+
+            requestAnimationFrame(() => {
+                if (!pipWindow || pipWindow.closed) return;
+                cantoScroll.scrollLeft = 0;
+
+                const containerWidth = cantoScroll.clientWidth - 56;
+                const textWidth = groupElem.scrollWidth;
+
+                if (textWidth > containerWidth) {
+                    const distance = textWidth - containerWidth + 40;
+                    const duration = Math.max(7, Math.round(distance / 42)); // 流暢閱讀速率
+                    groupElem.style.setProperty('--marquee-dist', `${distance}px`);
+                    groupElem.style.setProperty('--marquee-duration', `${duration}s`);
+                    groupElem.classList.add('pip-marquee');
+                }
+            });
         }
 
         function finalizeCurrentGroup() {
@@ -1268,33 +1253,21 @@
             if (!currentGroup) return;
 
             currentGroup.fullText = renderGroupText(currentGroup, true);
-            applyStreamingContent(currentGroup.elem, currentGroup.fullText, currentGroup);
+            currentGroup.elem.textContent = currentGroup.fullText;
 
-            // 超長走馬燈計算 (懸浮窗)
-            if (pipWindow && !pipWindow.closed) {
-                cantoScroll.scrollLeft = 0;
-                currentGroup.elem.classList.remove('pip-marquee');
-
-                requestAnimationFrame(() => {
-                    const containerWidth = cantoScroll.clientWidth - 48;
-                    const textWidth = currentGroup.elem.scrollWidth;
-
-                    if (textWidth > containerWidth) {
-                        const distance = textWidth - containerWidth + 30;
-                        const duration = Math.max(6, distance / 45);
-                        currentGroup.elem.style.setProperty('--marquee-dist', `-${distance}px`);
-                        currentGroup.elem.style.setProperty('--marquee-duration', `${duration}s`);
-                        currentGroup.elem.classList.add('pip-marquee');
-                    }
-                });
-            }
+            cantoStream.classList.remove('has-interim');
+            const finalizedElem = currentGroup.elem;
+            const fullTextToSend = currentGroup.fullText;
 
             if (currentMode === 'broadcast') {
-                broadcastSecurePayload({ type: 'finalize', fullText: currentGroup.fullText });
+                broadcastSecurePayload({ type: 'finalize', fullText: fullTextToSend });
             }
 
             currentGroup = null;
             refreshGroupHighlights();
+
+            // 本地觸發超長走馬燈
+            applyPipMarqueeIfNeeded(finalizedElem);
         }
 
         function commitSpeechDelta(rawText) {
@@ -1319,7 +1292,7 @@
                 if (isValidSentence) currentGroup.validCount++;
 
                 currentGroup.fullText = renderGroupText(currentGroup, false);
-                applyStreamingContent(currentGroup.elem, currentGroup.fullText, currentGroup);
+                currentGroup.elem.textContent = currentGroup.fullText;
 
                 confirmedPlainHistory += cleanClause;
                 if (confirmedPlainHistory.length > 1000) confirmedPlainHistory = confirmedPlainHistory.slice(-600);
@@ -1344,21 +1317,32 @@
         /* ------------------ 5. 語音辨識機制 ------------------ */
         function handleSpeechInterim(interim) {
             if (!interim || !interim.trim()) {
+                cantoStream.classList.remove('has-interim');
                 interimPart.textContent = "";
                 if (currentMode === 'broadcast') broadcastSecurePayload({ type: 'interim', text: "" });
                 return;
             }
+
             let delta = extractNonOverlappingDelta(convertToHK(interim.trim()));
-            interimPart.textContent = delta || "";
-            if (currentMode === 'broadcast') broadcastSecurePayload({ type: 'interim', text: delta || "" });
+            if (!delta) {
+                delta = convertToHK(interim.trim());
+            }
+
+            resetPipMarquee();
+            cantoStream.classList.add('has-interim');
+            interimPart.textContent = delta;
+
+            if (currentMode === 'broadcast') {
+                broadcastSecurePayload({ type: 'interim', text: delta });
+            }
 
             if (pipWindow && !pipWindow.closed) {
                 requestAnimationFrame(() => {
                     if (cantoScroll.scrollWidth > cantoScroll.clientWidth) {
-                        cantoScroll.scrollLeft = cantoScroll.scrollWidth - cantoScroll.clientWidth + 10;
+                        cantoScroll.scrollLeft = cantoScroll.scrollWidth - cantoScroll.clientWidth + 20;
                     }
                 });
-            } else if (delta) {
+            } else {
                 scrollCantoToBottom();
             }
         }
@@ -1368,12 +1352,14 @@
             const cleanFinal = cleanString(finalText);
             const now = Date.now();
             if (cleanFinal === lastFinalCleanText && (now - lastFinalTimestamp < 1800)) {
+                cantoStream.classList.remove('has-interim');
                 interimPart.textContent = "";
                 if (currentMode === 'broadcast') broadcastSecurePayload({ type: 'interim', text: "" });
                 return;
             }
             lastFinalCleanText = cleanFinal;
             lastFinalTimestamp = now;
+            cantoStream.classList.remove('has-interim');
             interimPart.textContent = "";
             if (currentMode === 'broadcast') broadcastSecurePayload({ type: 'interim', text: "" });
             commitSpeechDelta(finalText);
@@ -1449,6 +1435,7 @@
 
             recognition.onend = () => {
                 isEngineRunning = false;
+                cantoStream.classList.remove('has-interim');
                 interimPart.textContent = "";
                 if (userWantsListening) scheduleSafeRestart();
                 else stopListeningUI();
@@ -1475,6 +1462,7 @@
             toggleBtn.classList.remove('active');
             playIcon.style.display = 'block';
             pauseIcon.style.display = 'none';
+            cantoStream.classList.remove('has-interim');
             interimPart.textContent = "";
         }
 
@@ -1503,24 +1491,66 @@
                 if (!data) return;
 
                 if (data.type === 'interim') {
-                    interimPart.textContent = data.text;
-                    if (data.text) scrollCantoToBottom();
+                    const text = data.text || "";
+                    if (text) {
+                        resetPipMarquee();
+                        cantoStream.classList.add('has-interim');
+                        interimPart.textContent = text;
+
+                        if (pipWindow && !pipWindow.closed) {
+                            requestAnimationFrame(() => {
+                                if (cantoScroll.scrollWidth > cantoScroll.clientWidth) {
+                                    cantoScroll.scrollLeft = cantoScroll.scrollWidth - cantoScroll.clientWidth + 20;
+                                }
+                            });
+                        } else {
+                            scrollCantoToBottom();
+                        }
+                    } else {
+                        cantoStream.classList.remove('has-interim');
+                        interimPart.textContent = "";
+                    }
                 } else if (data.type === 'update_group') {
+                    cantoStream.classList.remove('has-interim');
                     interimPart.textContent = ""; 
 
                     if (!currentGroup) currentGroup = createNewGroup();
                     currentGroup.fullText = data.fullText;
-                    applyStreamingContent(currentGroup.elem, data.fullText, currentGroup);
+                    currentGroup.elem.textContent = data.fullText;
                     refreshGroupHighlights();
-                    scrollCantoToBottom();
+                    
+                    if (pipWindow && !pipWindow.closed) {
+                        requestAnimationFrame(() => {
+                            if (cantoScroll.scrollWidth > cantoScroll.clientWidth) {
+                                cantoScroll.scrollLeft = cantoScroll.scrollWidth - cantoScroll.clientWidth + 20;
+                            }
+                        });
+                    } else {
+                        scrollCantoToBottom();
+                    }
                 } else if (data.type === 'finalize') {
+                    cantoStream.classList.remove('has-interim');
                     interimPart.textContent = ""; 
 
+                    let elemToMarquee = null;
                     if (currentGroup) {
                         currentGroup.fullText = data.fullText;
-                        applyStreamingContent(currentGroup.elem, data.fullText, currentGroup);
+                        currentGroup.elem.textContent = data.fullText;
+                        elemToMarquee = currentGroup.elem;
                         currentGroup = null;
                         refreshGroupHighlights();
+                    } else if (groupList.length > 0) {
+                        const last = groupList[groupList.length - 1];
+                        if (last && data.fullText) {
+                            last.fullText = data.fullText;
+                            last.elem.textContent = data.fullText;
+                            elemToMarquee = last.elem;
+                        }
+                    }
+
+                    // 接收端精確啟動超長走馬燈動畫
+                    if (elemToMarquee) {
+                        applyPipMarqueeIfNeeded(elemToMarquee);
                     }
                 }
             });
@@ -1723,7 +1753,7 @@
             window.speechSynthesis.speak(utter);
         }
 
-        /* ------------------ 9. 桌面置頂懸浮字幕條 ------------------ */
+        /* ------------------ 9. 桌面置頂懸浮字幕條 (完美雙向走馬燈與流動識別) ------------------ */
         let pipWindow = null;
 
         async function togglePipPrompter() {
@@ -1778,11 +1808,8 @@
                         padding: 0 !important;
                         background: #121213 !important;
                         height: 100% !important;
-                        width: 100vw !important;
+                        width: 100% !important;
                         overflow: hidden !important;
-                        display: flex !important;
-                        align-items: center !important;
-                        justify-content: center !important;
                     }
 
                     .viewport-container::before, .viewport-container::after,
@@ -1794,6 +1821,7 @@
                         padding: 0 !important;
                     }
 
+                    /* 滾動容器：單行水平佈局 */
                     .scroll-body {
                         height: 100% !important;
                         width: 100% !important;
@@ -1806,22 +1834,24 @@
                         display: flex !important;
                         flex-direction: row !important;
                         align-items: center !important;
-                        justify-content: center !important;
+                        justify-content: flex-start !important;
                     }
                     .scroll-body::-webkit-scrollbar {
                         display: none !important;
                     }
 
+                    /* 文字串流容器：未超出時居中，超出時由左展開 */
                     .cantonese-stream {
-                        display: flex !important;
+                        display: inline-flex !important;
                         flex-direction: row !important;
                         align-items: center !important;
-                        justify-content: center !important;
+                        min-width: 100% !important;
+                        width: max-content !important;
+                        height: 100% !important;
                         white-space: nowrap !important;
                         gap: 0 !important;
                         margin: 0 auto !important;
                         padding: 0 !important;
-                        height: 100% !important;
                         font-size: var(--cantonese-size, 1.95rem) !important;
                         line-height: 1 !important;
                         font-family: var(--font-serif) !important;
@@ -1831,45 +1861,56 @@
                         display: none !important;
                     }
 
+                    /* 當有臨時識別時，隱藏舊確認句 */
+                    #cantoStream.has-interim .phrase-group.active-latest,
                     #cantoStream:has(#interimPart:not(:empty)) .phrase-group.active-latest {
                         display: none !important;
                     }
 
+                    /* 臨時金色流式文字 */
                     .phrase-item.interim {
                         display: inline-block !important;
-                        color: #B89B72 !important;
+                        color: #CDB38B !important;
                         font-weight: 700 !important;
-                        text-shadow: 0 0 16px rgba(184, 155, 114, 0.35) !important;
+                        text-shadow: 0 0 16px rgba(205, 179, 139, 0.45) !important;
                         white-space: nowrap !important;
                         line-height: 1 !important;
                         vertical-align: middle !important;
-                        text-overflow: clip !important;
+                        margin: 0 auto !important;
                     }
                     .phrase-item.interim:empty {
                         display: none !important;
                     }
 
+                    /* 確認純白文字 */
                     .phrase-group.active-latest {
                         display: inline-block !important;
                         color: #E6E2D6 !important;
                         font-weight: 700 !important;
-                        text-shadow: 0 0 16px rgba(230, 226, 214, 0.45) !important;
+                        text-shadow: 0 0 16px rgba(230, 226, 214, 0.35) !important;
                         white-space: nowrap !important;
                         line-height: 1 !important;
                         vertical-align: middle !important;
-                        text-overflow: clip !important;
                         margin: 0 auto !important;
+                        flex-shrink: 0 !important;
                     }
 
+                    /* 超長確認句走馬燈平滑循環動畫 */
                     .phrase-group.active-latest.pip-marquee {
                         margin: 0 !important;
-                        animation: pipMarquee var(--marquee-duration, 8s) cubic-bezier(0.25, 0.1, 0.25, 1) infinite !important;
+                        animation: pipMarqueeSmooth var(--marquee-duration, 8s) cubic-bezier(0.25, 0.1, 0.25, 1) infinite !important;
                     }
 
-                    @keyframes pipMarquee {
-                        0%, 20% { transform: translateX(0); }
-                        78%, 92% { transform: translateX(var(--marquee-dist, -50%)); }
-                        100% { transform: translateX(0); }
+                    @keyframes pipMarqueeSmooth {
+                        0%, 18% {
+                            transform: translateX(0);
+                        }
+                        75%, 88% {
+                            transform: translateX(calc(-1 * var(--marquee-dist, 0px)));
+                        }
+                        100% {
+                            transform: translateX(0);
+                        }
                     }
                 `;
                 pipWindow.document.head.appendChild(pipStyle);
@@ -1881,12 +1922,21 @@
                 const btnPip = document.getElementById('btnPip');
                 if (btnPip) btnPip.classList.add('mode-active');
 
+                // 進入 PiP 時立即檢查當前最新句是否需要走馬燈
+                if (groupList.length > 0) {
+                    const lastGroup = groupList[groupList.length - 1];
+                    if (lastGroup && lastGroup.elem) {
+                        applyPipMarqueeIfNeeded(lastGroup.elem);
+                    }
+                }
+
                 pipWindow.addEventListener('pagehide', () => {
                     if (viewportContainer && cantoScrollElem) {
                         viewportContainer.appendChild(cantoScrollElem);
                     }
                     pipWindow = null;
                     if (btnPip) btnPip.classList.remove('mode-active');
+                    resetPipMarquee();
                     scrollCantoToBottom();
                 });
 
@@ -1896,4 +1946,4 @@
         }
     </script>
 </body>
-                                                                                                    </html>
+</html>
