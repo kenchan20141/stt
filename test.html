@@ -26,7 +26,7 @@
     <!-- QRCode 生成庫 -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 
-    <!-- Puter.js AI 核心加速模組 -->
+    <!-- 核心 Puter.js AI 引擎 -->
     <script src="https://js.puter.com/v2/"></script>
 
     <style>
@@ -1032,7 +1032,7 @@
             toastTimer = setTimeout(() => fontToast.classList.remove('show'), 1500);
         }
 
-        /* ------------------ 4. 粵語句組引擎 + Puter AI 語意校正 ------------------ */
+        /* ------------------ 4. 粵語句組引擎 + Qwen AI 深度理順句意 ------------------ */
         const QUESTION_ENDINGS = /(點解|係咪|係唔係|係未|得唔得|好唔好|幾時|邊個|邊度|邊處|點樣|點做|點算|成點|做咩|做乜|做乜嘢|嗎|下話|得未|好未|係咪呀|係唔係呀|點樣呀|做咩呀|邊個呀|幾時呀)$/;
         const EXCLAMATION_ENDINGS = /(太好喇|好犀利|超勁|正呀|好正|利害|搞錯|痴線|唔係卦|救命|嘩|哇|好嘢|真係誇張|真係正|勁呀|正話|好痛呀|好正呀)$/;
 
@@ -1052,7 +1052,7 @@
         const MAX_VALID_SENTENCES_PER_GROUP = 3;
         const LONG_PAUSE_THRESHOLD = 1400;
 
-        // Puter AI 語意增強脈絡隊列
+        // 保存最近句意語境
         let aiCorrectionContext = [];
 
         cantoScroll.addEventListener('scroll', () => {
@@ -1219,7 +1219,7 @@
             return newGroup;
         }
 
-        /* ------------------ 背景靜默 AI 校準引擎 (Puter.js) ------------------ */
+        /* ------------------ 背景 Qwen AI 理順句意引擎 (Stream 串流) ------------------ */
         async function silentAiProofreadGroup(targetGroup) {
             if (!targetGroup || !targetGroup.fullText || !window.puter || !window.puter.ai) return;
 
@@ -1234,50 +1234,60 @@
                 const messages = [
                     {
                         role: "system",
-                        content: `你是頂級香港粵語語音校對專家。輸入為即時語音辨識輸出的繁體廣東話，請修正其中可能的同音錯別字、廣東話正字（例如：嘅、咗、緊、喺、諗、睇、啱、仲、點解、邊度、邊個、做咩、好似等）及標點符號。
-嚴格規則：
-1. 必須完全保留香港粵語口語風格與語意，嚴禁翻譯成普通話或書面語！
-2. 只輸出校準後的純粵語語句與標點，禁止任何解釋、寒暄、提示詞或Markdown符號。`
+                        content: `你是頂級香港粵語語音校對與修辭大師。輸入為語音辨識直接輸出的廣東話碎片，可能包含重複口吃、同音錯字、倒裝、語序不順或標點混亂。
+你的核心任務是：結合前文語境【理順句意】，修整為語法通順、地道流暢的繁體香港廣東話。
+嚴格執行規則：
+1. 【絕對嚴禁翻譯成普通話或書面語】！必須徹底保留香港粵語口語特色與地道正字（如：嘅、咗、緊、喺、諗、睇、啱、仲、點解、邊度、邊個、做咩、好似等）。
+2. 理順語法，去除不合邏輯的語音錯誤與口吃重複，使文意通暢連貫。
+3. 嚴禁任何解釋、說明、問候或前綴標籤，只輸出最終理順後的繁體粵語語句。`
                     },
                     {
                         role: "user",
-                        content: `${recentContextStr}\n【當前需校準粵語句】：${textToFix}`
+                        content: `${recentContextStr}\n【當前需理順的粵語句】：${textToFix}`
                     }
                 ];
 
-                const response = await puter.ai.chat(messages);
-                let correctedText = (typeof response === 'string' ? response : response?.message?.content || response?.text || "").trim();
+                // 使用指定的 Qwen 模型與 stream: true
+                const response = await puter.ai.chat(messages, {
+                    model: "infron:qwen/qwen3.8-27b-abliterated-cyber:free",
+                    stream: true
+                });
 
+                let accumulatedText = "";
+                for await (const part of response) {
+                    const chunk = part?.text ?? "";
+                    accumulatedText += chunk;
+                }
+
+                let correctedText = accumulatedText.trim();
                 correctedText = correctedText.replace(/[`"'“”‘’「」『』]/g, '')
-                                             .replace(/^(校準結果|修正|粵語|廣東話)[：:\s]*/i, '')
+                                             .replace(/^(理順結果|理順後|校準結果|修正|粵語|廣東話)[：:\s]*/i, '')
                                              .trim();
                 correctedText = convertToHK(correctedText);
 
-                // 安全防護：僅在有效、非極端長度偏差時覆寫
                 const cleanOrig = cleanString(textToFix);
                 const cleanFixed = cleanString(correctedText);
-                if (cleanFixed && cleanFixed.length >= Math.floor(cleanOrig.length * 0.6) && cleanFixed.length <= Math.ceil(cleanOrig.length * 1.6)) {
+
+                // 安全防護：長度合理且非空時平滑覆寫
+                if (cleanFixed && cleanFixed.length >= Math.floor(cleanOrig.length * 0.5) && cleanFixed.length <= Math.ceil(cleanOrig.length * 1.8)) {
                     targetGroup.fullText = correctedText;
                     if (targetGroup.elem) {
                         targetGroup.elem.textContent = correctedText;
                     }
 
-                    // 記錄前文脈絡
                     aiCorrectionContext.push(cleanFixed);
                     if (aiCorrectionContext.length > 3) aiCorrectionContext.shift();
 
-                    // 若正在廣播，推送校準後的文字更新
                     if (currentMode === 'broadcast') {
                         broadcastSecurePayload({ type: 'finalize', fullText: correctedText });
                     }
 
-                    // 懸浮窗若是同一句，同步校準走馬燈
                     if (pipWindow && !pipWindow.closed && targetGroup.elem) {
                         applyPipMarqueeIfNeeded(targetGroup.elem);
                     }
                 }
             } catch (err) {
-                // AI 靜默降級，保留原辨識結果
+                // AI 靜默降級，維持原用語音辨識文字，不阻斷提詞器
             }
         }
 
@@ -1309,7 +1319,7 @@
 
                 if (textWidth > containerWidth) {
                     const distance = textWidth - containerWidth + 40;
-                    const duration = Math.max(7, Math.round(distance / 42)); // 流暢閱讀速率
+                    const duration = Math.max(7, Math.round(distance / 42));
                     groupElem.style.setProperty('--marquee-dist', `${distance}px`);
                     groupElem.style.setProperty('--marquee-duration', `${duration}s`);
                     groupElem.classList.add('pip-marquee');
@@ -1329,7 +1339,7 @@
             const finalizedElem = currentGroup.elem;
             const fullTextToSend = currentGroup.fullText;
 
-            // 觸發背景靜默 AI 校準
+            // 背景觸發 Qwen AI 理順句意
             silentAiProofreadGroup(currentGroup);
 
             if (currentMode === 'broadcast') {
@@ -1339,7 +1349,6 @@
             currentGroup = null;
             refreshGroupHighlights();
 
-            // 本地觸發超長走馬燈
             applyPipMarqueeIfNeeded(finalizedElem);
         }
 
@@ -1525,7 +1534,7 @@
                 try { recognition.stop(); } catch(e) {}
                 stopListeningUI();
             } else {
-                // 靜默預熱 Puter 認證（無阻斷）
+                // 靜默預熱 Puter 認證
                 if (window.puter && window.puter.auth && !puter.auth.isSignedIn()) {
                     puter.auth.signIn({ attempt_temp_user_creation: true }).catch(() => {});
                 }
@@ -1745,7 +1754,7 @@
             scrollCantoToBottom();
         }
 
-        /* ------------------ 8. 懸浮字幕大小多級調節 (含小兩級以容納更多字) ------------------ */
+        /* ------------------ 8. 懸浮字幕大小多級調節 ------------------ */
         const pipFontScales = [
             { name: "極小 (-2級)", size: "1.40rem" },
             { name: "緊湊 (-1級)", size: "1.75rem" },
@@ -1753,7 +1762,7 @@
             { name: "放大 (+1級)", size: "2.55rem" },
             { name: "特大 (+2級)", size: "3.00rem" }
         ];
-        let currentPipScaleIdx = 2; // 預設標準
+        let currentPipScaleIdx = 2;
 
         function cyclePipFontSize() {
             currentPipScaleIdx = (currentPipScaleIdx + 1) % pipFontScales.length;
@@ -1909,7 +1918,6 @@
                     pipWindow.document.head.appendChild(style.cloneNode(true));
                 });
 
-                // 同步當前懸浮字幕大小
                 pipWindow.document.documentElement.style.setProperty(
                     '--pip-cantonese-size',
                     pipFontScales[currentPipScaleIdx].size
@@ -1935,7 +1943,6 @@
                         padding: 0 !important;
                     }
 
-                    /* 滾動容器：單行水平佈局 */
                     .scroll-body {
                         height: 100% !important;
                         width: 100% !important;
@@ -1954,7 +1961,6 @@
                         display: none !important;
                     }
 
-                    /* 文字串流容器：未超出時居中，超出時由左展開 */
                     .cantonese-stream {
                         display: inline-flex !important;
                         flex-direction: row !important;
@@ -2006,7 +2012,6 @@
                         flex-shrink: 0 !important;
                     }
 
-                    /* 超長確認句走馬燈平滑循環動畫 */
                     .phrase-group.active-latest.pip-marquee {
                         margin: 0 !important;
                         animation: pipMarqueeSmooth var(--marquee-duration, 8s) cubic-bezier(0.25, 0.1, 0.25, 1) infinite !important;
@@ -2094,4 +2099,4 @@
         })();
     </script>
 </body>
-</html>
+                        </html>
