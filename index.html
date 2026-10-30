@@ -49,6 +49,7 @@
             --shadow-depth: 0 24px 50px rgba(0, 0, 0, 0.7);
             --inner-glow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
             --cantonese-size: 2.15rem;
+            --pip-cantonese-size: 2.15rem;
         }
 
         * {
@@ -751,7 +752,8 @@
                             <path d="M14 13.5H19"></path>
                         </svg>
                     </button>
-                    <button id="btnPip" class="icon-btn" title="螢幕底置頂字幕" onclick="togglePipPrompter()">
+                    <!-- 螢幕底置頂懸浮字幕條：短按開關 | 長按循環調節字幕大小(支援小2級) -->
+                    <button id="btnPip" class="icon-btn" title="點擊：開關字幕條 | 長按：調節字幕大小(可縮小2級)">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
                             <rect x="2" y="4" width="20" height="13" rx="2"></rect>
                             <path d="M2 17h20"></path>
@@ -1548,7 +1550,6 @@
                         }
                     }
 
-                    // 接收端精確啟動超長走馬燈動畫
                     if (elemToMarquee) {
                         applyPipMarqueeIfNeeded(elemToMarquee);
                     }
@@ -1652,7 +1653,7 @@
             initReceiverCloud();
         }
 
-        /* ------------------ 7. 字體調節 ------------------ */
+        /* ------------------ 7. 主視窗字體調節 ------------------ */
         const fontScales = [
             { name: "標準", canto: "2.15rem" },
             { name: "放大", canto: "2.60rem" },
@@ -1664,11 +1665,41 @@
             currentScaleIdx = (currentScaleIdx + 1) % fontScales.length;
             const cur = fontScales[currentScaleIdx];
             document.documentElement.style.setProperty('--cantonese-size', cur.canto);
-            showToast(`字體 ${cur.name}`);
+            showToast(`主字體 ${cur.name}`);
             scrollCantoToBottom();
         }
 
-        /* ------------------ 8. 粵拼注音與朗讀 ------------------ */
+        /* ------------------ 8. 懸浮字幕大小多級調節 (含小兩級以容納更多字) ------------------ */
+        const pipFontScales = [
+            { name: "極小 (-2級)", size: "1.40rem" },
+            { name: "緊湊 (-1級)", size: "1.75rem" },
+            { name: "標準", size: "2.15rem" },
+            { name: "放大 (+1級)", size: "2.55rem" },
+            { name: "特大 (+2級)", size: "3.00rem" }
+        ];
+        let currentPipScaleIdx = 2; // 預設標準
+
+        function cyclePipFontSize() {
+            currentPipScaleIdx = (currentPipScaleIdx + 1) % pipFontScales.length;
+            const cur = pipFontScales[currentPipScaleIdx];
+            
+            document.documentElement.style.setProperty('--pip-cantonese-size', cur.size);
+
+            if (pipWindow && !pipWindow.closed) {
+                pipWindow.document.documentElement.style.setProperty('--pip-cantonese-size', cur.size);
+                // 調整字體大小後立即重算走馬燈
+                if (groupList.length > 0) {
+                    const lastGroup = groupList[groupList.length - 1];
+                    if (lastGroup && lastGroup.elem) {
+                        applyPipMarqueeIfNeeded(lastGroup.elem);
+                    }
+                }
+            }
+
+            showToast(`懸浮字幕: ${cur.name}`);
+        }
+
+        /* ------------------ 9. 粵拼注音與朗讀 ------------------ */
         const modal = document.getElementById('phoneticModal');
         const modalContent = document.getElementById('modalContent');
         const ttsStatus = document.getElementById('ttsStatus');
@@ -1753,8 +1784,10 @@
             window.speechSynthesis.speak(utter);
         }
 
-        /* ------------------ 9. 桌面置頂懸浮字幕條 (完美雙向走馬燈與流動識別) ------------------ */
+        /* ------------------ 10. 桌面置頂懸浮字幕條與長按調字體 ------------------ */
         let pipWindow = null;
+        let pipLongPressTimer = null;
+        let isPipLongPress = false;
 
         async function togglePipPrompter() {
             if (pipWindow && !pipWindow.closed) {
@@ -1800,6 +1833,12 @@
                 document.querySelectorAll('style').forEach(style => {
                     pipWindow.document.head.appendChild(style.cloneNode(true));
                 });
+
+                // 同步當前懸浮字幕大小
+                pipWindow.document.documentElement.style.setProperty(
+                    '--pip-cantonese-size',
+                    pipFontScales[currentPipScaleIdx].size
+                );
 
                 const pipStyle = pipWindow.document.createElement('style');
                 pipStyle.textContent = `
@@ -1852,7 +1891,7 @@
                         gap: 0 !important;
                         margin: 0 auto !important;
                         padding: 0 !important;
-                        font-size: var(--cantonese-size, 1.95rem) !important;
+                        font-size: var(--pip-cantonese-size, 2.15rem) !important;
                         line-height: 1 !important;
                         font-family: var(--font-serif) !important;
                     }
@@ -1861,13 +1900,11 @@
                         display: none !important;
                     }
 
-                    /* 當有臨時識別時，隱藏舊確認句 */
                     #cantoStream.has-interim .phrase-group.active-latest,
                     #cantoStream:has(#interimPart:not(:empty)) .phrase-group.active-latest {
                         display: none !important;
                     }
 
-                    /* 臨時金色流式文字 */
                     .phrase-item.interim {
                         display: inline-block !important;
                         color: #CDB38B !important;
@@ -1882,7 +1919,6 @@
                         display: none !important;
                     }
 
-                    /* 確認純白文字 */
                     .phrase-group.active-latest {
                         display: inline-block !important;
                         color: #E6E2D6 !important;
@@ -1922,7 +1958,7 @@
                 const btnPip = document.getElementById('btnPip');
                 if (btnPip) btnPip.classList.add('mode-active');
 
-                // 進入 PiP 時立即檢查當前最新句是否需要走馬燈
+                // 進入時檢查當前最新句是否需要走馬燈
                 if (groupList.length > 0) {
                     const lastGroup = groupList[groupList.length - 1];
                     if (lastGroup && lastGroup.elem) {
@@ -1944,6 +1980,44 @@
                 console.error('開啟置頂字幕視窗失敗:', err);
             }
         }
+
+        /* 綁定長按與短按至 #btnPip 按鈕 */
+        (function setupPipButtonEvents() {
+            const btnPip = document.getElementById('btnPip');
+            if (!btnPip) return;
+
+            const onPointerStart = () => {
+                isPipLongPress = false;
+                clearTimeout(pipLongPressTimer);
+                pipLongPressTimer = setTimeout(() => {
+                    isPipLongPress = true;
+                    if (navigator.vibrate) navigator.vibrate(40);
+                    cyclePipFontSize();
+                }, 520);
+            };
+
+            const onPointerEnd = () => {
+                clearTimeout(pipLongPressTimer);
+            };
+
+            btnPip.addEventListener('mousedown', onPointerStart);
+            btnPip.addEventListener('mouseup', onPointerEnd);
+            btnPip.addEventListener('mouseleave', onPointerEnd);
+
+            btnPip.addEventListener('touchstart', onPointerStart, { passive: true });
+            btnPip.addEventListener('touchend', onPointerEnd);
+            btnPip.addEventListener('touchcancel', onPointerEnd);
+
+            btnPip.addEventListener('click', (e) => {
+                if (isPipLongPress) {
+                    isPipLongPress = false;
+                    e.preventDefault();
+                    e.stopPropagation();
+                    return;
+                }
+                togglePipPrompter();
+            });
+        })();
     </script>
 </body>
 </html>
