@@ -26,6 +26,9 @@
     <!-- QRCode 生成庫 -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 
+    <!-- Puter.js AI 核心加速模組 -->
+    <script src="https://js.puter.com/v2/"></script>
+
     <style>
         :root {
             /* Morandi Cinematic Studio Palette */
@@ -1029,7 +1032,7 @@
             toastTimer = setTimeout(() => fontToast.classList.remove('show'), 1500);
         }
 
-        /* ------------------ 4. 粵語句組引擎 ------------------ */
+        /* ------------------ 4. 粵語句組引擎 + Puter AI 語意校正 ------------------ */
         const QUESTION_ENDINGS = /(點解|係咪|係唔係|係未|得唔得|好唔好|幾時|邊個|邊度|邊處|點樣|點做|點算|成點|做咩|做乜|做乜嘢|嗎|下話|得未|好未|係咪呀|係唔係呀|點樣呀|做咩呀|邊個呀|幾時呀)$/;
         const EXCLAMATION_ENDINGS = /(太好喇|好犀利|超勁|正呀|好正|利害|搞錯|痴線|唔係卦|救命|嘩|哇|好嘢|真係誇張|真係正|勁呀|正話|好痛呀|好正呀)$/;
 
@@ -1048,6 +1051,9 @@
 
         const MAX_VALID_SENTENCES_PER_GROUP = 3;
         const LONG_PAUSE_THRESHOLD = 1400;
+
+        // Puter AI 語意增強脈絡隊列
+        let aiCorrectionContext = [];
 
         cantoScroll.addEventListener('scroll', () => {
             if (!pipWindow || pipWindow.closed) {
@@ -1213,6 +1219,68 @@
             return newGroup;
         }
 
+        /* ------------------ 背景靜默 AI 校準引擎 (Puter.js) ------------------ */
+        async function silentAiProofreadGroup(targetGroup) {
+            if (!targetGroup || !targetGroup.fullText || !window.puter || !window.puter.ai) return;
+
+            const textToFix = targetGroup.fullText.trim();
+            if (cleanString(textToFix).length < 2) return;
+
+            try {
+                const recentContextStr = aiCorrectionContext.length > 0 
+                    ? `【前文語境】：${aiCorrectionContext.join('，')}`
+                    : "【前文】：無";
+
+                const messages = [
+                    {
+                        role: "system",
+                        content: `你是頂級香港粵語語音校對專家。輸入為即時語音辨識輸出的繁體廣東話，請修正其中可能的同音錯別字、廣東話正字（例如：嘅、咗、緊、喺、諗、睇、啱、仲、點解、邊度、邊個、做咩、好似等）及標點符號。
+嚴格規則：
+1. 必須完全保留香港粵語口語風格與語意，嚴禁翻譯成普通話或書面語！
+2. 只輸出校準後的純粵語語句與標點，禁止任何解釋、寒暄、提示詞或Markdown符號。`
+                    },
+                    {
+                        role: "user",
+                        content: `${recentContextStr}\n【當前需校準粵語句】：${textToFix}`
+                    }
+                ];
+
+                const response = await puter.ai.chat(messages);
+                let correctedText = (typeof response === 'string' ? response : response?.message?.content || response?.text || "").trim();
+
+                correctedText = correctedText.replace(/[`"'“”‘’「」『』]/g, '')
+                                             .replace(/^(校準結果|修正|粵語|廣東話)[：:\s]*/i, '')
+                                             .trim();
+                correctedText = convertToHK(correctedText);
+
+                // 安全防護：僅在有效、非極端長度偏差時覆寫
+                const cleanOrig = cleanString(textToFix);
+                const cleanFixed = cleanString(correctedText);
+                if (cleanFixed && cleanFixed.length >= Math.floor(cleanOrig.length * 0.6) && cleanFixed.length <= Math.ceil(cleanOrig.length * 1.6)) {
+                    targetGroup.fullText = correctedText;
+                    if (targetGroup.elem) {
+                        targetGroup.elem.textContent = correctedText;
+                    }
+
+                    // 記錄前文脈絡
+                    aiCorrectionContext.push(cleanFixed);
+                    if (aiCorrectionContext.length > 3) aiCorrectionContext.shift();
+
+                    // 若正在廣播，推送校準後的文字更新
+                    if (currentMode === 'broadcast') {
+                        broadcastSecurePayload({ type: 'finalize', fullText: correctedText });
+                    }
+
+                    // 懸浮窗若是同一句，同步校準走馬燈
+                    if (pipWindow && !pipWindow.closed && targetGroup.elem) {
+                        applyPipMarqueeIfNeeded(targetGroup.elem);
+                    }
+                }
+            } catch (err) {
+                // AI 靜默降級，保留原辨識結果
+            }
+        }
+
         /* ------------------ PiP 懸浮視窗專用：走馬燈計算引擎 ------------------ */
         function resetPipMarquee() {
             groupList.forEach(g => {
@@ -1260,6 +1328,9 @@
             cantoStream.classList.remove('has-interim');
             const finalizedElem = currentGroup.elem;
             const fullTextToSend = currentGroup.fullText;
+
+            // 觸發背景靜默 AI 校準
+            silentAiProofreadGroup(currentGroup);
 
             if (currentMode === 'broadcast') {
                 broadcastSecurePayload({ type: 'finalize', fullText: fullTextToSend });
@@ -1444,7 +1515,7 @@
             };
         }
 
-        function toggleSpeech() {
+        async function toggleSpeech() {
             if (!recognition) return alert("瀏覽器不支援語音辨識。");
             if (userWantsListening) {
                 userWantsListening = false;
@@ -1454,6 +1525,11 @@
                 try { recognition.stop(); } catch(e) {}
                 stopListeningUI();
             } else {
+                // 靜默預熱 Puter 認證（無阻斷）
+                if (window.puter && window.puter.auth && !puter.auth.isSignedIn()) {
+                    puter.auth.signIn({ attempt_temp_user_creation: true }).catch(() => {});
+                }
+
                 userWantsListening = true;
                 acquireWakeLock();
                 scheduleSafeRestart();
@@ -1687,7 +1763,6 @@
 
             if (pipWindow && !pipWindow.closed) {
                 pipWindow.document.documentElement.style.setProperty('--pip-cantonese-size', cur.size);
-                // 調整字體大小後立即重算走馬燈
                 if (groupList.length > 0) {
                     const lastGroup = groupList[groupList.length - 1];
                     if (lastGroup && lastGroup.elem) {
@@ -1958,7 +2033,6 @@
                 const btnPip = document.getElementById('btnPip');
                 if (btnPip) btnPip.classList.add('mode-active');
 
-                // 進入時檢查當前最新句是否需要走馬燈
                 if (groupList.length > 0) {
                     const lastGroup = groupList[groupList.length - 1];
                     if (lastGroup && lastGroup.elem) {
