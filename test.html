@@ -26,9 +26,6 @@
     <!-- QRCode 生成庫 -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 
-    <!-- 核心 Puter.js AI 引擎 -->
-    <script src="https://js.puter.com/v2/"></script>
-
     <style>
         :root {
             /* Morandi Cinematic Studio Palette */
@@ -741,6 +738,15 @@
                             <line x1="15" y1="12" x2="3" y2="12"></line>
                         </svg>
                     </button>
+
+                    <!-- 新增擴音模式開關 -->
+                    <button id="btnPassthrough" class="icon-btn" title="擴音模式 (將耳機收音從電腦喇叭播出)" onclick="toggleAudioPassthrough()">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+                            <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
+                            <path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"></path>
+                        </svg>
+                    </button>
+
                     <button class="icon-btn" title="粵拼注音" onclick="openPhoneticModal()">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
                             <path d="M3 18v-6a9 9 0 0 1 18 0v6"></path>
@@ -1032,7 +1038,7 @@
             toastTimer = setTimeout(() => fontToast.classList.remove('show'), 1500);
         }
 
-        /* ------------------ 4. 粵語句組引擎 + Qwen AI 深度理順句意 ------------------ */
+        /* ------------------ 4. 粵語句組引擎 ------------------ */
         const QUESTION_ENDINGS = /(點解|係咪|係唔係|係未|得唔得|好唔好|幾時|邊個|邊度|邊處|點樣|點做|點算|成點|做咩|做乜|做乜嘢|嗎|下話|得未|好未|係咪呀|係唔係呀|點樣呀|做咩呀|邊個呀|幾時呀)$/;
         const EXCLAMATION_ENDINGS = /(太好喇|好犀利|超勁|正呀|好正|利害|搞錯|痴線|唔係卦|救命|嘩|哇|好嘢|真係誇張|真係正|勁呀|正話|好痛呀|好正呀)$/;
 
@@ -1051,9 +1057,6 @@
 
         const MAX_VALID_SENTENCES_PER_GROUP = 3;
         const LONG_PAUSE_THRESHOLD = 1400;
-
-        // 保存最近句意語境
-        let aiCorrectionContext = [];
 
         cantoScroll.addEventListener('scroll', () => {
             if (!pipWindow || pipWindow.closed) {
@@ -1219,78 +1222,6 @@
             return newGroup;
         }
 
-        /* ------------------ 背景 Qwen AI 理順句意引擎 (Stream 串流) ------------------ */
-        async function silentAiProofreadGroup(targetGroup) {
-            if (!targetGroup || !targetGroup.fullText || !window.puter || !window.puter.ai) return;
-
-            const textToFix = targetGroup.fullText.trim();
-            if (cleanString(textToFix).length < 2) return;
-
-            try {
-                const recentContextStr = aiCorrectionContext.length > 0 
-                    ? `【前文語境】：${aiCorrectionContext.join('，')}`
-                    : "【前文】：無";
-
-                const messages = [
-                    {
-                        role: "system",
-                        content: `你是頂級香港粵語語音校對與修辭大師。輸入為語音辨識直接輸出的廣東話碎片，可能包含重複口吃、同音錯字、倒裝、語序不順或標點混亂。
-你的核心任務是：結合前文語境【理順句意】，修整為語法通順、地道流暢的繁體香港廣東話。
-嚴格執行規則：
-1. 【絕對嚴禁翻譯成普通話或書面語】！必須徹底保留香港粵語口語特色與地道正字（如：嘅、咗、緊、喺、諗、睇、啱、仲、點解、邊度、邊個、做咩、好似等）。
-2. 理順語法，去除不合邏輯的語音錯誤與口吃重複，使文意通暢連貫。
-3. 嚴禁任何解釋、說明、問候或前綴標籤，只輸出最終理順後的繁體粵語語句。`
-                    },
-                    {
-                        role: "user",
-                        content: `${recentContextStr}\n【當前需理順的粵語句】：${textToFix}`
-                    }
-                ];
-
-                // 使用指定的 Qwen 模型與 stream: true
-                const response = await puter.ai.chat(messages, {
-                    model: "infron:qwen/qwen3.8-27b-abliterated-cyber:free",
-                    stream: true
-                });
-
-                let accumulatedText = "";
-                for await (const part of response) {
-                    const chunk = part?.text ?? "";
-                    accumulatedText += chunk;
-                }
-
-                let correctedText = accumulatedText.trim();
-                correctedText = correctedText.replace(/[`"'“”‘’「」『』]/g, '')
-                                             .replace(/^(理順結果|理順後|校準結果|修正|粵語|廣東話)[：:\s]*/i, '')
-                                             .trim();
-                correctedText = convertToHK(correctedText);
-
-                const cleanOrig = cleanString(textToFix);
-                const cleanFixed = cleanString(correctedText);
-
-                // 安全防護：長度合理且非空時平滑覆寫
-                if (cleanFixed && cleanFixed.length >= Math.floor(cleanOrig.length * 0.5) && cleanFixed.length <= Math.ceil(cleanOrig.length * 1.8)) {
-                    targetGroup.fullText = correctedText;
-                    if (targetGroup.elem) {
-                        targetGroup.elem.textContent = correctedText;
-                    }
-
-                    aiCorrectionContext.push(cleanFixed);
-                    if (aiCorrectionContext.length > 3) aiCorrectionContext.shift();
-
-                    if (currentMode === 'broadcast') {
-                        broadcastSecurePayload({ type: 'finalize', fullText: correctedText });
-                    }
-
-                    if (pipWindow && !pipWindow.closed && targetGroup.elem) {
-                        applyPipMarqueeIfNeeded(targetGroup.elem);
-                    }
-                }
-            } catch (err) {
-                // AI 靜默降級，維持原用語音辨識文字，不阻斷提詞器
-            }
-        }
-
         /* ------------------ PiP 懸浮視窗專用：走馬燈計算引擎 ------------------ */
         function resetPipMarquee() {
             groupList.forEach(g => {
@@ -1319,7 +1250,7 @@
 
                 if (textWidth > containerWidth) {
                     const distance = textWidth - containerWidth + 40;
-                    const duration = Math.max(7, Math.round(distance / 42));
+                    const duration = Math.max(7, Math.round(distance / 42)); // 流暢閱讀速率
                     groupElem.style.setProperty('--marquee-dist', `${distance}px`);
                     groupElem.style.setProperty('--marquee-duration', `${duration}s`);
                     groupElem.classList.add('pip-marquee');
@@ -1339,9 +1270,6 @@
             const finalizedElem = currentGroup.elem;
             const fullTextToSend = currentGroup.fullText;
 
-            // 背景觸發 Qwen AI 理順句意
-            silentAiProofreadGroup(currentGroup);
-
             if (currentMode === 'broadcast') {
                 broadcastSecurePayload({ type: 'finalize', fullText: fullTextToSend });
             }
@@ -1349,6 +1277,7 @@
             currentGroup = null;
             refreshGroupHighlights();
 
+            // 本地觸發超長走馬燈
             applyPipMarqueeIfNeeded(finalizedElem);
         }
 
@@ -1524,7 +1453,7 @@
             };
         }
 
-        async function toggleSpeech() {
+        function toggleSpeech() {
             if (!recognition) return alert("瀏覽器不支援語音辨識。");
             if (userWantsListening) {
                 userWantsListening = false;
@@ -1534,11 +1463,6 @@
                 try { recognition.stop(); } catch(e) {}
                 stopListeningUI();
             } else {
-                // 靜默預熱 Puter 認證
-                if (window.puter && window.puter.auth && !puter.auth.isSignedIn()) {
-                    puter.auth.signIn({ attempt_temp_user_creation: true }).catch(() => {});
-                }
-
                 userWantsListening = true;
                 acquireWakeLock();
                 scheduleSafeRestart();
@@ -1754,7 +1678,7 @@
             scrollCantoToBottom();
         }
 
-        /* ------------------ 8. 懸浮字幕大小多級調節 ------------------ */
+        /* ------------------ 8. 懸浮字幕大小多級調節 (含小兩級以容納更多字) ------------------ */
         const pipFontScales = [
             { name: "極小 (-2級)", size: "1.40rem" },
             { name: "緊湊 (-1級)", size: "1.75rem" },
@@ -1762,7 +1686,7 @@
             { name: "放大 (+1級)", size: "2.55rem" },
             { name: "特大 (+2級)", size: "3.00rem" }
         ];
-        let currentPipScaleIdx = 2;
+        let currentPipScaleIdx = 2; // 預設標準
 
         function cyclePipFontSize() {
             currentPipScaleIdx = (currentPipScaleIdx + 1) % pipFontScales.length;
@@ -1772,6 +1696,7 @@
 
             if (pipWindow && !pipWindow.closed) {
                 pipWindow.document.documentElement.style.setProperty('--pip-cantonese-size', cur.size);
+                // 調整字體大小後立即重算走馬燈
                 if (groupList.length > 0) {
                     const lastGroup = groupList[groupList.length - 1];
                     if (lastGroup && lastGroup.elem) {
@@ -1867,6 +1792,60 @@
 
             window.speechSynthesis.speak(utter);
         }
+        
+        /* ------------------ 11. 實時擴音穿透 (Audio Passthrough) ------------------ */
+        let audioCtx = null;
+        let passthroughStream = null;
+        let passthroughSource = null;
+        let isPassthroughEnabled = false;
+
+        async function toggleAudioPassthrough() {
+            const btn = document.getElementById('btnPassthrough');
+            if (isPassthroughEnabled) {
+                // 關閉擴音
+                if (passthroughSource) {
+                    passthroughSource.disconnect();
+                    passthroughSource = null;
+                }
+                if (passthroughStream) {
+                    passthroughStream.getTracks().forEach(t => t.stop());
+                    passthroughStream = null;
+                }
+                if (audioCtx && audioCtx.state === 'running') {
+                    await audioCtx.suspend();
+                }
+                isPassthroughEnabled = false;
+                btn.classList.remove('mode-active');
+                showToast("擴音模式已關閉");
+            } else {
+                // 啟動擴音
+                try {
+                    passthroughStream = await navigator.mediaDevices.getUserMedia({
+                        audio: {
+                            echoCancellation: true,
+                            noiseSuppression: true,
+                            autoGainControl: true
+                        }
+                    });
+                    
+                    if (!audioCtx) {
+                        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                    }
+                    if (audioCtx.state === 'suspended') {
+                        await audioCtx.resume();
+                    }
+                    
+                    passthroughSource = audioCtx.createMediaStreamSource(passthroughStream);
+                    passthroughSource.connect(audioCtx.destination);
+                    
+                    isPassthroughEnabled = true;
+                    btn.classList.add('mode-active');
+                    showToast("擴音開啟 (請用耳機防回音)");
+                } catch (err) {
+                    alert("無法存取咪高峰或擴音失敗：" + err.message);
+                }
+            }
+        }
 
         /* ------------------ 10. 桌面置頂懸浮字幕條與長按調字體 ------------------ */
         let pipWindow = null;
@@ -1918,6 +1897,7 @@
                     pipWindow.document.head.appendChild(style.cloneNode(true));
                 });
 
+                // 同步當前懸浮字幕大小
                 pipWindow.document.documentElement.style.setProperty(
                     '--pip-cantonese-size',
                     pipFontScales[currentPipScaleIdx].size
@@ -1943,6 +1923,7 @@
                         padding: 0 !important;
                     }
 
+                    /* 滾動容器：單行水平佈局 */
                     .scroll-body {
                         height: 100% !important;
                         width: 100% !important;
@@ -1961,6 +1942,7 @@
                         display: none !important;
                     }
 
+                    /* 文字串流容器：未超出時居中，超出時由左展開 */
                     .cantonese-stream {
                         display: inline-flex !important;
                         flex-direction: row !important;
@@ -2012,6 +1994,7 @@
                         flex-shrink: 0 !important;
                     }
 
+                    /* 超長確認句走馬燈平滑循環動畫 */
                     .phrase-group.active-latest.pip-marquee {
                         margin: 0 !important;
                         animation: pipMarqueeSmooth var(--marquee-duration, 8s) cubic-bezier(0.25, 0.1, 0.25, 1) infinite !important;
@@ -2038,6 +2021,7 @@
                 const btnPip = document.getElementById('btnPip');
                 if (btnPip) btnPip.classList.add('mode-active');
 
+                // 進入時檢查當前最新句是否需要走馬燈
                 if (groupList.length > 0) {
                     const lastGroup = groupList[groupList.length - 1];
                     if (lastGroup && lastGroup.elem) {
@@ -2099,4 +2083,4 @@
         })();
     </script>
 </body>
-                        </html>
+</html>
