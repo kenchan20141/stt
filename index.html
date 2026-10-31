@@ -256,6 +256,37 @@
             box-shadow: inset 0 0 12px rgba(184, 155, 114, 0.15);
         }
 
+        /* 接收端實時音頻監聽按鈕與視覺化動態指針 */
+        .audio-monitor-btn {
+            position: relative;
+            transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        .audio-monitor-btn.audio-on {
+            background: rgba(78, 135, 101, 0.22) !important;
+            border-color: var(--accent-green) !important;
+            color: var(--accent-green) !important;
+            box-shadow: 0 0 14px rgba(78, 135, 101, 0.4), inset 0 0 8px rgba(78, 135, 101, 0.25) !important;
+        }
+
+        .audio-viz-bars {
+            display: flex;
+            align-items: flex-end;
+            justify-content: center;
+            gap: 2.5px;
+            width: 20px;
+            height: 18px;
+            pointer-events: none;
+        }
+
+        .audio-viz-bars .v-bar {
+            width: 2.5px;
+            height: 3px;
+            background: var(--accent-green);
+            border-radius: 1px;
+            transition: height 0.05s ease-out;
+        }
+
         .power-btn {
             background: rgba(168, 87, 81, 0.2);
             border: 1px solid var(--accent-red);
@@ -307,7 +338,7 @@
 
             .btn-group { gap: 5px; }
 
-            .icon-btn {
+            .icon-btn, .audio-monitor-btn, .power-btn {
                 width: 34px;
                 height: 34px;
             }
@@ -315,11 +346,6 @@
             .icon-btn svg {
                 width: 16px;
                 height: 16px;
-            }
-
-            .power-btn {
-                width: 34px;
-                height: 34px;
             }
 
             #btnPip { display: none !important; }
@@ -738,6 +764,22 @@
                             <line x1="15" y1="12" x2="3" y2="12"></line>
                         </svg>
                     </button>
+
+                    <!-- 接收端專用：零延遲高音質監聽切換鍵 (純視覺化等化器，無文字通知) -->
+                    <button id="btnAudioMonitor" class="icon-btn audio-monitor-btn" style="display:none;" onclick="toggleAudioMonitor()">
+                        <svg id="audioIconOff" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+                            <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
+                            <line x1="23" y1="9" x2="17" y2="15"></line>
+                            <line x1="17" y1="9" x2="23" y2="15"></line>
+                        </svg>
+                        <div id="audioVisualizerBars" class="audio-viz-bars" style="display:none;">
+                            <span class="v-bar"></span>
+                            <span class="v-bar"></span>
+                            <span class="v-bar"></span>
+                            <span class="v-bar"></span>
+                        </div>
+                    </button>
+
                     <button class="icon-btn" title="粵拼注音" onclick="openPhoneticModal()">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
                             <path d="M3 18v-6a9 9 0 0 1 18 0v6"></path>
@@ -752,8 +794,8 @@
                             <path d="M14 13.5H19"></path>
                         </svg>
                     </button>
-                    <!-- 螢幕底置頂懸浮字幕條：短按開關 | 長按循環調節字幕大小(支援小2級) -->
-                    <button id="btnPip" class="icon-btn" title="點擊：開關字幕條 | 長按：調節字幕大小(可縮小2級)">
+                    <!-- 螢幕底置頂懸浮字幕條：短按開關 | 長按循環調節字幕大小 -->
+                    <button id="btnPip" class="icon-btn" title="點擊：開關字幕條 | 長按：調節字幕大小">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
                             <rect x="2" y="4" width="20" height="13" rx="2"></rect>
                             <path d="M2 17h20"></path>
@@ -919,6 +961,7 @@
         const joinKey = window.location.hash.replace('#', '');
         const isReceiverMode = Boolean(joinRoom && joinKey);
 
+        const myClientId = 'cli_' + Math.random().toString(36).substring(2, 9);
         let currentMode = isReceiverMode ? 'receive' : 'solo';
         let currentRoomId = joinRoom || '';
         let currentSecretKey = joinKey || '';
@@ -927,6 +970,7 @@
         const btnSolo = document.getElementById('btnSolo');
         const btnBroadcast = document.getElementById('btnBroadcast');
         const btnJoinModal = document.getElementById('btnJoinModal');
+        const btnAudioMonitor = document.getElementById('btnAudioMonitor');
         const toggleBtn = document.getElementById('toggleBtn');
 
         let mqttClient = null;
@@ -940,14 +984,19 @@
             if (currentMode === 'solo') {
                 btnSolo.classList.add('mode-active');
                 toggleBtn.style.display = 'flex';
+                btnAudioMonitor.style.display = 'none';
+                stopAudioListening();
             } else if (currentMode === 'broadcast') {
                 btnBroadcast.classList.add('mode-active');
                 statusDot.classList.add('broadcast');
                 toggleBtn.style.display = 'flex';
+                btnAudioMonitor.style.display = 'none';
+                stopAudioListening();
             } else if (currentMode === 'receive') {
                 btnJoinModal.classList.add('mode-active');
                 toggleBtn.style.display = 'none';
                 statusDot.classList.add('receive');
+                btnAudioMonitor.style.display = 'flex';
             }
         }
 
@@ -1241,7 +1290,7 @@
 
                 if (textWidth > containerWidth) {
                     const distance = textWidth - containerWidth + 40;
-                    const duration = Math.max(7, Math.round(distance / 42)); // 流暢閱讀速率
+                    const duration = Math.max(7, Math.round(distance / 42));
                     groupElem.style.setProperty('--marquee-dist', `${distance}px`);
                     groupElem.style.setProperty('--marquee-duration', `${duration}s`);
                     groupElem.classList.add('pip-marquee');
@@ -1262,13 +1311,12 @@
             const fullTextToSend = currentGroup.fullText;
 
             if (currentMode === 'broadcast') {
-                broadcastSecurePayload({ type: 'finalize', fullText: fullTextToSend });
+                sendRoomPayload({ type: 'finalize', fullText: fullTextToSend });
             }
 
             currentGroup = null;
             refreshGroupHighlights();
 
-            // 本地觸發超長走馬燈
             applyPipMarqueeIfNeeded(finalizedElem);
         }
 
@@ -1300,7 +1348,7 @@
                 if (confirmedPlainHistory.length > 1000) confirmedPlainHistory = confirmedPlainHistory.slice(-600);
 
                 if (currentMode === 'broadcast') {
-                    broadcastSecurePayload({ type: 'update_group', fullText: currentGroup.fullText });
+                    sendRoomPayload({ type: 'update_group', fullText: currentGroup.fullText });
                 }
 
                 if (currentGroup.validCount >= MAX_VALID_SENTENCES_PER_GROUP) {
@@ -1321,7 +1369,7 @@
             if (!interim || !interim.trim()) {
                 cantoStream.classList.remove('has-interim');
                 interimPart.textContent = "";
-                if (currentMode === 'broadcast') broadcastSecurePayload({ type: 'interim', text: "" });
+                if (currentMode === 'broadcast') sendRoomPayload({ type: 'interim', text: "" });
                 return;
             }
 
@@ -1335,7 +1383,7 @@
             interimPart.textContent = delta;
 
             if (currentMode === 'broadcast') {
-                broadcastSecurePayload({ type: 'interim', text: delta });
+                sendRoomPayload({ type: 'interim', text: delta });
             }
 
             if (pipWindow && !pipWindow.closed) {
@@ -1356,14 +1404,14 @@
             if (cleanFinal === lastFinalCleanText && (now - lastFinalTimestamp < 1800)) {
                 cantoStream.classList.remove('has-interim');
                 interimPart.textContent = "";
-                if (currentMode === 'broadcast') broadcastSecurePayload({ type: 'interim', text: "" });
+                if (currentMode === 'broadcast') sendRoomPayload({ type: 'interim', text: "" });
                 return;
             }
             lastFinalCleanText = cleanFinal;
             lastFinalTimestamp = now;
             cantoStream.classList.remove('has-interim');
             interimPart.textContent = "";
-            if (currentMode === 'broadcast') broadcastSecurePayload({ type: 'interim', text: "" });
+            if (currentMode === 'broadcast') sendRoomPayload({ type: 'interim', text: "" });
             commitSpeechDelta(finalText);
         }
 
@@ -1444,7 +1492,7 @@
             };
         }
 
-        function toggleSpeech() {
+        async function toggleSpeech() {
             if (!recognition) return alert("瀏覽器不支援語音辨識。");
             if (userWantsListening) {
                 userWantsListening = false;
@@ -1456,6 +1504,9 @@
             } else {
                 userWantsListening = true;
                 acquireWakeLock();
+                if (currentMode === 'broadcast') {
+                    await ensureBroadcasterMic();
+                }
                 scheduleSafeRestart();
             }
         }
@@ -1468,11 +1519,371 @@
             interimPart.textContent = "";
         }
 
-        /* ------------------ 6. 純數字房間加密傳輸 ------------------ */
-        async function broadcastSecurePayload(payload) {
-            if (mqttClient && mqttClient.connected && currentMode === 'broadcast') {
+        /* ------------------ 6. WebRTC 零延遲高音質音訊與雲端協定 ------------------ */
+        const rtcConfig = {
+            iceServers: [
+                { urls: 'stun:stun.l.google.com:19302' },
+                { urls: 'stun:stun1.l.google.com:19302' }
+            ]
+        };
+
+        // Opus 高音質 (48kHz Stereo 128kbps) 與超低封包時延設定
+        function tuneOpusSdp(sdp) {
+            if (!sdp) return sdp;
+            let lines = sdp.split('\r\n');
+            let opusPt = null;
+            for (let line of lines) {
+                if (line.startsWith('a=rtpmap:') && line.toLowerCase().includes('opus/48000')) {
+                    opusPt = line.split(':')[1].split(' ')[0];
+                    break;
+                }
+            }
+            if (opusPt) {
+                let fmtpFound = false;
+                for (let i = 0; i < lines.length; i++) {
+                    if (lines[i].startsWith(`a=fmtp:${opusPt}`)) {
+                        lines[i] = `a=fmtp:${opusPt} minptime=10;useinbandfec=1;stereo=1;sprop-stereo=1;maxaveragebitrate=128000;cbr=1`;
+                        fmtpFound = true;
+                        break;
+                    }
+                }
+                if (!fmtpFound) {
+                    for (let i = 0; i < lines.length; i++) {
+                        if (lines[i].startsWith(`a=rtpmap:${opusPt}`)) {
+                            lines.splice(i + 1, 0, `a=fmtp:${opusPt} minptime=10;useinbandfec=1;stereo=1;sprop-stereo=1;maxaveragebitrate=128000;cbr=1`);
+                            break;
+                        }
+                    }
+                }
+            }
+            return lines.join('\r\n');
+        }
+
+        async function sendRoomPayload(payload) {
+            if (mqttClient && mqttClient.connected && currentRoomId) {
+                payload.sender = myClientId;
                 const encryptedString = await encryptPayload(payload);
                 mqttClient.publish(`canto/room_${currentRoomId}`, encryptedString);
+            }
+        }
+        const broadcastSecurePayload = sendRoomPayload;
+
+        /* --- 廣播端音訊源 (僅捕獲麥克風並推流，自身不播放，完全無回音) --- */
+        let broadcasterMicStream = null;
+        const broadcasterPeers = new Map();
+
+        async function ensureBroadcasterMic() {
+            if (broadcasterMicStream && broadcasterMicStream.active) return broadcasterMicStream;
+            try {
+                // 原音高傳真參數，停用破壞性的壓縮與降噪
+                broadcasterMicStream = await navigator.mediaDevices.getUserMedia({
+                    audio: {
+                        echoCancellation: false,
+                        noiseSuppression: false,
+                        autoGainControl: false,
+                        channelCount: 2,
+                        sampleRate: 48000
+                    },
+                    video: false
+                });
+            } catch (err) {
+                try {
+                    broadcasterMicStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+                } catch (e) {
+                    console.warn("無法取得廣播端音訊輸入:", e);
+                }
+            }
+            return broadcasterMicStream;
+        }
+
+        async function setupBroadcasterPeer(receiverId) {
+            await ensureBroadcasterMic();
+            if (!broadcasterMicStream) return;
+
+            if (broadcasterPeers.has(receiverId)) {
+                try { broadcasterPeers.get(receiverId).close(); } catch(e){}
+                broadcasterPeers.delete(receiverId);
+            }
+
+            const pc = new RTCPeerConnection(rtcConfig);
+            broadcasterPeers.set(receiverId, pc);
+
+            broadcasterMicStream.getAudioTracks().forEach(track => {
+                pc.addTrack(track, broadcasterMicStream);
+            });
+
+            pc.onicecandidate = (event) => {
+                if (event.candidate) {
+                    sendRoomPayload({
+                        type: 'audio_ice',
+                        target: receiverId,
+                        candidate: event.candidate
+                    });
+                }
+            };
+
+            pc.onconnectionstatechange = () => {
+                if (pc.connectionState === 'disconnected' || pc.connectionState === 'failed' || pc.connectionState === 'closed') {
+                    broadcasterPeers.delete(receiverId);
+                }
+            };
+
+            const offer = await pc.createOffer({
+                offerToReceiveAudio: false,
+                offerToReceiveVideo: false
+            });
+            offer.sdp = tuneOpusSdp(offer.sdp);
+            await pc.setLocalDescription(offer);
+
+            sendRoomPayload({
+                type: 'audio_offer',
+                target: receiverId,
+                sdp: pc.localDescription
+            });
+        }
+
+        /* --- 接收端音訊接收與實時動態等化器視覺化 --- */
+        let receiverPc = null;
+        let isAudioListening = false;
+        let remoteAudioEl = null;
+        let audioCtx = null;
+        let audioAnalyser = null;
+        let animFrameId = null;
+
+        const audioIconOff = document.getElementById('audioIconOff');
+        const audioVisualizerBars = document.getElementById('audioVisualizerBars');
+        const vizBars = audioVisualizerBars.querySelectorAll('.v-bar');
+
+        function startVisualizerAnimation() {
+            if (!audioAnalyser) return;
+            const dataArray = new Uint8Array(audioAnalyser.frequencyBinCount);
+
+            function updateViz() {
+                audioAnalyser.getByteFrequencyData(dataArray);
+                // 取樣低、中低、中高、高 4 個頻段
+                const b1 = dataArray[1] || 0;
+                const b2 = dataArray[3] || 0;
+                const b3 = dataArray[6] || 0;
+                const b4 = dataArray[10] || 0;
+
+                const h1 = Math.max(3, (b1 / 255) * 16);
+                const h2 = Math.max(3, (b2 / 255) * 16);
+                const h3 = Math.max(3, (b3 / 255) * 16);
+                const h4 = Math.max(3, (b4 / 255) * 16);
+
+                if (vizBars[0]) vizBars[0].style.height = `${h1}px`;
+                if (vizBars[1]) vizBars[1].style.height = `${h2}px`;
+                if (vizBars[2]) vizBars[2].style.height = `${h3}px`;
+                if (vizBars[3]) vizBars[3].style.height = `${h4}px`;
+
+                animFrameId = requestAnimationFrame(updateViz);
+            }
+
+            if (animFrameId) cancelAnimationFrame(animFrameId);
+            updateViz();
+        }
+
+        function playReceiverAudioStream(stream) {
+            if (!remoteAudioEl) {
+                remoteAudioEl = new Audio();
+                remoteAudioEl.autoplay = true;
+                remoteAudioEl.playsInline = true;
+            }
+            remoteAudioEl.srcObject = stream;
+            remoteAudioEl.play().catch(() => {});
+
+            try {
+                if (!audioCtx) {
+                    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                }
+                if (audioCtx.state === 'suspended') {
+                    audioCtx.resume();
+                }
+                const source = audioCtx.createMediaStreamSource(stream);
+                audioAnalyser = audioCtx.createAnalyser();
+                audioAnalyser.fftSize = 64;
+                source.connect(audioAnalyser);
+
+                startVisualizerAnimation();
+            } catch (err) {
+                console.error("Audio visualizer init error:", err);
+            }
+        }
+
+        async function startAudioListening() {
+            isAudioListening = true;
+
+            // 切換至純視覺化工作狀態：高亮光環、顯示跳動等化器
+            btnAudioMonitor.classList.add('audio-on');
+            audioIconOff.style.display = 'none';
+            audioVisualizerBars.style.display = 'flex';
+
+            if (!audioCtx) {
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            }
+            if (audioCtx.state === 'suspended') {
+                audioCtx.resume();
+            }
+
+            sendRoomPayload({ type: 'audio_join_req', from: myClientId });
+        }
+
+        function stopAudioListening() {
+            isAudioListening = false;
+            btnAudioMonitor.classList.remove('audio-on');
+            audioIconOff.style.display = 'block';
+            audioVisualizerBars.style.display = 'none';
+
+            if (animFrameId) {
+                cancelAnimationFrame(animFrameId);
+                animFrameId = null;
+            }
+            vizBars.forEach(b => b.style.height = '3px');
+
+            if (receiverPc) {
+                try { receiverPc.close(); } catch(e){}
+                receiverPc = null;
+            }
+            if (remoteAudioEl) {
+                remoteAudioEl.pause();
+                remoteAudioEl.srcObject = null;
+            }
+
+            if (currentRoomId) {
+                sendRoomPayload({ type: 'audio_leave', from: myClientId });
+            }
+        }
+
+        function toggleAudioMonitor() {
+            if (isAudioListening) {
+                stopAudioListening();
+            } else {
+                startAudioListening();
+            }
+        }
+
+        /* ------------------ 7. 廣播與接收訊息調度核心 ------------------ */
+        async function handleIncomingRoomMessage(data) {
+            if (!data || data.sender === myClientId) return;
+
+            /* 提詞字幕同步處理 */
+            if (data.type === 'interim') {
+                const text = data.text || "";
+                if (text) {
+                    resetPipMarquee();
+                    cantoStream.classList.add('has-interim');
+                    interimPart.textContent = text;
+
+                    if (pipWindow && !pipWindow.closed) {
+                        requestAnimationFrame(() => {
+                            if (cantoScroll.scrollWidth > cantoScroll.clientWidth) {
+                                cantoScroll.scrollLeft = cantoScroll.scrollWidth - cantoScroll.clientWidth + 20;
+                            }
+                        });
+                    } else {
+                        scrollCantoToBottom();
+                    }
+                } else {
+                    cantoStream.classList.remove('has-interim');
+                    interimPart.textContent = "";
+                }
+            } else if (data.type === 'update_group') {
+                cantoStream.classList.remove('has-interim');
+                interimPart.textContent = ""; 
+
+                if (!currentGroup) currentGroup = createNewGroup();
+                currentGroup.fullText = data.fullText;
+                currentGroup.elem.textContent = data.fullText;
+                refreshGroupHighlights();
+                
+                if (pipWindow && !pipWindow.closed) {
+                    requestAnimationFrame(() => {
+                        if (cantoScroll.scrollWidth > cantoScroll.clientWidth) {
+                            cantoScroll.scrollLeft = cantoScroll.scrollWidth - cantoScroll.clientWidth + 20;
+                        }
+                    });
+                } else {
+                    scrollCantoToBottom();
+                }
+            } else if (data.type === 'finalize') {
+                cantoStream.classList.remove('has-interim');
+                interimPart.textContent = ""; 
+
+                let elemToMarquee = null;
+                if (currentGroup) {
+                    currentGroup.fullText = data.fullText;
+                    currentGroup.elem.textContent = data.fullText;
+                    elemToMarquee = currentGroup.elem;
+                    currentGroup = null;
+                    refreshGroupHighlights();
+                } else if (groupList.length > 0) {
+                    const last = groupList[groupList.length - 1];
+                    if (last && data.fullText) {
+                        last.fullText = data.fullText;
+                        last.elem.textContent = data.fullText;
+                        elemToMarquee = last.elem;
+                    }
+                }
+
+                if (elemToMarquee) {
+                    applyPipMarqueeIfNeeded(elemToMarquee);
+                }
+            }
+
+            /* WebRTC 零延遲音訊通道信號調度 */
+            if (currentMode === 'broadcast') {
+                if (data.type === 'audio_join_req') {
+                    setupBroadcasterPeer(data.from);
+                } else if (data.type === 'audio_answer') {
+                    const pc = broadcasterPeers.get(data.from);
+                    if (pc) await pc.setRemoteDescription(new RTCSessionDescription(data.sdp));
+                } else if (data.type === 'audio_ice') {
+                    const pc = broadcasterPeers.get(data.from);
+                    if (pc && data.candidate) await pc.addIceCandidate(new RTCIceCandidate(data.candidate));
+                } else if (data.type === 'audio_leave') {
+                    const pc = broadcasterPeers.get(data.from);
+                    if (pc) {
+                        pc.close();
+                        broadcasterPeers.delete(data.from);
+                    }
+                }
+            } else if (currentMode === 'receive') {
+                if (data.type === 'audio_offer' && data.target === myClientId) {
+                    if (receiverPc) {
+                        try { receiverPc.close(); } catch(e){}
+                    }
+                    receiverPc = new RTCPeerConnection(rtcConfig);
+
+                    receiverPc.ontrack = (event) => {
+                        const stream = event.streams[0] || new MediaStream([event.track]);
+                        playReceiverAudioStream(stream);
+                    };
+
+                    receiverPc.onicecandidate = (event) => {
+                        if (event.candidate) {
+                            sendRoomPayload({
+                                type: 'audio_ice',
+                                from: myClientId,
+                                candidate: event.candidate
+                            });
+                        }
+                    };
+
+                    await receiverPc.setRemoteDescription(new RTCSessionDescription(data.sdp));
+                    const answer = await receiverPc.createAnswer();
+                    answer.sdp = tuneOpusSdp(answer.sdp);
+                    await receiverPc.setLocalDescription(answer);
+
+                    sendRoomPayload({
+                        type: 'audio_answer',
+                        from: myClientId,
+                        sdp: receiverPc.localDescription
+                    });
+                } else if (data.type === 'audio_ice' && data.target === myClientId) {
+                    if (receiverPc && data.candidate) {
+                        await receiverPc.addIceCandidate(new RTCIceCandidate(data.candidate));
+                    }
+                }
             }
         }
 
@@ -1490,70 +1901,7 @@
 
             mqttClient.on('message', async (topic, msg) => {
                 const data = await decryptPayload(msg.toString());
-                if (!data) return;
-
-                if (data.type === 'interim') {
-                    const text = data.text || "";
-                    if (text) {
-                        resetPipMarquee();
-                        cantoStream.classList.add('has-interim');
-                        interimPart.textContent = text;
-
-                        if (pipWindow && !pipWindow.closed) {
-                            requestAnimationFrame(() => {
-                                if (cantoScroll.scrollWidth > cantoScroll.clientWidth) {
-                                    cantoScroll.scrollLeft = cantoScroll.scrollWidth - cantoScroll.clientWidth + 20;
-                                }
-                            });
-                        } else {
-                            scrollCantoToBottom();
-                        }
-                    } else {
-                        cantoStream.classList.remove('has-interim');
-                        interimPart.textContent = "";
-                    }
-                } else if (data.type === 'update_group') {
-                    cantoStream.classList.remove('has-interim');
-                    interimPart.textContent = ""; 
-
-                    if (!currentGroup) currentGroup = createNewGroup();
-                    currentGroup.fullText = data.fullText;
-                    currentGroup.elem.textContent = data.fullText;
-                    refreshGroupHighlights();
-                    
-                    if (pipWindow && !pipWindow.closed) {
-                        requestAnimationFrame(() => {
-                            if (cantoScroll.scrollWidth > cantoScroll.clientWidth) {
-                                cantoScroll.scrollLeft = cantoScroll.scrollWidth - cantoScroll.clientWidth + 20;
-                            }
-                        });
-                    } else {
-                        scrollCantoToBottom();
-                    }
-                } else if (data.type === 'finalize') {
-                    cantoStream.classList.remove('has-interim');
-                    interimPart.textContent = ""; 
-
-                    let elemToMarquee = null;
-                    if (currentGroup) {
-                        currentGroup.fullText = data.fullText;
-                        currentGroup.elem.textContent = data.fullText;
-                        elemToMarquee = currentGroup.elem;
-                        currentGroup = null;
-                        refreshGroupHighlights();
-                    } else if (groupList.length > 0) {
-                        const last = groupList[groupList.length - 1];
-                        if (last && data.fullText) {
-                            last.fullText = data.fullText;
-                            last.elem.textContent = data.fullText;
-                            elemToMarquee = last.elem;
-                        }
-                    }
-
-                    if (elemToMarquee) {
-                        applyPipMarqueeIfNeeded(elemToMarquee);
-                    }
-                }
+                if (data) handleIncomingRoomMessage(data);
             });
         }
 
@@ -1569,10 +1917,19 @@
 
             await initEncryptionKey(currentSecretKey);
 
-            if (!mqttClient) {
-                mqttClient = mqtt.connect('wss://broker.emqx.io:8084/mqtt', { clean: true });
+            if (mqttClient) {
+                try { mqttClient.end(); } catch(e) {}
             }
+            mqttClient = mqtt.connect('wss://broker.emqx.io:8084/mqtt', { clean: true });
+            mqttClient.on('connect', () => {
+                mqttClient.subscribe(`canto/room_${currentRoomId}`);
+            });
+            mqttClient.on('message', async (topic, msg) => {
+                const data = await decryptPayload(msg.toString());
+                if (data) handleIncomingRoomMessage(data);
+            });
 
+            ensureBroadcasterMic();
             updateUIState();
             setupMinimalQR();
             openQrModal();
@@ -1584,6 +1941,13 @@
                 try { mqttClient.end(); } catch(e) {}
                 mqttClient = null;
             }
+            if (broadcasterMicStream) {
+                broadcasterMicStream.getTracks().forEach(t => t.stop());
+                broadcasterMicStream = null;
+            }
+            broadcasterPeers.forEach(pc => pc.close());
+            broadcasterPeers.clear();
+            stopAudioListening();
             updateUIState();
         }
 
@@ -1653,7 +2017,7 @@
             initReceiverCloud();
         }
 
-        /* ------------------ 7. 主視窗字體調節 ------------------ */
+        /* ------------------ 8. 主視窗字體調節 ------------------ */
         const fontScales = [
             { name: "標準", canto: "2.15rem" },
             { name: "放大", canto: "2.60rem" },
@@ -1669,7 +2033,7 @@
             scrollCantoToBottom();
         }
 
-        /* ------------------ 8. 懸浮字幕大小多級調節 (含小兩級以容納更多字) ------------------ */
+        /* ------------------ 9. 懸浮字幕大小多級調節 ------------------ */
         const pipFontScales = [
             { name: "極小 (-2級)", size: "1.40rem" },
             { name: "緊湊 (-1級)", size: "1.75rem" },
@@ -1677,7 +2041,7 @@
             { name: "放大 (+1級)", size: "2.55rem" },
             { name: "特大 (+2級)", size: "3.00rem" }
         ];
-        let currentPipScaleIdx = 2; // 預設標準
+        let currentPipScaleIdx = 2;
 
         function cyclePipFontSize() {
             currentPipScaleIdx = (currentPipScaleIdx + 1) % pipFontScales.length;
@@ -1687,7 +2051,6 @@
 
             if (pipWindow && !pipWindow.closed) {
                 pipWindow.document.documentElement.style.setProperty('--pip-cantonese-size', cur.size);
-                // 調整字體大小後立即重算走馬燈
                 if (groupList.length > 0) {
                     const lastGroup = groupList[groupList.length - 1];
                     if (lastGroup && lastGroup.elem) {
@@ -1699,7 +2062,7 @@
             showToast(`懸浮字幕: ${cur.name}`);
         }
 
-        /* ------------------ 9. 粵拼注音與朗讀 ------------------ */
+        /* ------------------ 10. 粵拼注音與朗讀 ------------------ */
         const modal = document.getElementById('phoneticModal');
         const modalContent = document.getElementById('modalContent');
         const ttsStatus = document.getElementById('ttsStatus');
@@ -1784,7 +2147,7 @@
             window.speechSynthesis.speak(utter);
         }
 
-        /* ------------------ 10. 桌面置頂懸浮字幕條與長按調字體 ------------------ */
+        /* ------------------ 11. 桌面置頂懸浮字幕條 ------------------ */
         let pipWindow = null;
         let pipLongPressTimer = null;
         let isPipLongPress = false;
@@ -1834,7 +2197,6 @@
                     pipWindow.document.head.appendChild(style.cloneNode(true));
                 });
 
-                // 同步當前懸浮字幕大小
                 pipWindow.document.documentElement.style.setProperty(
                     '--pip-cantonese-size',
                     pipFontScales[currentPipScaleIdx].size
@@ -1860,7 +2222,6 @@
                         padding: 0 !important;
                     }
 
-                    /* 滾動容器：單行水平佈局 */
                     .scroll-body {
                         height: 100% !important;
                         width: 100% !important;
@@ -1879,7 +2240,6 @@
                         display: none !important;
                     }
 
-                    /* 文字串流容器：未超出時居中，超出時由左展開 */
                     .cantonese-stream {
                         display: inline-flex !important;
                         flex-direction: row !important;
@@ -1931,22 +2291,15 @@
                         flex-shrink: 0 !important;
                     }
 
-                    /* 超長確認句走馬燈平滑循環動畫 */
                     .phrase-group.active-latest.pip-marquee {
                         margin: 0 !important;
                         animation: pipMarqueeSmooth var(--marquee-duration, 8s) cubic-bezier(0.25, 0.1, 0.25, 1) infinite !important;
                     }
 
                     @keyframes pipMarqueeSmooth {
-                        0%, 18% {
-                            transform: translateX(0);
-                        }
-                        75%, 88% {
-                            transform: translateX(calc(-1 * var(--marquee-dist, 0px)));
-                        }
-                        100% {
-                            transform: translateX(0);
-                        }
+                        0%, 18% { transform: translateX(0); }
+                        75%, 88% { transform: translateX(calc(-1 * var(--marquee-dist, 0px))); }
+                        100% { transform: translateX(0); }
                     }
                 `;
                 pipWindow.document.head.appendChild(pipStyle);
@@ -1958,7 +2311,6 @@
                 const btnPip = document.getElementById('btnPip');
                 if (btnPip) btnPip.classList.add('mode-active');
 
-                // 進入時檢查當前最新句是否需要走馬燈
                 if (groupList.length > 0) {
                     const lastGroup = groupList[groupList.length - 1];
                     if (lastGroup && lastGroup.elem) {
@@ -1981,7 +2333,6 @@
             }
         }
 
-        /* 綁定長按與短按至 #btnPip 按鈕 */
         (function setupPipButtonEvents() {
             const btnPip = document.getElementById('btnPip');
             if (!btnPip) return;
