@@ -256,6 +256,20 @@
             box-shadow: inset 0 0 12px rgba(184, 155, 114, 0.15);
         }
 
+        /* 零延遲監聽專屬啟用樣式 */
+        .icon-btn.audio-active {
+            background: rgba(78, 135, 101, 0.25);
+            border-color: var(--accent-green);
+            color: #72cf97;
+            box-shadow: 0 0 10px rgba(78, 135, 101, 0.4);
+            animation: pulseAudio 1.8s infinite;
+        }
+
+        @keyframes pulseAudio {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+        }
+
         .power-btn {
             background: rgba(168, 87, 81, 0.2);
             border: 1px solid var(--accent-red);
@@ -305,21 +319,21 @@
             .brand-title { display: none; }
             .brand-logo-icon { display: flex; }
 
-            .btn-group { gap: 5px; }
+            .btn-group { gap: 4px; }
 
             .icon-btn {
-                width: 34px;
-                height: 34px;
+                width: 32px;
+                height: 32px;
             }
 
             .icon-btn svg {
-                width: 16px;
-                height: 16px;
+                width: 15px;
+                height: 15px;
             }
 
             .power-btn {
-                width: 34px;
-                height: 34px;
+                width: 32px;
+                height: 32px;
             }
 
             #btnPip { display: none !important; }
@@ -701,6 +715,9 @@
 <body>
 
     <canvas id="threeCanvas"></canvas>
+    
+    <!-- 零延遲即時聲音播放組件 -->
+    <audio id="liveAudioPlayer" autoplay playsinline style="display:none;"></audio>
 
     <main id="teleprompterRig" class="teleprompter-rig">
         <div class="rig-screen-enclosure">
@@ -739,18 +756,24 @@
                         </svg>
                     </button>
 
-                    <!-- 新增擴音模式開關 -->
-                    <button id="btnPassthrough" class="icon-btn" title="擴音模式 (將耳機收音從電腦喇叭播出)" onclick="toggleAudioPassthrough()">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+                    <!-- WebRTC 零延遲原聲即時監聽／收聽按鈕 -->
+                    <button id="btnAudioMonitor" class="icon-btn" title="收聽廣播端原聲 (零延遲)" onclick="toggleAudioMonitor()">
+                        <svg id="audioOffSvg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
                             <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
-                            <path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"></path>
+                            <line x1="23" y1="9" x2="17" y2="15"></line>
+                            <line x1="17" y1="9" x2="23" y2="15"></line>
+                        </svg>
+                        <svg id="audioOnSvg" style="display:none;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+                            <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
+                            <path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path>
+                            <path d="M19.07 4.93a10 10 0 0 1 0 14.14"></path>
                         </svg>
                     </button>
 
                     <button class="icon-btn" title="粵拼注音" onclick="openPhoneticModal()">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
-                            <path d="M3 18v-6a9 9 0 0 1 18 0v6"></path>
-                            <path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z"></path>
+                            <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path>
+                            <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path>
                         </svg>
                     </button>
                     <button class="icon-btn" title="字體大小" onclick="cycleFontSize()">
@@ -819,7 +842,7 @@
 
                 <div id="roomLinkText" onclick="copyShareLink()" title="點擊複製完整連結"></div>
                 <div style="font-size: 0.72rem; color: var(--text-muted); line-height: 1.5; font-family: var(--font-mono);">
-                    無相機電腦可直接於瀏覽器開啟首頁，點選「加入」輸入純數字房間號同步字幕。
+                    無相機電腦可直接於瀏覽器開啟首頁，點選「加入」輸入純數字房間號同步字幕與零延遲原聲。
                 </div>
             </div>
         </div>
@@ -937,6 +960,9 @@
         const btnBroadcast = document.getElementById('btnBroadcast');
         const btnJoinModal = document.getElementById('btnJoinModal');
         const toggleBtn = document.getElementById('toggleBtn');
+        const btnAudioMonitor = document.getElementById('btnAudioMonitor');
+        const audioOffSvg = document.getElementById('audioOffSvg');
+        const audioOnSvg = document.getElementById('audioOnSvg');
 
         let mqttClient = null;
 
@@ -949,14 +975,19 @@
             if (currentMode === 'solo') {
                 btnSolo.classList.add('mode-active');
                 toggleBtn.style.display = 'flex';
+                btnAudioMonitor.style.display = 'none';
             } else if (currentMode === 'broadcast') {
                 btnBroadcast.classList.add('mode-active');
                 statusDot.classList.add('broadcast');
                 toggleBtn.style.display = 'flex';
+                btnAudioMonitor.style.display = 'flex';
+                btnAudioMonitor.title = "廣播端原聲推流狀態 (監聽待命中)";
             } else if (currentMode === 'receive') {
                 btnJoinModal.classList.add('mode-active');
                 toggleBtn.style.display = 'none';
                 statusDot.classList.add('receive');
+                btnAudioMonitor.style.display = 'flex';
+                btnAudioMonitor.title = "收聽廣播端原聲 (零延遲)";
             }
         }
 
@@ -1035,7 +1066,7 @@
             fontToast.innerText = msg;
             fontToast.classList.add('show');
             clearTimeout(toastTimer);
-            toastTimer = setTimeout(() => fontToast.classList.remove('show'), 1500);
+            toastTimer = setTimeout(() => fontToast.classList.remove('show'), 1600);
         }
 
         /* ------------------ 4. 粵語句組引擎 ------------------ */
@@ -1250,7 +1281,7 @@
 
                 if (textWidth > containerWidth) {
                     const distance = textWidth - containerWidth + 40;
-                    const duration = Math.max(7, Math.round(distance / 42)); // 流暢閱讀速率
+                    const duration = Math.max(7, Math.round(distance / 42));
                     groupElem.style.setProperty('--marquee-dist', `${distance}px`);
                     groupElem.style.setProperty('--marquee-duration', `${duration}s`);
                     groupElem.classList.add('pip-marquee');
@@ -1271,13 +1302,11 @@
             const fullTextToSend = currentGroup.fullText;
 
             if (currentMode === 'broadcast') {
-                broadcastSecurePayload({ type: 'finalize', fullText: fullTextToSend });
+                sendEncryptedRoomMessage({ type: 'finalize', fullText: fullTextToSend });
             }
 
             currentGroup = null;
             refreshGroupHighlights();
-
-            // 本地觸發超長走馬燈
             applyPipMarqueeIfNeeded(finalizedElem);
         }
 
@@ -1309,7 +1338,7 @@
                 if (confirmedPlainHistory.length > 1000) confirmedPlainHistory = confirmedPlainHistory.slice(-600);
 
                 if (currentMode === 'broadcast') {
-                    broadcastSecurePayload({ type: 'update_group', fullText: currentGroup.fullText });
+                    sendEncryptedRoomMessage({ type: 'update_group', fullText: currentGroup.fullText });
                 }
 
                 if (currentGroup.validCount >= MAX_VALID_SENTENCES_PER_GROUP) {
@@ -1330,7 +1359,7 @@
             if (!interim || !interim.trim()) {
                 cantoStream.classList.remove('has-interim');
                 interimPart.textContent = "";
-                if (currentMode === 'broadcast') broadcastSecurePayload({ type: 'interim', text: "" });
+                if (currentMode === 'broadcast') sendEncryptedRoomMessage({ type: 'interim', text: "" });
                 return;
             }
 
@@ -1344,7 +1373,7 @@
             interimPart.textContent = delta;
 
             if (currentMode === 'broadcast') {
-                broadcastSecurePayload({ type: 'interim', text: delta });
+                sendEncryptedRoomMessage({ type: 'interim', text: delta });
             }
 
             if (pipWindow && !pipWindow.closed) {
@@ -1365,14 +1394,14 @@
             if (cleanFinal === lastFinalCleanText && (now - lastFinalTimestamp < 1800)) {
                 cantoStream.classList.remove('has-interim');
                 interimPart.textContent = "";
-                if (currentMode === 'broadcast') broadcastSecurePayload({ type: 'interim', text: "" });
+                if (currentMode === 'broadcast') sendEncryptedRoomMessage({ type: 'interim', text: "" });
                 return;
             }
             lastFinalCleanText = cleanFinal;
             lastFinalTimestamp = now;
             cantoStream.classList.remove('has-interim');
             interimPart.textContent = "";
-            if (currentMode === 'broadcast') broadcastSecurePayload({ type: 'interim', text: "" });
+            if (currentMode === 'broadcast') sendEncryptedRoomMessage({ type: 'interim', text: "" });
             commitSpeechDelta(finalText);
         }
 
@@ -1477,14 +1506,206 @@
             interimPart.textContent = "";
         }
 
-        /* ------------------ 6. 純數字房間加密傳輸 ------------------ */
-        async function broadcastSecurePayload(payload) {
-            if (mqttClient && mqttClient.connected && currentMode === 'broadcast') {
+        /* ------------------ 6. 端到端加密雙向信令與傳輸 ------------------ */
+        async function sendEncryptedRoomMessage(payload) {
+            if (mqttClient && mqttClient.connected && currentRoomId) {
                 const encryptedString = await encryptPayload(payload);
                 mqttClient.publish(`canto/room_${currentRoomId}`, encryptedString);
             }
         }
 
+        /* ------------------ 7. WebRTC 零延遲原聲傳輸架構 ------------------ */
+        const rtcIceConfig = {
+            iceServers: [
+                { urls: 'stun:stun.l.google.com:19302' },
+                { urls: 'stun:stun1.l.google.com:19302' },
+                { urls: 'stun:stun2.l.google.com:19302' }
+            ]
+        };
+
+        const myPeerId = 'peer_' + Math.random().toString(36).substring(2, 9);
+        let broadcasterAudioStream = null;
+        const broadcasterPeers = new Map(); // Map<clientId, RTCPeerConnection>
+        let receiverPC = null;
+        let isReceivingAudio = false;
+        const liveAudioPlayer = document.getElementById('liveAudioPlayer');
+
+        // 廣播端：獲取原生麥克風音訊串流
+        async function getBroadcasterAudioStream() {
+            if (broadcasterAudioStream && broadcasterAudioStream.active) {
+                return broadcasterAudioStream;
+            }
+            try {
+                broadcasterAudioStream = await navigator.mediaDevices.getUserMedia({
+                    audio: {
+                        echoCancellation: true,
+                        noiseSuppression: true,
+                        autoGainControl: true,
+                        latency: 0,
+                        channelCount: 1,
+                        sampleRate: 48000
+                    },
+                    video: false
+                });
+                return broadcasterAudioStream;
+            } catch (err) {
+                console.warn('廣播端無法取得音訊串流：', err);
+                showToast("麥克風未授權音訊廣播");
+                return null;
+            }
+        }
+
+        // 廣播端處理 WebRTC 信令
+        async function handleBroadcasterWebRtc(data) {
+            const clientId = data.from;
+            if (!clientId || clientId === myPeerId) return;
+
+            if (data.type === 'rtc_req_audio') {
+                const stream = await getBroadcasterAudioStream();
+                if (!stream) return;
+
+                if (broadcasterPeers.has(clientId)) {
+                    try { broadcasterPeers.get(clientId).close(); } catch (e) {}
+                    broadcasterPeers.delete(clientId);
+                }
+
+                const pc = new RTCPeerConnection(rtcIceConfig);
+                broadcasterPeers.set(clientId, pc);
+
+                stream.getAudioTracks().forEach(track => pc.addTrack(track, stream));
+
+                pc.onicecandidate = (event) => {
+                    if (event.candidate) {
+                        sendEncryptedRoomMessage({
+                            type: 'rtc_ice',
+                            target: clientId,
+                            from: myPeerId,
+                            candidate: event.candidate
+                        });
+                    }
+                };
+
+                const offer = await pc.createOffer({ offerToReceiveAudio: false });
+                await pc.setLocalDescription(offer);
+
+                sendEncryptedRoomMessage({
+                    type: 'rtc_offer',
+                    target: clientId,
+                    from: myPeerId,
+                    sdp: offer
+                });
+            } else if (data.type === 'rtc_answer' && data.target === myPeerId) {
+                const pc = broadcasterPeers.get(clientId);
+                if (pc) {
+                    await pc.setRemoteDescription(new RTCSessionDescription(data.sdp));
+                }
+            } else if (data.type === 'rtc_ice' && data.target === myPeerId) {
+                const pc = broadcasterPeers.get(clientId);
+                if (pc && data.candidate) {
+                    try { await pc.addIceCandidate(new RTCIceCandidate(data.candidate)); } catch (e) {}
+                }
+            } else if (data.type === 'rtc_stop' && data.target === myPeerId) {
+                const pc = broadcasterPeers.get(clientId);
+                if (pc) {
+                    pc.close();
+                    broadcasterPeers.delete(clientId);
+                }
+            }
+        }
+
+        // 接收端處理 WebRTC 信令
+        async function handleReceiverWebRtc(data) {
+            if (data.target && data.target !== myPeerId) return;
+
+            if (data.type === 'rtc_offer') {
+                if (receiverPC) {
+                    try { receiverPC.close(); } catch(e) {}
+                }
+
+                receiverPC = new RTCPeerConnection(rtcIceConfig);
+
+                receiverPC.ontrack = (event) => {
+                    liveAudioPlayer.srcObject = event.streams[0];
+                    liveAudioPlayer.play().then(() => {
+                        setAudioMonitorActive(true);
+                        showToast("已連接原聲 (零延遲)");
+                    }).catch(() => {
+                        setAudioMonitorActive(true);
+                        showToast("請點擊螢幕允許播放原聲");
+                    });
+                };
+
+                receiverPC.onicecandidate = (event) => {
+                    if (event.candidate) {
+                        sendEncryptedRoomMessage({
+                            type: 'rtc_ice',
+                            target: data.from,
+                            from: myPeerId,
+                            candidate: event.candidate
+                        });
+                    }
+                };
+
+                await receiverPC.setRemoteDescription(new RTCSessionDescription(data.sdp));
+                const answer = await receiverPC.createAnswer();
+                await receiverPC.setLocalDescription(answer);
+
+                sendEncryptedRoomMessage({
+                    type: 'rtc_answer',
+                    target: data.from,
+                    from: myPeerId,
+                    sdp: answer
+                });
+            } else if (data.type === 'rtc_ice') {
+                if (receiverPC && data.candidate) {
+                    try { await receiverPC.addIceCandidate(new RTCIceCandidate(data.candidate)); } catch (e) {}
+                }
+            }
+        }
+
+        function setAudioMonitorActive(active) {
+            isReceivingAudio = active;
+            if (active) {
+                btnAudioMonitor.classList.add('audio-active');
+                audioOffSvg.style.display = 'none';
+                audioOnSvg.style.display = 'block';
+                btnAudioMonitor.title = "原聲監聽中 (點擊關閉)";
+            } else {
+                btnAudioMonitor.classList.remove('audio-active');
+                audioOffSvg.style.display = 'block';
+                audioOnSvg.style.display = 'none';
+                btnAudioMonitor.title = currentMode === 'receive' ? "收聽廣播端原聲 (零延遲)" : "廣播原聲狀態";
+            }
+        }
+
+        function toggleAudioMonitor() {
+            if (currentMode === 'solo') {
+                showToast("個人模式無語音串流");
+                return;
+            }
+
+            if (currentMode === 'broadcast') {
+                showToast("您是廣播端，語音推流待命中");
+                return;
+            }
+
+            // 接收端邏輯：開關即時收聽
+            if (isReceivingAudio) {
+                if (receiverPC) {
+                    try { receiverPC.close(); } catch(e) {}
+                    receiverPC = null;
+                }
+                liveAudioPlayer.srcObject = null;
+                setAudioMonitorActive(false);
+                sendEncryptedRoomMessage({ type: 'rtc_stop', from: myPeerId, target: 'broadcaster' });
+                showToast("已停止原聲收聽");
+            } else {
+                showToast("正在請求廣播端原聲...");
+                sendEncryptedRoomMessage({ type: 'rtc_req_audio', from: myPeerId });
+            }
+        }
+
+        // 接收端雲端通道初始化
         async function initReceiverCloud() {
             await initEncryptionKey(currentSecretKey);
             if (mqttClient) {
@@ -1501,6 +1722,13 @@
                 const data = await decryptPayload(msg.toString());
                 if (!data) return;
 
+                // 處理 WebRTC 音訊信令
+                if (data.type && data.type.startsWith('rtc_')) {
+                    handleReceiverWebRtc(data);
+                    return;
+                }
+
+                // 處理提詞字幕流
                 if (data.type === 'interim') {
                     const text = data.text || "";
                     if (text) {
@@ -1566,6 +1794,29 @@
             });
         }
 
+        // 廣播端雲端通道初始化
+        async function initBroadcastCloud() {
+            await initEncryptionKey(currentSecretKey);
+            if (mqttClient) {
+                try { mqttClient.end(); } catch (e) {}
+            }
+            mqttClient = mqtt.connect('wss://broker.emqx.io:8084/mqtt', { clean: true });
+
+            mqttClient.on('connect', () => {
+                mqttClient.subscribe(`canto/room_${currentRoomId}`);
+            });
+
+            mqttClient.on('message', async (topic, msg) => {
+                const data = await decryptPayload(msg.toString());
+                if (!data) return;
+
+                // 廣播端接收接收端的音訊連線請求
+                if (data.type && data.type.startsWith('rtc_')) {
+                    handleBroadcasterWebRtc(data);
+                }
+            });
+        }
+
         async function switchToBroadcastMode() {
             if (currentMode === 'broadcast') {
                 openQrModal();
@@ -1576,13 +1827,8 @@
             if (!currentRoomId) currentRoomId = String(Math.floor(100000 + Math.random() * 900000));
             if (!currentSecretKey) currentSecretKey = Math.random().toString(36).substring(2, 8).toUpperCase();
 
-            await initEncryptionKey(currentSecretKey);
-
-            if (!mqttClient) {
-                mqttClient = mqtt.connect('wss://broker.emqx.io:8084/mqtt', { clean: true });
-            }
-
             updateUIState();
+            await initBroadcastCloud();
             setupMinimalQR();
             openQrModal();
         }
@@ -1593,6 +1839,13 @@
                 try { mqttClient.end(); } catch(e) {}
                 mqttClient = null;
             }
+            if (receiverPC) {
+                try { receiverPC.close(); } catch(e) {}
+                receiverPC = null;
+            }
+            broadcasterPeers.forEach(pc => { try { pc.close(); } catch(e) {} });
+            broadcasterPeers.clear();
+            setAudioMonitorActive(false);
             updateUIState();
         }
 
@@ -1662,7 +1915,7 @@
             initReceiverCloud();
         }
 
-        /* ------------------ 7. 主視窗字體調節 ------------------ */
+        /* ------------------ 8. 主視窗字體調節 ------------------ */
         const fontScales = [
             { name: "標準", canto: "2.15rem" },
             { name: "放大", canto: "2.60rem" },
@@ -1678,7 +1931,7 @@
             scrollCantoToBottom();
         }
 
-        /* ------------------ 8. 懸浮字幕大小多級調節 (含小兩級以容納更多字) ------------------ */
+        /* ------------------ 9. 懸浮字幕大小多級調節 ------------------ */
         const pipFontScales = [
             { name: "極小 (-2級)", size: "1.40rem" },
             { name: "緊湊 (-1級)", size: "1.75rem" },
@@ -1686,7 +1939,7 @@
             { name: "放大 (+1級)", size: "2.55rem" },
             { name: "特大 (+2級)", size: "3.00rem" }
         ];
-        let currentPipScaleIdx = 2; // 預設標準
+        let currentPipScaleIdx = 2;
 
         function cyclePipFontSize() {
             currentPipScaleIdx = (currentPipScaleIdx + 1) % pipFontScales.length;
@@ -1696,7 +1949,6 @@
 
             if (pipWindow && !pipWindow.closed) {
                 pipWindow.document.documentElement.style.setProperty('--pip-cantonese-size', cur.size);
-                // 調整字體大小後立即重算走馬燈
                 if (groupList.length > 0) {
                     const lastGroup = groupList[groupList.length - 1];
                     if (lastGroup && lastGroup.elem) {
@@ -1708,7 +1960,7 @@
             showToast(`懸浮字幕: ${cur.name}`);
         }
 
-        /* ------------------ 9. 粵拼注音與朗讀 ------------------ */
+        /* ------------------ 10. 粵拼注音與朗讀 ------------------ */
         const modal = document.getElementById('phoneticModal');
         const modalContent = document.getElementById('modalContent');
         const ttsStatus = document.getElementById('ttsStatus');
@@ -1792,62 +2044,8 @@
 
             window.speechSynthesis.speak(utter);
         }
-        
-        /* ------------------ 11. 實時擴音穿透 (Audio Passthrough) ------------------ */
-        let audioCtx = null;
-        let passthroughStream = null;
-        let passthroughSource = null;
-        let isPassthroughEnabled = false;
 
-        async function toggleAudioPassthrough() {
-            const btn = document.getElementById('btnPassthrough');
-            if (isPassthroughEnabled) {
-                // 關閉擴音
-                if (passthroughSource) {
-                    passthroughSource.disconnect();
-                    passthroughSource = null;
-                }
-                if (passthroughStream) {
-                    passthroughStream.getTracks().forEach(t => t.stop());
-                    passthroughStream = null;
-                }
-                if (audioCtx && audioCtx.state === 'running') {
-                    await audioCtx.suspend();
-                }
-                isPassthroughEnabled = false;
-                btn.classList.remove('mode-active');
-                showToast("擴音模式已關閉");
-            } else {
-                // 啟動擴音
-                try {
-                    passthroughStream = await navigator.mediaDevices.getUserMedia({
-                        audio: {
-                            echoCancellation: true,
-                            noiseSuppression: true,
-                            autoGainControl: true
-                        }
-                    });
-                    
-                    if (!audioCtx) {
-                        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-                    }
-                    if (audioCtx.state === 'suspended') {
-                        await audioCtx.resume();
-                    }
-                    
-                    passthroughSource = audioCtx.createMediaStreamSource(passthroughStream);
-                    passthroughSource.connect(audioCtx.destination);
-                    
-                    isPassthroughEnabled = true;
-                    btn.classList.add('mode-active');
-                    showToast("擴音開啟 (請用耳機防回音)");
-                } catch (err) {
-                    alert("無法存取咪高峰或擴音失敗：" + err.message);
-                }
-            }
-        }
-
-        /* ------------------ 10. 桌面置頂懸浮字幕條與長按調字體 ------------------ */
+        /* ------------------ 11. 桌面置頂懸浮字幕條 ------------------ */
         let pipWindow = null;
         let pipLongPressTimer = null;
         let isPipLongPress = false;
@@ -1897,7 +2095,6 @@
                     pipWindow.document.head.appendChild(style.cloneNode(true));
                 });
 
-                // 同步當前懸浮字幕大小
                 pipWindow.document.documentElement.style.setProperty(
                     '--pip-cantonese-size',
                     pipFontScales[currentPipScaleIdx].size
@@ -1923,7 +2120,6 @@
                         padding: 0 !important;
                     }
 
-                    /* 滾動容器：單行水平佈局 */
                     .scroll-body {
                         height: 100% !important;
                         width: 100% !important;
@@ -1942,7 +2138,6 @@
                         display: none !important;
                     }
 
-                    /* 文字串流容器：未超出時居中，超出時由左展開 */
                     .cantonese-stream {
                         display: inline-flex !important;
                         flex-direction: row !important;
@@ -1994,22 +2189,15 @@
                         flex-shrink: 0 !important;
                     }
 
-                    /* 超長確認句走馬燈平滑循環動畫 */
                     .phrase-group.active-latest.pip-marquee {
                         margin: 0 !important;
                         animation: pipMarqueeSmooth var(--marquee-duration, 8s) cubic-bezier(0.25, 0.1, 0.25, 1) infinite !important;
                     }
 
                     @keyframes pipMarqueeSmooth {
-                        0%, 18% {
-                            transform: translateX(0);
-                        }
-                        75%, 88% {
-                            transform: translateX(calc(-1 * var(--marquee-dist, 0px)));
-                        }
-                        100% {
-                            transform: translateX(0);
-                        }
+                        0%, 18% { transform: translateX(0); }
+                        75%, 88% { transform: translateX(calc(-1 * var(--marquee-dist, 0px))); }
+                        100% { transform: translateX(0); }
                     }
                 `;
                 pipWindow.document.head.appendChild(pipStyle);
@@ -2021,7 +2209,6 @@
                 const btnPip = document.getElementById('btnPip');
                 if (btnPip) btnPip.classList.add('mode-active');
 
-                // 進入時檢查當前最新句是否需要走馬燈
                 if (groupList.length > 0) {
                     const lastGroup = groupList[groupList.length - 1];
                     if (lastGroup && lastGroup.elem) {
@@ -2044,7 +2231,6 @@
             }
         }
 
-        /* 綁定長按與短按至 #btnPip 按鈕 */
         (function setupPipButtonEvents() {
             const btnPip = document.getElementById('btnPip');
             if (!btnPip) return;
