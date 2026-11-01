@@ -284,7 +284,7 @@
             height: 3px;
             background: var(--accent-green);
             border-radius: 1px;
-            transition: height 0.05s ease-out;
+            transition: height 0.04s ease-out;
         }
 
         .power-btn {
@@ -765,8 +765,8 @@
                         </svg>
                     </button>
 
-                    <!-- 接收端專用：零延遲高音質監聽切換鍵 (純視覺化等化器，無文字通知) -->
-                    <button id="btnAudioMonitor" class="icon-btn audio-monitor-btn" style="display:none;" onclick="toggleAudioMonitor()">
+                    <!-- 接收端專用：零延遲高音質監聽開關與跳動等化器 -->
+                    <button id="btnAudioMonitor" class="icon-btn audio-monitor-btn" style="display:none;" title="即時語音監聽" onclick="toggleAudioMonitor()">
                         <svg id="audioIconOff" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
                             <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
                             <line x1="23" y1="9" x2="17" y2="15"></line>
@@ -802,7 +802,7 @@
                             <line x1="7" y1="20" x2="17" y2="20"></line>
                         </svg>
                     </button>
-                    <button id="toggleBtn" class="icon-btn power-btn" title="開關" onclick="toggleSpeech()">
+                    <button id="toggleBtn" class="icon-btn power-btn" title="開關語音辨識與收音廣播" onclick="toggleSpeech()">
                         <svg id="playIcon" viewBox="0 0 24 24" fill="currentColor">
                             <path d="M8 5.14v13.72a1 1 0 0 0 1.5.86l11-6.86a1 1 0 0 0 0-1.72l-11-6.86a1 1 0 0 0-1.5.86z"></path>
                         </svg>
@@ -852,7 +852,7 @@
 
                 <div id="roomLinkText" onclick="copyShareLink()" title="點擊複製完整連結"></div>
                 <div style="font-size: 0.72rem; color: var(--text-muted); line-height: 1.5; font-family: var(--font-mono);">
-                    無相機電腦可直接於瀏覽器開啟首頁，點選「加入」輸入純數字房間號同步字幕。
+                    無相機電腦可直接於瀏覽器開啟首頁，點選「加入」輸入純數字房間號同步字幕與原音。
                 </div>
             </div>
         </div>
@@ -1364,7 +1364,7 @@
             }
         }
 
-        /* ------------------ 5. 語音辨識機制 ------------------ */
+        /* ------------------ 5. 語音辨識機制 (與音訊串流並行) ------------------ */
         function handleSpeechInterim(interim) {
             if (!interim || !interim.trim()) {
                 cantoStream.classList.remove('has-interim');
@@ -1505,6 +1505,7 @@
                 userWantsListening = true;
                 acquireWakeLock();
                 if (currentMode === 'broadcast') {
+                    // 同步準備好低延遲收音咪串流，實現雙工運行
                     await ensureBroadcasterMic();
                 }
                 scheduleSafeRestart();
@@ -1519,15 +1520,16 @@
             interimPart.textContent = "";
         }
 
-        /* ------------------ 6. WebRTC 零延遲高音質音訊與雲端協定 ------------------ */
+        /* ------------------ 6. WebRTC 零延遲原音傳輸引擎 ------------------ */
         const rtcConfig = {
             iceServers: [
                 { urls: 'stun:stun.l.google.com:19302' },
-                { urls: 'stun:stun1.l.google.com:19302' }
+                { urls: 'stun:stun1.l.google.com:19302' },
+                { urls: 'stun:stun2.l.google.com:19302' }
             ]
         };
 
-        // Opus 高音質 (48kHz Stereo 128kbps) 與超低封包時延設定
+        // Opus 高傳真低時延 SDP 注入 (10ms 封包、無靜音截斷、高碼率)
         function tuneOpusSdp(sdp) {
             if (!sdp) return sdp;
             let lines = sdp.split('\r\n');
@@ -1539,10 +1541,11 @@
                 }
             }
             if (opusPt) {
+                const fmtpParams = 'minptime=10;ptime=10;maxaveragebitrate=128000;stereo=0;sprop-stereo=0;useinbandfec=1;cbr=1;usedtx=0';
                 let fmtpFound = false;
                 for (let i = 0; i < lines.length; i++) {
                     if (lines[i].startsWith(`a=fmtp:${opusPt}`)) {
-                        lines[i] = `a=fmtp:${opusPt} minptime=10;useinbandfec=1;stereo=1;sprop-stereo=1;maxaveragebitrate=128000;cbr=1`;
+                        lines[i] = `a=fmtp:${opusPt} ${fmtpParams}`;
                         fmtpFound = true;
                         break;
                     }
@@ -1550,7 +1553,7 @@
                 if (!fmtpFound) {
                     for (let i = 0; i < lines.length; i++) {
                         if (lines[i].startsWith(`a=rtpmap:${opusPt}`)) {
-                            lines.splice(i + 1, 0, `a=fmtp:${opusPt} minptime=10;useinbandfec=1;stereo=1;sprop-stereo=1;maxaveragebitrate=128000;cbr=1`);
+                            lines.splice(i + 1, 0, `a=fmtp:${opusPt} ${fmtpParams}`);
                             break;
                         }
                     }
@@ -1566,57 +1569,64 @@
                 mqttClient.publish(`canto/room_${currentRoomId}`, encryptedString);
             }
         }
-        const broadcastSecurePayload = sendRoomPayload;
 
-        /* --- 廣播端音訊源 (僅捕獲麥克風並推流，設定 latency: 0 無緩衝) --- */
+        /* --- 廣播端收音 (僅擷取麥克風推流，自身不播放，零迴音) --- */
         let broadcasterMicStream = null;
+        // 存放對象結構：{ pc: RTCPeerConnection, pendingCandidates: Array }
         const broadcasterPeers = new Map();
 
         async function ensureBroadcasterMic() {
-            if (broadcasterMicStream && broadcasterMicStream.active) return broadcasterMicStream;
+            if (broadcasterMicStream && broadcasterMicStream.active && broadcasterMicStream.getAudioTracks().some(t => t.readyState === 'live')) {
+                return broadcasterMicStream;
+            }
             try {
-                // 原音高傳真參數，停用破壞性的壓縮與降噪，並設定 latency 為 0 以確保零延遲採集
+                // 優先使用低延遲配置，同時兼顧 STT 的清晰度
                 broadcasterMicStream = await navigator.mediaDevices.getUserMedia({
                     audio: {
                         echoCancellation: false,
                         noiseSuppression: false,
-                        autoGainControl: false,
-                        channelCount: 2,
-                        sampleRate: 48000,
-                        latency: 0 
+                        autoGainControl: true,
+                        channelCount: { ideal: 1 },
+                        sampleRate: { ideal: 48000 },
+                        latency: 0
                     },
                     video: false
                 });
             } catch (err) {
                 try {
-                    broadcasterMicStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+                    broadcasterMicStream = await navigator.mediaDevices.getUserMedia({
+                        audio: { echoCancellation: false, autoGainControl: true },
+                        video: false
+                    });
                 } catch (e) {
-                    console.warn("無法取得廣播端音訊輸入:", e);
+                    broadcasterMicStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
                 }
             }
             return broadcasterMicStream;
         }
 
         async function setupBroadcasterPeer(receiverId) {
-            await ensureBroadcasterMic();
-            if (!broadcasterMicStream) return;
+            const stream = await ensureBroadcasterMic();
+            if (!stream) return;
 
             if (broadcasterPeers.has(receiverId)) {
-                try { broadcasterPeers.get(receiverId).close(); } catch(e){}
+                try { broadcasterPeers.get(receiverId).pc.close(); } catch(e){}
                 broadcasterPeers.delete(receiverId);
             }
 
             const pc = new RTCPeerConnection(rtcConfig);
-            broadcasterPeers.set(receiverId, pc);
+            const peerRecord = { pc, pendingCandidates: [] };
+            broadcasterPeers.set(receiverId, peerRecord);
 
-            broadcasterMicStream.getAudioTracks().forEach(track => {
-                pc.addTrack(track, broadcasterMicStream);
+            stream.getAudioTracks().forEach(track => {
+                pc.addTrack(track, stream);
             });
 
             pc.onicecandidate = (event) => {
                 if (event.candidate) {
                     sendRoomPayload({
                         type: 'audio_ice',
+                        from: myClientId,
                         target: receiverId,
                         candidate: event.candidate
                     });
@@ -1631,20 +1641,23 @@
 
             const offer = await pc.createOffer({
                 offerToReceiveAudio: false,
-                offerToReceiveVideo: false
+                offerToReceiveVideo: false,
+                voiceActivityDetection: false
             });
             offer.sdp = tuneOpusSdp(offer.sdp);
             await pc.setLocalDescription(offer);
 
             sendRoomPayload({
                 type: 'audio_offer',
+                from: myClientId,
                 target: receiverId,
                 sdp: pc.localDescription
             });
         }
 
-        /* --- 接收端音訊接收與實時動態等化器視覺化 --- */
+        /* --- 接收端音訊播放與實時視覺化等化器 --- */
         let receiverPc = null;
+        let receiverPendingCandidates = [];
         let isAudioListening = false;
         let remoteAudioEl = null;
         let audioCtx = null;
@@ -1661,7 +1674,6 @@
 
             function updateViz() {
                 audioAnalyser.getByteFrequencyData(dataArray);
-                // 取樣低、中低、中高、高 4 個頻段
                 const b1 = dataArray[1] || 0;
                 const b2 = dataArray[3] || 0;
                 const b3 = dataArray[6] || 0;
@@ -1686,59 +1698,65 @@
 
         function playReceiverAudioStream(stream) {
             if (!remoteAudioEl) {
-                remoteAudioEl = new Audio();
+                remoteAudioEl = document.createElement('audio');
+                remoteAudioEl.id = 'remoteLiveAudio';
                 remoteAudioEl.autoplay = true;
                 remoteAudioEl.playsInline = true;
-                // 核心關鍵：將 HTML Audio 靜音，以繞過其內建緩衝造成的延遲。
-                // 我們純粹依賴底下的 Web Audio API (AudioContext) 進行零延遲直接輸出。
-                remoteAudioEl.muted = true;
+                // 掛載在 DOM 中避免瀏覽器後台節能中斷
+                remoteAudioEl.style.position = 'fixed';
+                remoteAudioEl.style.top = '-9999px';
+                remoteAudioEl.style.opacity = '0';
+                remoteAudioEl.style.pointerEvents = 'none';
+                document.body.appendChild(remoteAudioEl);
             }
             remoteAudioEl.srcObject = stream;
-            remoteAudioEl.play().catch(() => {});
+            
+            const p = remoteAudioEl.play();
+            if (p !== undefined) {
+                p.catch(() => {
+                    // 若受瀏覽器 Autoplay 政策限制，點擊螢幕任意處立即解鎖播放
+                    const unlock = () => {
+                        if (remoteAudioEl) remoteAudioEl.play().catch(() => {});
+                        if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+                        document.removeEventListener('click', unlock);
+                        document.removeEventListener('touchstart', unlock);
+                    };
+                    document.addEventListener('click', unlock, { once: true });
+                    document.addEventListener('touchstart', unlock, { once: true });
+                    showToast("點擊螢幕解鎖即時收音");
+                });
+            }
 
             try {
                 if (!audioCtx) {
-                    // 使用 interactive 延遲提示，指示瀏覽器給予最低音訊延遲
-                    audioCtx = new (window.AudioContext || window.webkitAudioContext)({ latencyHint: 'interactive' });
+                    const AudioCtxClass = window.AudioContext || window.webkitAudioContext;
+                    if (AudioCtxClass) audioCtx = new AudioCtxClass();
                 }
-                if (audioCtx.state === 'suspended') {
-                    audioCtx.resume();
+                if (audioCtx && audioCtx.state === 'suspended') {
+                    audioCtx.resume().catch(() => {});
                 }
-
-                // 清除之前的舊節點以防內存洩漏或重複聲音
-                if (window.currentAudioSource) {
-                    window.currentAudioSource.disconnect();
+                if (audioCtx) {
+                    const source = audioCtx.createMediaStreamSource(stream);
+                    audioAnalyser = audioCtx.createAnalyser();
+                    audioAnalyser.fftSize = 64;
+                    source.connect(audioAnalyser);
+                    startVisualizerAnimation();
                 }
-
-                const source = audioCtx.createMediaStreamSource(stream);
-                window.currentAudioSource = source; // 保留參照避免被 Garbage Collection 掉
-
-                audioAnalyser = audioCtx.createAnalyser();
-                audioAnalyser.fftSize = 64;
-                source.connect(audioAnalyser);
-
-                // 核心關鍵：直接將 Analyser (帶有音頻訊號) 輸出到硬體喇叭 (destination)，達至毫秒級零延遲播放
-                audioAnalyser.connect(audioCtx.destination);
-
-                startVisualizerAnimation();
-            } catch (err) {
-                console.error("Audio visualizer init error:", err);
-            }
+            } catch (err) {}
         }
 
         async function startAudioListening() {
             isAudioListening = true;
-
-            // 切換至純視覺化工作狀態：高亮光環、顯示跳動等化器
             btnAudioMonitor.classList.add('audio-on');
             audioIconOff.style.display = 'none';
             audioVisualizerBars.style.display = 'flex';
 
             if (!audioCtx) {
-                audioCtx = new (window.AudioContext || window.webkitAudioContext)({ latencyHint: 'interactive' });
+                const AudioCtxClass = window.AudioContext || window.webkitAudioContext;
+                if (AudioCtxClass) audioCtx = new AudioCtxClass();
             }
-            if (audioCtx.state === 'suspended') {
-                audioCtx.resume();
+            if (audioCtx && audioCtx.state === 'suspended') {
+                audioCtx.resume().catch(() => {});
             }
 
             sendRoomPayload({ type: 'audio_join_req', from: myClientId });
@@ -1756,19 +1774,11 @@
             }
             vizBars.forEach(b => b.style.height = '3px');
 
-            if (window.currentAudioSource) {
-                window.currentAudioSource.disconnect();
-                window.currentAudioSource = null;
-            }
-            if (audioAnalyser) {
-                audioAnalyser.disconnect();
-                audioAnalyser = null;
-            }
-
             if (receiverPc) {
                 try { receiverPc.close(); } catch(e){}
                 receiverPc = null;
             }
+            receiverPendingCandidates = [];
             if (remoteAudioEl) {
                 remoteAudioEl.pause();
                 remoteAudioEl.srcObject = null;
@@ -1782,8 +1792,10 @@
         function toggleAudioMonitor() {
             if (isAudioListening) {
                 stopAudioListening();
+                showToast("已靜音即時收音");
             } else {
                 startAudioListening();
+                showToast("已開啟即時收音");
             }
         }
 
@@ -1855,31 +1867,56 @@
                 }
             }
 
-            /* WebRTC 零延遲音訊通道信號調度 */
+            /* WebRTC 零延遲原音通道調度 */
             if (currentMode === 'broadcast') {
                 if (data.type === 'audio_join_req') {
                     setupBroadcasterPeer(data.from);
                 } else if (data.type === 'audio_answer') {
-                    const pc = broadcasterPeers.get(data.from);
-                    if (pc) await pc.setRemoteDescription(new RTCSessionDescription(data.sdp));
+                    const peerRecord = broadcasterPeers.get(data.from);
+                    if (peerRecord && peerRecord.pc) {
+                        await peerRecord.pc.setRemoteDescription(new RTCSessionDescription(data.sdp));
+                        // 處理握手完成前暫存的 ICE candidates
+                        while (peerRecord.pendingCandidates.length > 0) {
+                            const c = peerRecord.pendingCandidates.shift();
+                            try { await peerRecord.pc.addIceCandidate(new RTCIceCandidate(c)); } catch(e){}
+                        }
+                    }
                 } else if (data.type === 'audio_ice') {
-                    const pc = broadcasterPeers.get(data.from);
-                    if (pc && data.candidate) await pc.addIceCandidate(new RTCIceCandidate(data.candidate));
+                    const peerRecord = broadcasterPeers.get(data.from);
+                    if (peerRecord && peerRecord.pc && data.candidate) {
+                        if (peerRecord.pc.remoteDescription && peerRecord.pc.remoteDescription.type) {
+                            try { await peerRecord.pc.addIceCandidate(new RTCIceCandidate(data.candidate)); } catch(e){}
+                        } else {
+                            peerRecord.pendingCandidates.push(data.candidate);
+                        }
+                    }
                 } else if (data.type === 'audio_leave') {
-                    const pc = broadcasterPeers.get(data.from);
-                    if (pc) {
-                        pc.close();
+                    const peerRecord = broadcasterPeers.get(data.from);
+                    if (peerRecord && peerRecord.pc) {
+                        peerRecord.pc.close();
                         broadcasterPeers.delete(data.from);
                     }
                 }
             } else if (currentMode === 'receive') {
+                // 自動重連檢查：若接收端已連線但尚未建立音訊通道，即時重新請求
+                if (isAudioListening && (!receiverPc || receiverPc.connectionState === 'disconnected' || receiverPc.connectionState === 'failed')) {
+                    sendRoomPayload({ type: 'audio_join_req', from: myClientId });
+                }
+
                 if (data.type === 'audio_offer' && data.target === myClientId) {
                     if (receiverPc) {
                         try { receiverPc.close(); } catch(e){}
+                        receiverPc = null;
                     }
+                    receiverPendingCandidates = [];
                     receiverPc = new RTCPeerConnection(rtcConfig);
 
                     receiverPc.ontrack = (event) => {
+                        // 關鍵：將硬體抖動緩衝時延設定為 0（極致零延遲傳輸）
+                        if (event.receiver) {
+                            if ('playoutDelayHint' in event.receiver) event.receiver.playoutDelayHint = 0;
+                            if ('jitterBufferTarget' in event.receiver) event.receiver.jitterBufferTarget = 0;
+                        }
                         const stream = event.streams[0] || new MediaStream([event.track]);
                         playReceiverAudioStream(stream);
                     };
@@ -1889,12 +1926,20 @@
                             sendRoomPayload({
                                 type: 'audio_ice',
                                 from: myClientId,
+                                target: data.from || 'broadcaster',
                                 candidate: event.candidate
                             });
                         }
                     };
 
                     await receiverPc.setRemoteDescription(new RTCSessionDescription(data.sdp));
+
+                    // 處理待定的 ICE Candidate
+                    while (receiverPendingCandidates.length > 0) {
+                        const c = receiverPendingCandidates.shift();
+                        try { await receiverPc.addIceCandidate(new RTCIceCandidate(c)); } catch(e){}
+                    }
+
                     const answer = await receiverPc.createAnswer();
                     answer.sdp = tuneOpusSdp(answer.sdp);
                     await receiverPc.setLocalDescription(answer);
@@ -1902,11 +1947,16 @@
                     sendRoomPayload({
                         type: 'audio_answer',
                         from: myClientId,
+                        target: data.from,
                         sdp: receiverPc.localDescription
                     });
                 } else if (data.type === 'audio_ice' && data.target === myClientId) {
                     if (receiverPc && data.candidate) {
-                        await receiverPc.addIceCandidate(new RTCIceCandidate(data.candidate));
+                        if (receiverPc.remoteDescription && receiverPc.remoteDescription.type) {
+                            try { await receiverPc.addIceCandidate(new RTCIceCandidate(data.candidate)); } catch(e){}
+                        } else {
+                            receiverPendingCandidates.push(data.candidate);
+                        }
                     }
                 }
             }
@@ -1921,7 +1971,9 @@
             
             mqttClient.on('connect', () => {
                 mqttClient.subscribe(`canto/room_${currentRoomId}`);
-                showToast("已成功同步房間");
+                showToast("已成功同步房間，即時收音中");
+                // 接收端連線成功後自動開啟零延遲收音監聽
+                startAudioListening();
             });
 
             mqttClient.on('message', async (topic, msg) => {
@@ -1954,7 +2006,8 @@
                 if (data) handleIncomingRoomMessage(data);
             });
 
-            ensureBroadcasterMic();
+            // 預先取得廣播端咪高風權限，確保開播時無卡頓
+            await ensureBroadcasterMic();
             updateUIState();
             setupMinimalQR();
             openQrModal();
@@ -1970,7 +2023,7 @@
                 broadcasterMicStream.getTracks().forEach(t => t.stop());
                 broadcasterMicStream = null;
             }
-            broadcasterPeers.forEach(pc => pc.close());
+            broadcasterPeers.forEach(peer => peer.pc.close());
             broadcasterPeers.clear();
             stopAudioListening();
             updateUIState();
