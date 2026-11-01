@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>實時粵語提詞器 - Cinematic Studio (零延遲無線咪直通版)</title>
+    <title>實時粵語提詞器 - Cinematic Studio (異步音訊直通版)</title>
 
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -26,7 +26,7 @@
     <!-- QRCode 生成庫 -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 
-    <!-- 專業級 WebRTC 引擎 (解決次序衝突與音訊直通) -->
+    <!-- 專業級 WebRTC 引擎 -->
     <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
 
     <style>
@@ -77,7 +77,7 @@
         }
 
         body::before {
-            content: "35MM // CINE-SYNC + DIRECT-MIC ▻ KODAK VISION3";
+            content: "35MM // CINE-SYNC + ASYNC-MIC ▻ KODAK VISION3";
             position: fixed;
             top: 50%;
             left: 20px;
@@ -194,8 +194,8 @@
         }
 
         .status-dot.receive {
-            background: var(--primary-hover);
-            box-shadow: 0 0 10px var(--primary-hover);
+            background: #4E8765;
+            box-shadow: 0 0 10px #4E8765;
             animation: pulseDot 2s infinite ease-in-out;
         }
 
@@ -255,10 +255,10 @@
         }
 
         .icon-btn.audio-active {
-            background: rgba(78, 135, 101, 0.2);
-            border-color: var(--accent-green);
-            color: #6FCF97;
-            box-shadow: 0 0 12px rgba(78, 135, 101, 0.35);
+            background: rgba(78, 135, 101, 0.25) !important;
+            border-color: var(--accent-green) !important;
+            color: #6FCF97 !important;
+            box-shadow: 0 0 12px rgba(78, 135, 101, 0.45) !important;
         }
 
         .power-btn {
@@ -710,7 +710,7 @@
     <audio id="remoteAudioPlayer" autoplay playsinline></audio>
 
     <!-- 點擊解鎖音訊橫條 -->
-    <div id="audioUnlockBanner" onclick="unlockAudioManually()">
+    <div id="audioUnlockBanner" onclick="handleAudioButtonClick()">
         🔊 收到無線咪訊號！點擊此處開啟聲音播放
     </div>
 
@@ -730,8 +730,8 @@
                 </div>
                 
                 <div class="btn-group">
-                    <!-- 無線咪收發狀態指示鈕 -->
-                    <button id="btnAudioState" class="icon-btn" title="無線咪收發狀態" onclick="unlockAudioManually()">
+                    <!-- 異步無線咪握手/開關鈕 -->
+                    <button id="btnAudioState" class="icon-btn" title="無線咪收發狀態" onclick="handleAudioButtonClick()">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                             <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
                             <path d="M19.07 4.93a10 10 0 0 1 0 14.14"></path>
@@ -744,7 +744,7 @@
                             <circle cx="12" cy="7" r="4"></circle>
                         </svg>
                     </button>
-                    <button id="btnBroadcast" class="icon-btn" title="廣播模式 (開無線咪)" onclick="switchToBroadcastMode()">
+                    <button id="btnBroadcast" class="icon-btn" title="廣播模式 (配對碼/QR)" onclick="switchToBroadcastMode()">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
                             <path d="M4.9 19.1C1 15.2 1 8.8 4.9 4.9"></path>
                             <path d="M7.8 16.2c-2.3-2.3-2.3-6.1 0-8.5"></path>
@@ -781,7 +781,7 @@
                             <line x1="7" y1="20" x2="17" y2="20"></line>
                         </svg>
                     </button>
-                    <!-- 開關按鈕：控制本機的語音識別提詞 -->
+                    <!-- 開關按鈕：控制本機的語音辨識提詞 -->
                     <button id="toggleBtn" class="icon-btn power-btn" title="開關本機提詞辨識" onclick="toggleSpeech()">
                         <svg id="playIcon" viewBox="0 0 24 24" fill="currentColor">
                             <path d="M8 5.14v13.72a1 1 0 0 0 1.5.86l11-6.86a1 1 0 0 0 0-1.72l-11-6.86a1 1 0 0 0-1.5.86z"></path>
@@ -832,7 +832,7 @@
 
                 <div id="roomLinkText" onclick="copyShareLink()" title="點擊複製完整連結"></div>
                 <div style="font-size: 0.72rem; color: var(--text-muted); line-height: 1.5; font-family: var(--font-mono);">
-                    ★ 已啟用 PeerJS 直通音訊：無延遲傳輸咪高風聲音，接收端同步接收原聲與字幕。
+                    ★ 提詞字幕即時非同步廣播。<br>★ 點擊頂部聲音圖標即可開關/連線咪高風原聲。
                 </div>
             </div>
         </div>
@@ -892,8 +892,9 @@
         let cryptoKey = null;
 
         async function initEncryptionKey(keyString) {
+            if (!keyString) return;
             const enc = new TextEncoder();
-            const keyHash = await crypto.subtle.digest('SHA-256', enc.encode(keyString));
+            const keyHash = await crypto.subtle.digest('SHA-256', enc.encode(keyString.trim()));
             cryptoKey = await crypto.subtle.importKey(
                 'raw',
                 keyHash,
@@ -905,17 +906,21 @@
 
         async function encryptPayload(plainObj) {
             if (!cryptoKey) return JSON.stringify(plainObj);
-            const iv = crypto.getRandomValues(new Uint8Array(12));
-            const enc = new TextEncoder();
-            const cipherBuffer = await crypto.subtle.encrypt(
-                { name: 'AES-GCM', iv },
-                cryptoKey,
-                enc.encode(JSON.stringify(plainObj))
-            );
-            return JSON.stringify({
-                iv: Array.from(iv).map(b => b.toString(16).padStart(2, '0')).join(''),
-                cipher: btoa(String.fromCharCode(...new Uint8Array(cipherBuffer)))
-            });
+            try {
+                const iv = crypto.getRandomValues(new Uint8Array(12));
+                const enc = new TextEncoder();
+                const cipherBuffer = await crypto.subtle.encrypt(
+                    { name: 'AES-GCM', iv },
+                    cryptoKey,
+                    enc.encode(JSON.stringify(plainObj))
+                );
+                return JSON.stringify({
+                    iv: Array.from(iv).map(b => b.toString(16).padStart(2, '0')).join(''),
+                    cipher: btoa(String.fromCharCode(...new Uint8Array(cipherBuffer)))
+                });
+            } catch(e) {
+                return JSON.stringify(plainObj);
+            }
         }
 
         async function decryptPayload(rawMsgString) {
@@ -931,14 +936,14 @@
                 );
                 return JSON.parse(new TextDecoder().decode(decryptedBuffer));
             } catch (err) {
-                return null;
+                try { return JSON.parse(rawMsgString); } catch(e) { return null; }
             }
         }
 
         /* ------------------ 1. 運行模式設定 (個人 / 廣播 / 接收) ------------------ */
         const urlParams = new URLSearchParams(window.location.search);
         const joinRoom = urlParams.get('room') ? urlParams.get('room').replace(/\D/g, '') : null;
-        const joinKey = window.location.hash.replace('#', '');
+        const joinKey = window.location.hash.replace('#', '').trim();
         const isReceiverMode = Boolean(joinRoom && joinKey);
 
         let currentMode = isReceiverMode ? 'receive' : 'solo';
@@ -969,37 +974,14 @@
                 btnBroadcast.classList.add('mode-active');
                 statusDot.classList.add('broadcast');
                 btnAudioState.style.display = 'flex';
-                btnAudioState.title = "無線咪廣播中 (Broadcaster Mic Active)";
+                btnAudioState.title = broadcasterLocalStream ? "無線咪發射中 (點擊關閉)" : "點擊啟動無線咪廣播";
             } else if (currentMode === 'receive') {
                 btnJoinModal.classList.add('mode-active');
                 statusDot.classList.add('receive');
                 btnAudioState.style.display = 'flex';
-                btnAudioState.title = "正在接收無線咪聲音";
+                btnAudioState.title = remoteAudioPlayer.srcObject ? "聲音已連線 (點擊重試/解鎖)" : "點擊連線無線咪聲音";
             }
         }
-
-        function unlockAudioManually() {
-            if (remoteAudioPlayer.srcObject) {
-                remoteAudioPlayer.play().then(() => {
-                    audioUnlockBanner.style.display = 'none';
-                    btnAudioState.classList.add('audio-active');
-                    showToast("聲音播放正常");
-                }).catch(() => {
-                    showToast("請點擊屏幕任意位置啟用音效");
-                });
-            } else {
-                showToast(currentMode === 'broadcast' ? "咪高風發射正常" : "等待廣播端音訊連線...");
-            }
-        }
-
-        document.addEventListener('click', () => {
-            if (currentMode === 'receive' && remoteAudioPlayer.srcObject && remoteAudioPlayer.paused) {
-                remoteAudioPlayer.play().then(() => {
-                    audioUnlockBanner.style.display = 'none';
-                    btnAudioState.classList.add('audio-active');
-                }).catch(() => {});
-            }
-        }, { passive: true });
 
         /* ------------------ 2. 靜態 3D 背景 ------------------ */
         const canvas = document.getElementById('threeCanvas');
@@ -1076,7 +1058,7 @@
             fontToast.innerText = msg;
             fontToast.classList.add('show');
             clearTimeout(toastTimer);
-            toastTimer = setTimeout(() => fontToast.classList.remove('show'), 1500);
+            toastTimer = setTimeout(() => fontToast.classList.remove('show'), 1800);
         }
 
         /* ------------------ 4. 粵語句組引擎 ------------------ */
@@ -1514,53 +1496,28 @@
             interimPart.textContent = "";
         }
 
-        /* ------------------ 6. PeerJS 零延遲無線咪直通引擎 ------------------ */
+        /* ------------------ 6. 非同步直通架構 (字幕與聲音解耦) ------------------ */
         let peerInstance = null;
         let broadcasterLocalStream = null;
-        const peerDataConnections = new Set();
-        let receiverRetryTimer = null;
+        let myPeerId = null;
+        const activeSubscribers = new Set();
 
-        function getRoomPeerId(roomId) {
-            return `canto_cine_prompter_${roomId}`;
+        function getRoomHostPeerId(roomId) {
+            return `canto_host_${roomId}`;
         }
 
-        // 廣播端：啟動高品質原生咪高風
-        async function initBroadcasterMediaStream() {
-            if (broadcasterLocalStream) return broadcasterLocalStream;
-            try {
-                broadcasterLocalStream = await navigator.mediaDevices.getUserMedia({
-                    audio: {
-                        echoCancellation: true,
-                        noiseSuppression: true,
-                        autoGainControl: true,
-                        latency: 0
-                    },
-                    video: false
-                });
-                btnAudioState.classList.add('audio-active');
-                return broadcasterLocalStream;
-            } catch (err) {
-                console.warn("無法取得咪高風串流：", err);
-                showToast("未獲得咪高風授權");
-                return null;
-            }
-        }
-
-        // 廣播端：透過 WebRTC DataChannel 和 MQTT 雙軌發射提詞
+        // 廣播發射提詞文字（直連 MQTT 穿透發射）
         async function broadcastPrompterPayload(payload) {
-            // 軌道 1：PeerJS 直連 DataChannel（超快速 P2P UDP）
-            const jsonStr = JSON.stringify(payload);
-            peerDataConnections.forEach(conn => {
-                if (conn && conn.open) {
-                    try { conn.send(jsonStr); } catch (e) {}
-                }
-            });
+            if (!mqttClient || !mqttClient.connected) return;
+            const encrypted = await encryptPayload(payload);
+            mqttClient.publish(`canto/room_${currentRoomId}/prompter`, encrypted);
+        }
 
-            // 軌道 2：MQTT 雲端加密廣播備援
-            if (mqttClient && mqttClient.connected) {
-                const encrypted = await encryptPayload(payload);
-                mqttClient.publish(`canto/room_${currentRoomId}`, encrypted);
-            }
+        // 發送訊號控制包 (例如音訊連線握手)
+        async function broadcastSignal(signalObj) {
+            if (!mqttClient || !mqttClient.connected) return;
+            const encrypted = await encryptPayload(signalObj);
+            mqttClient.publish(`canto/room_${currentRoomId}/signal`, encrypted);
         }
 
         // 接收端：解析接收到的提詞資料
@@ -1625,7 +1582,7 @@
             }
         }
 
-        /* ------------------ 7. 廣播模式切換 (PeerJS + MQTT) ------------------ */
+        /* ------------------ 7. 廣播模式 (文字非同步廣播 + 聲音按需開啟) ------------------ */
         async function switchToBroadcastMode() {
             if (currentMode === 'broadcast') {
                 openQrModal();
@@ -1637,14 +1594,14 @@
             if (!currentSecretKey) currentSecretKey = Math.random().toString(36).substring(2, 8).toUpperCase();
 
             await initEncryptionKey(currentSecretKey);
-            await initBroadcasterMediaStream();
 
-            // 啟動 PeerJS 監聽連線
+            // 建立 PeerJS 供接收端音訊呼叫
             if (peerInstance) {
                 try { peerInstance.destroy(); } catch (e) {}
             }
 
-            peerInstance = new Peer(getRoomPeerId(currentRoomId), {
+            myPeerId = getRoomHostPeerId(currentRoomId);
+            peerInstance = new Peer(myPeerId, {
                 debug: 0,
                 config: {
                     iceServers: [
@@ -1654,39 +1611,60 @@
                 }
             });
 
-            // 自動應答任何進房的接收端音訊呼叫（無論誰先開房，自動排隊握手）
+            // 收到音訊連線應答
             peerInstance.on('call', async (call) => {
-                const stream = await initBroadcasterMediaStream();
-                call.answer(stream); // 將超低延遲咪高風直接灌入連線
+                if (broadcasterLocalStream) {
+                    call.answer(broadcasterLocalStream);
+                }
             });
 
-            // 監聽接收端建立的文字通道
-            peerInstance.on('connection', (conn) => {
-                peerDataConnections.add(conn);
-                conn.on('close', () => peerDataConnections.delete(conn));
-                conn.on('error', () => peerDataConnections.delete(conn));
-            });
-
-            // MQTT 輔助通道連線
-            if (!mqttClient) {
-                mqttClient = mqtt.connect('wss://broker.emqx.io:8084/mqtt', { clean: true });
+            // 建立 MQTT 連線以即時發送提詞字幕
+            if (mqttClient) {
+                try { mqttClient.end(); } catch (e) {}
             }
+            mqttClient = mqtt.connect('wss://broker.emqx.io:8084/mqtt', { clean: true });
+
+            mqttClient.on('connect', () => {
+                // 訂閱訊號頻道（監聽接收端的請求）
+                mqttClient.subscribe(`canto/room_${currentRoomId}/signal`);
+                showToast("提詞廣播頻道已就緒");
+            });
+
+            mqttClient.on('message', async (topic, msg) => {
+                if (topic.endsWith('/signal')) {
+                    const signal = await decryptPayload(msg.toString());
+                    if (!signal) return;
+                    if (signal.type === 'request_audio') {
+                        activeSubscribers.add(signal.subscriberPeerId);
+                        // 若咪高風已開啟，立刻呼叫該接收端
+                        if (broadcasterLocalStream && peerInstance) {
+                            peerInstance.call(signal.subscriberPeerId, broadcasterLocalStream);
+                        }
+                    }
+                }
+            });
 
             updateUIState();
             setupMinimalQR();
             openQrModal();
-            showToast("廣播端已就緒 (無線咪開啟)");
+
+            // 若尚未啟動語音辨識，自動提示啟動
+            if (!userWantsListening) {
+                toggleSpeech();
+            }
         }
 
-        /* ------------------ 8. 接收端同步連線 (自動重連握手) ------------------ */
+        /* ------------------ 8. 接收端同步連線 (即時字幕) ------------------ */
         async function initReceiverCloud() {
             await initEncryptionKey(currentSecretKey);
 
+            // 初始化 PeerJS
             if (peerInstance) {
                 try { peerInstance.destroy(); } catch (e) {}
             }
 
-            peerInstance = new Peer({
+            myPeerId = `canto_rx_${currentRoomId}_${Math.random().toString(36).substring(2, 7)}`;
+            peerInstance = new Peer(myPeerId, {
                 debug: 0,
                 config: {
                     iceServers: [
@@ -1696,74 +1674,118 @@
                 }
             });
 
-            // 當 PeerJS 本地就緒，呼叫廣播端
-            peerInstance.on('open', () => {
-                establishPeerLink();
+            // 接收來自廣播端的音訊呼叫
+            peerInstance.on('call', (call) => {
+                call.answer(); // 接收端僅需單向接聽
+                call.on('stream', (remoteStream) => {
+                    remoteAudioPlayer.srcObject = remoteStream;
+                    remoteAudioPlayer.play().then(() => {
+                        btnAudioState.classList.add('audio-active');
+                        audioUnlockBanner.style.display = 'none';
+                        showToast("無線咪已連通播放！");
+                    }).catch(() => {
+                        audioUnlockBanner.style.display = 'flex';
+                    });
+                });
             });
 
-            function establishPeerLink() {
-                if (currentMode !== 'receive' || !peerInstance || peerInstance.destroyed) return;
-                const targetHostId = getRoomPeerId(currentRoomId);
-
-                // 呼叫音訊通話（無線咪直通）
-                const audioCall = peerInstance.call(targetHostId, null);
-                if (audioCall) {
-                    audioCall.on('stream', (remoteStream) => {
-                        remoteAudioPlayer.srcObject = remoteStream;
-                        remoteAudioPlayer.play().then(() => {
-                            btnAudioState.classList.add('audio-active');
-                            audioUnlockBanner.style.display = 'none';
-                            showToast("無線咪連線成功！");
-                        }).catch(() => {
-                            // 受到瀏覽器自動播放限制攔截，跳出解鎖橫條
-                            audioUnlockBanner.style.display = 'flex';
-                        });
-                    });
-
-                    audioCall.on('close', () => {
-                        btnAudioState.classList.remove('audio-active');
-                    });
-                }
-
-                // 呼叫文字通訊（DataChannel 提詞）
-                const dataConn = peerInstance.connect(targetHostId);
-                if (dataConn) {
-                    dataConn.on('data', (raw) => {
-                        try {
-                            const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
-                            handlePrompterPacket(parsed);
-                        } catch (e) {}
-                    });
-                }
-
-                // 若廣播端尚未上線，定時重試連線
-                clearTimeout(receiverRetryTimer);
-                receiverRetryTimer = setTimeout(() => {
-                    if (!remoteAudioPlayer.srcObject && currentMode === 'receive') {
-                        establishPeerLink();
-                    }
-                }, 4000);
-            }
-
-            // MQTT 備份雲端連線
+            // MQTT 提詞接收通道
             if (mqttClient) {
                 try { mqttClient.end(); } catch (e) {}
             }
             mqttClient = mqtt.connect('wss://broker.emqx.io:8084/mqtt', { clean: true });
             
             mqttClient.on('connect', () => {
-                mqttClient.subscribe(`canto/room_${currentRoomId}`);
+                mqttClient.subscribe(`canto/room_${currentRoomId}/prompter`);
+                mqttClient.subscribe(`canto/room_${currentRoomId}/signal`);
+                showToast("已同步連線至廣播房間");
             });
 
             mqttClient.on('message', async (topic, msg) => {
                 const data = await decryptPayload(msg.toString());
-                if (data) handlePrompterPacket(data);
+                if (!data) return;
+                if (topic.endsWith('/prompter')) {
+                    handlePrompterPacket(data);
+                } else if (topic.endsWith('/signal')) {
+                    if (data.type === 'mic_stopped') {
+                        btnAudioState.classList.remove('audio-active');
+                        remoteAudioPlayer.srcObject = null;
+                        showToast("廣播端已暫停無線咪");
+                    }
+                }
             });
         }
 
+        /* ------------------ 9. 聲音圖示點擊處理 (異步按需握手) ------------------ */
+        async function handleAudioButtonClick() {
+            if (currentMode === 'solo') {
+                showToast("個人模式無需使用無線咪");
+                return;
+            }
+
+            // 廣播端：開關原生高品質咪高風串流
+            if (currentMode === 'broadcast') {
+                if (broadcasterLocalStream) {
+                    // 關閉咪高風
+                    broadcasterLocalStream.getTracks().forEach(t => t.stop());
+                    broadcasterLocalStream = null;
+                    btnAudioState.classList.remove('audio-active');
+                    broadcastSignal({ type: 'mic_stopped' });
+                    showToast("無線咪已關閉");
+                } else {
+                    // 啟動咪高風
+                    try {
+                        broadcasterLocalStream = await navigator.mediaDevices.getUserMedia({
+                            audio: {
+                                echoCancellation: true,
+                                noiseSuppression: true,
+                                autoGainControl: true
+                            },
+                            video: false
+                        });
+                        btnAudioState.classList.add('audio-active');
+                        showToast("無線咪已啟動！正廣播至接收端");
+                        
+                        // 呼叫所有已登記的接收端
+                        activeSubscribers.forEach(subId => {
+                            if (peerInstance) peerInstance.call(subId, broadcasterLocalStream);
+                        });
+                    } catch (err) {
+                        alert("無法存取咪高風，請確認權限是否允許。");
+                    }
+                }
+                updateUIState();
+                return;
+            }
+
+            // 接收端：發送音訊連線握手請求
+            if (currentMode === 'receive') {
+                if (remoteAudioPlayer.srcObject) {
+                    remoteAudioPlayer.play().then(() => {
+                        audioUnlockBanner.style.display = 'none';
+                        btnAudioState.classList.add('audio-active');
+                        showToast("聲音播放正常");
+                    }).catch(() => {
+                        showToast("點擊螢幕解鎖瀏覽器音訊播放");
+                    });
+                } else {
+                    showToast("正在請求廣播端音訊串流...");
+                    broadcastSignal({ type: 'request_audio', subscriberPeerId: myPeerId });
+                }
+            }
+        }
+
+        document.addEventListener('click', () => {
+            if (currentMode === 'receive' && remoteAudioPlayer.srcObject && remoteAudioPlayer.paused) {
+                remoteAudioPlayer.play().then(() => {
+                    audioUnlockBanner.style.display = 'none';
+                    btnAudioState.classList.add('audio-active');
+                }).catch(() => {});
+            }
+        }, { passive: true });
+
         function switchToSoloMode() {
             currentMode = 'solo';
-            clearTimeout(receiverRetryTimer);
             if (mqttClient) {
                 try { mqttClient.end(); } catch(e) {}
                 mqttClient = null;
@@ -1779,8 +1801,9 @@
             remoteAudioPlayer.srcObject = null;
             btnAudioState.classList.remove('audio-active');
             audioUnlockBanner.style.display = 'none';
-            peerDataConnections.clear();
+            activeSubscribers.clear();
             updateUIState();
+            showToast("已切換為個人模式");
         }
 
         function setupMinimalQR() {
@@ -1804,7 +1827,7 @@
 
         function copyShareLink() {
             const currentUrl = `${window.location.origin}${window.location.pathname}?room=${currentRoomId}#${currentSecretKey}`;
-            const shareText = `【粵語提詞器同步＋無線咪】\n純數字房間號：${currentRoomId}\n密鑰：${currentSecretKey}\n連結：${currentUrl}`;
+            const shareText = `【粵語提詞器同步＋無線咪】\n房間號碼：${currentRoomId}\n密鑰：${currentSecretKey}\n連結：${currentUrl}`;
             navigator.clipboard.writeText(shareText).then(() => {
                 showToast("已複製房間資訊");
             }).catch(() => {
@@ -1844,7 +1867,7 @@
             initReceiverCloud();
         }
 
-        /* ------------------ 9. 主視窗字體調節 ------------------ */
+        /* ------------------ 10. 主視窗字體調節 ------------------ */
         const fontScales = [
             { name: "標準", canto: "2.15rem" },
             { name: "放大", canto: "2.60rem" },
@@ -1860,7 +1883,7 @@
             scrollCantoToBottom();
         }
 
-        /* ------------------ 10. 懸浮字幕大小調節 ------------------ */
+        /* ------------------ 11. 懸浮字幕大小調節 ------------------ */
         const pipFontScales = [
             { name: "極小 (-2級)", size: "1.40rem" },
             { name: "緊湊 (-1級)", size: "1.75rem" },
@@ -1887,7 +1910,7 @@
             showToast(`懸浮字幕: ${cur.name}`);
         }
 
-        /* ------------------ 11. 粵拼注音與朗讀 ------------------ */
+        /* ------------------ 12. 粵拼注音與朗讀 ------------------ */
         const modal = document.getElementById('phoneticModal');
         const modalContent = document.getElementById('modalContent');
         const ttsStatus = document.getElementById('ttsStatus');
@@ -1972,7 +1995,7 @@
             window.speechSynthesis.speak(utter);
         }
 
-        /* ------------------ 12. 桌面置頂懸浮字幕條 ------------------ */
+        /* ------------------ 13. 桌面置頂懸浮字幕條 ------------------ */
         let pipWindow = null;
         let pipLongPressTimer = null;
         let isPipLongPress = false;
