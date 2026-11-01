@@ -485,7 +485,6 @@
 
         #fontToast.show { opacity: 1; transform: translateY(0); }
 
-        /* 彈窗樣式改為 Cinematic Studio */
         .modal-overlay {
             position: fixed;
             top: 0; left: 0; width: 100vw; height: 100vh;
@@ -765,7 +764,7 @@
                         </svg>
                     </button>
 
-                    <!-- 接收端專用：零延遲高音質監聽開關與跳動等化器 -->
+                    <!-- 接收端專用：零延遲原音監聽開關與跳動等化器 -->
                     <button id="btnAudioMonitor" class="icon-btn audio-monitor-btn" style="display:none;" title="即時語音監聽" onclick="toggleAudioMonitor()">
                         <svg id="audioIconOff" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
                             <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
@@ -794,7 +793,7 @@
                             <path d="M14 13.5H19"></path>
                         </svg>
                     </button>
-                    <!-- 螢幕底置頂懸浮字幕條：短按開關 | 長按循環調節字幕大小 -->
+                    <!-- 螢幕底置頂懸浮字幕條 -->
                     <button id="btnPip" class="icon-btn" title="點擊：開關字幕條 | 長按：調節字幕大小">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
                             <rect x="2" y="4" width="20" height="13" rx="2"></rect>
@@ -908,42 +907,82 @@
     </div>
 
     <script>
-        /* ------------------ 0. 端到端加密引擎 (AES-256-GCM) ------------------ */
+        /* ------------------ 全域錯誤日誌監聽器 (F12 除錯專用) ------------------ */
+        window.addEventListener('error', (e) => {
+            console.error('[Global Error]', e.message, 'at', e.filename, 'line:', e.lineno, e.error);
+        });
+        window.addEventListener('unhandledrejection', (e) => {
+            console.error('[Unhandled Promise Rejection]', e.reason);
+        });
+
+        /* ------------------ 0. 端到端加密引擎 (具備非 HTTPS 彈性相容) ------------------ */
+        const hasSubtleCrypto = typeof window !== 'undefined' && window.crypto && !!window.crypto.subtle;
         let cryptoKey = null;
 
+        if (!hasSubtleCrypto) {
+            console.warn('[Crypto] 當前環境缺少 window.crypto.subtle (非 HTTPS 或局域網 IP)，端到端加密已自動切換為相容通道。');
+        }
+
         async function initEncryptionKey(keyString) {
-            const enc = new TextEncoder();
-            const keyHash = await crypto.subtle.digest('SHA-256', enc.encode(keyString));
-            cryptoKey = await crypto.subtle.importKey(
-                'raw',
-                keyHash,
-                { name: 'AES-GCM' },
-                false,
-                ['encrypt', 'decrypt']
-            );
+            if (!hasSubtleCrypto || !keyString) return;
+            try {
+                const enc = new TextEncoder();
+                const keyHash = await crypto.subtle.digest('SHA-256', enc.encode(keyString.trim().toUpperCase()));
+                cryptoKey = await crypto.subtle.importKey('raw', keyHash, { name: 'AES-GCM' }, false, ['encrypt', 'decrypt']);
+                console.log('[Crypto] AES-256-GCM 加密金鑰生成完成');
+            } catch (err) {
+                console.error('[Crypto] 金鑰初始化失敗:', err);
+                cryptoKey = null;
+            }
+        }
+
+        function uint8ToBase64(u8) {
+            let binary = '';
+            const len = u8.byteLength;
+            for (let i = 0; i < len; i++) {
+                binary += String.fromCharCode(u8[i]);
+            }
+            return btoa(binary);
+        }
+
+        function base64ToUint8(b64) {
+            const binary = atob(b64);
+            const len = binary.length;
+            const bytes = new Uint8Array(len);
+            for (let i = 0; i < len; i++) {
+                bytes[i] = binary.charCodeAt(i);
+            }
+            return bytes;
         }
 
         async function encryptPayload(plainObj) {
-            if (!cryptoKey) return JSON.stringify(plainObj);
-            const iv = crypto.getRandomValues(new Uint8Array(12));
-            const enc = new TextEncoder();
-            const cipherBuffer = await crypto.subtle.encrypt(
-                { name: 'AES-GCM', iv },
-                cryptoKey,
-                enc.encode(JSON.stringify(plainObj))
-            );
-            return JSON.stringify({
-                iv: Array.from(iv).map(b => b.toString(16).padStart(2, '0')).join(''),
-                cipher: btoa(String.fromCharCode(...new Uint8Array(cipherBuffer)))
-            });
+            if (!hasSubtleCrypto || !cryptoKey) return JSON.stringify(plainObj);
+            try {
+                const iv = crypto.getRandomValues(new Uint8Array(12));
+                const enc = new TextEncoder();
+                const cipherBuffer = await crypto.subtle.encrypt(
+                    { name: 'AES-GCM', iv },
+                    cryptoKey,
+                    enc.encode(JSON.stringify(plainObj))
+                );
+                return JSON.stringify({
+                    iv: Array.from(iv).map(b => b.toString(16).padStart(2, '0')).join(''),
+                    cipher: uint8ToBase64(new Uint8Array(cipherBuffer))
+                });
+            } catch (err) {
+                console.error('[Crypto] 資料加密失敗，回退至明文打包:', err);
+                return JSON.stringify(plainObj);
+            }
         }
 
         async function decryptPayload(rawMsgString) {
             try {
                 const packet = JSON.parse(rawMsgString);
-                if (!cryptoKey || !packet.iv || !packet.cipher) return packet;
+                if (!hasSubtleCrypto || !cryptoKey || !packet.iv || !packet.cipher) {
+                    return packet;
+                }
                 const iv = new Uint8Array(packet.iv.match(/.{1,2}/g).map(b => parseInt(b, 16)));
-                const cipherBytes = Uint8Array.from(atob(packet.cipher), c => c.charCodeAt(0));
+                const cipherBytes = base64ToUint8(packet.cipher);
                 const decryptedBuffer = await crypto.subtle.decrypt(
                     { name: 'AES-GCM', iv },
                     cryptoKey,
@@ -951,20 +990,27 @@
                 );
                 return JSON.parse(new TextDecoder().decode(decryptedBuffer));
             } catch (err) {
-                return null;
+                console.error('[Crypto] 訊息解密失敗 (密鑰不匹配或封包損壞):', err);
+                try {
+                    return JSON.parse(rawMsgString);
+                } catch(e) {
+                    return null;
+                }
             }
         }
 
         /* ------------------ 1. 運行模式設定 (個人 / 廣播 / 接收) ------------------ */
         const urlParams = new URLSearchParams(window.location.search);
         const joinRoom = urlParams.get('room') ? urlParams.get('room').replace(/\D/g, '') : null;
-        const joinKey = window.location.hash.replace('#', '');
+        const joinKey = window.location.hash.replace('#', '').trim().toUpperCase();
         const isReceiverMode = Boolean(joinRoom && joinKey);
 
         const myClientId = 'cli_' + Math.random().toString(36).substring(2, 9);
         let currentMode = isReceiverMode ? 'receive' : 'solo';
         let currentRoomId = joinRoom || '';
         let currentSecretKey = joinKey || '';
+
+        console.log(`[SyncCast-Init] 啟動模式: ${currentMode}, 用戶 ID: ${myClientId}, 房間: ${currentRoomId || '無'}`);
 
         const statusDot = document.getElementById('statusDot');
         const btnSolo = document.getElementById('btnSolo');
@@ -1055,7 +1101,9 @@
             if (window.OpenCC) {
                 hkConverter = window.OpenCC.Converter({ from: 'cn', to: 'hk' });
             }
-        } catch (e) {}
+        } catch (e) {
+            console.warn('[OpenCC] 繁體轉換模組載入略過:', e);
+        }
 
         function convertToHK(str) {
             if (!str) return '';
@@ -1075,7 +1123,7 @@
             fontToast.innerText = msg;
             fontToast.classList.add('show');
             clearTimeout(toastTimer);
-            toastTimer = setTimeout(() => fontToast.classList.remove('show'), 1500);
+            toastTimer = setTimeout(() => fontToast.classList.remove('show'), 1600);
         }
 
         /* ------------------ 4. 粵語句組引擎 ------------------ */
@@ -1364,7 +1412,7 @@
             }
         }
 
-        /* ------------------ 5. 語音辨識機制 (與音訊串流並行) ------------------ */
+        /* ------------------ 5. 語音辨識機制 (與收音串流並行) ------------------ */
         function handleSpeechInterim(interim) {
             if (!interim || !interim.trim()) {
                 cantoStream.classList.remove('has-interim');
@@ -1430,8 +1478,11 @@
                 if ('wakeLock' in navigator && !wakeLock) {
                     wakeLock = await navigator.wakeLock.request('screen');
                     wakeLock.addEventListener('release', () => { wakeLock = null; });
+                    console.log('[System] 已啟用螢幕常亮 (WakeLock Acquired)');
                 }
-            } catch (err) {}
+            } catch (err) {
+                console.warn('[System] 螢幕常亮不支援或被拒絕:', err);
+            }
         }
 
         function releaseWakeLock() {
@@ -1446,12 +1497,21 @@
             clearTimeout(restartDebounce);
             restartDebounce = setTimeout(() => {
                 if (userWantsListening && !isEngineRunning && recognition) {
-                    try { recognition.start(); } catch (e) {}
+                    try {
+                        recognition.start();
+                        console.log('[STT] 重新啟動粵語語音辨識');
+                    } catch (e) {
+                        console.warn('[STT] 重新啟動語音辨識略過:', e.message);
+                    }
                 }
-            }, 80);
+            }, 100);
         }
 
-        if (SpeechRecognition && !isReceiverMode) {
+        function initSpeechRecognition() {
+            if (!SpeechRecognition) {
+                console.error('[STT] 瀏覽器未提供 SpeechRecognition API');
+                return;
+            }
             recognition = new SpeechRecognition();
             recognition.continuous = true;
             recognition.interimResults = true;
@@ -1463,6 +1523,7 @@
                 toggleBtn.classList.add('active');
                 playIcon.style.display = 'none';
                 pauseIcon.style.display = 'block';
+                console.log('[STT] 粵語語音辨識引擎已上線監聽中 (zh-HK)');
             };
 
             recognition.onresult = (event) => {
@@ -1470,30 +1531,41 @@
                 for (let i = event.resultIndex; i < event.results.length; ++i) {
                     const res = event.results[i];
                     if (!res || !res[0]) continue;
-                    if (res.isFinal) handleSpeechFinal(res[0].transcript);
-                    else interim += res[0].transcript;
+                    if (res.isFinal) {
+                        console.log('[STT-Final]', res[0].transcript);
+                        handleSpeechFinal(res[0].transcript);
+                    } else {
+                        interim += res[0].transcript;
+                    }
                 }
                 if (interim) handleSpeechInterim(interim);
             };
 
             recognition.onerror = (e) => {
+                console.error('[STT Error] 辨識引擎錯誤:', e.error, e);
                 if (e.error === 'not-allowed') {
                     userWantsListening = false;
                     stopListeningUI();
-                } else scheduleSafeRestart();
+                    showToast("麥克風權限被拒絕，請於瀏覽器設定開啟");
+                } else {
+                    scheduleSafeRestart();
+                }
             };
 
             recognition.onend = () => {
                 isEngineRunning = false;
                 cantoStream.classList.remove('has-interim');
                 interimPart.textContent = "";
+                console.log('[STT] 辨識引擎暫時結束');
                 if (userWantsListening) scheduleSafeRestart();
                 else stopListeningUI();
             };
         }
 
+        initSpeechRecognition();
+
         async function toggleSpeech() {
-            if (!recognition) return alert("瀏覽器不支援語音辨識。");
+            if (!recognition) return alert("您的瀏覽器不支援語音辨識功能，請使用 Chrome 或 Edge 瀏覽器。");
             if (userWantsListening) {
                 userWantsListening = false;
                 if (restartDebounce) clearTimeout(restartDebounce);
@@ -1501,14 +1573,15 @@
                 releaseWakeLock();
                 try { recognition.stop(); } catch(e) {}
                 stopListeningUI();
+                console.log('[STT] 使用者手動暫停辨識');
             } else {
                 userWantsListening = true;
                 acquireWakeLock();
                 if (currentMode === 'broadcast') {
-                    // 同步準備好低延遲收音咪串流，實現雙工運行
                     await ensureBroadcasterMic();
                 }
                 scheduleSafeRestart();
+                console.log('[STT] 使用者手動開啟辨識與廣播');
             }
         }
 
@@ -1523,91 +1596,116 @@
         /* ------------------ 6. WebRTC 零延遲原音傳輸引擎 ------------------ */
         const rtcConfig = {
             iceServers: [
+                { urls: 'stun:stun.cloudflare.com:3478' },
                 { urls: 'stun:stun.l.google.com:19302' },
                 { urls: 'stun:stun1.l.google.com:19302' },
-                { urls: 'stun:stun2.l.google.com:19302' }
+                { urls: 'stun:stun.syncthing.net:3478' }
             ]
         };
 
         // Opus 高傳真低時延 SDP 注入 (10ms 封包、無靜音截斷、高碼率)
         function tuneOpusSdp(sdp) {
             if (!sdp) return sdp;
-            let lines = sdp.split('\r\n');
-            let opusPt = null;
-            for (let line of lines) {
-                if (line.startsWith('a=rtpmap:') && line.toLowerCase().includes('opus/48000')) {
-                    opusPt = line.split(':')[1].split(' ')[0];
-                    break;
-                }
-            }
-            if (opusPt) {
-                const fmtpParams = 'minptime=10;ptime=10;maxaveragebitrate=128000;stereo=0;sprop-stereo=0;useinbandfec=1;cbr=1;usedtx=0';
-                let fmtpFound = false;
-                for (let i = 0; i < lines.length; i++) {
-                    if (lines[i].startsWith(`a=fmtp:${opusPt}`)) {
-                        lines[i] = `a=fmtp:${opusPt} ${fmtpParams}`;
-                        fmtpFound = true;
+            try {
+                let lines = sdp.split('\r\n');
+                let opusPt = null;
+                for (let line of lines) {
+                    if (line.startsWith('a=rtpmap:') && line.toLowerCase().includes('opus/48000')) {
+                        opusPt = line.split(':')[1].split(' ')[0];
                         break;
                     }
                 }
-                if (!fmtpFound) {
-                    for (let i = 0; i < lines.length; i++) {
-                        if (lines[i].startsWith(`a=rtpmap:${opusPt}`)) {
-                            lines.splice(i + 1, 0, `a=fmtp:${opusPt} ${fmtpParams}`);
-                            break;
-                        }
+                if (opusPt) {
+                    const fmtpVal = `a=fmtp:${opusPt} minptime=10;useinbandfec=1;maxaveragebitrate=128000;cbr=1;usedtx=0`;
+                    const fmtpIdx = lines.findIndex(l => l.startsWith(`a=fmtp:${opusPt}`));
+                    if (fmtpIdx !== -1) {
+                        lines[fmtpIdx] = fmtpVal;
+                    } else {
+                        const rtpIdx = lines.findIndex(l => l.startsWith(`a=rtpmap:${opusPt}`));
+                        if (rtpIdx !== -1) lines.splice(rtpIdx + 1, 0, fmtpVal);
+                    }
+                    if (!lines.some(l => l.startsWith('a=ptime:'))) {
+                        const mIdx = lines.findIndex(l => l.startsWith('m=audio'));
+                        if (mIdx !== -1) lines.splice(mIdx + 1, 0, 'a=ptime:10');
                     }
                 }
+                return lines.join('\r\n');
+            } catch (err) {
+                console.warn('[WebRTC] SDP 調校略過，維持原始設定:', err);
+                return sdp;
             }
-            return lines.join('\r\n');
         }
 
         async function sendRoomPayload(payload) {
-            if (mqttClient && mqttClient.connected && currentRoomId) {
-                payload.sender = myClientId;
+            if (!currentRoomId) {
+                console.warn('[MQTT] 發送中止：未加入任何房間 ID');
+                return;
+            }
+            if (!mqttClient || !mqttClient.connected) {
+                console.warn('[MQTT] 客戶端尚未連線，暫無法發布信號:', payload.type);
+                return;
+            }
+            payload.sender = myClientId;
+            payload.timestamp = Date.now();
+            try {
                 const encryptedString = await encryptPayload(payload);
-                mqttClient.publish(`canto/room_${currentRoomId}`, encryptedString);
+                mqttClient.publish(`canto/room_${currentRoomId}`, encryptedString, { qos: 0 }, (err) => {
+                    if (err) {
+                        console.error('[MQTT] 封包發送失敗:', err);
+                    } else {
+                        if (payload.type !== 'interim') {
+                            console.log(`[MQTT-TX] [${payload.type}] 已送出至 room_${currentRoomId}`);
+                        }
+                    }
+                });
+            } catch (err) {
+                console.error('[MQTT] 打包訊息出錯:', err);
             }
         }
 
         /* --- 廣播端收音 (僅擷取麥克風推流，自身不播放，零迴音) --- */
         let broadcasterMicStream = null;
-        // 存放對象結構：{ pc: RTCPeerConnection, pendingCandidates: Array }
-        const broadcasterPeers = new Map();
+        const broadcasterPeers = new Map(); // id -> { pc, pendingCandidates }
 
         async function ensureBroadcasterMic() {
             if (broadcasterMicStream && broadcasterMicStream.active && broadcasterMicStream.getAudioTracks().some(t => t.readyState === 'live')) {
                 return broadcasterMicStream;
             }
+            console.log('[Broadcaster] 正在請求麥克風收音權限...');
             try {
-                // 優先使用低延遲配置，同時兼顧 STT 的清晰度
                 broadcasterMicStream = await navigator.mediaDevices.getUserMedia({
                     audio: {
                         echoCancellation: false,
                         noiseSuppression: false,
                         autoGainControl: true,
-                        channelCount: { ideal: 1 },
-                        sampleRate: { ideal: 48000 },
-                        latency: 0
+                        channelCount: 1,
+                        sampleRate: 48000
                     },
                     video: false
                 });
+                console.log('[Broadcaster] 麥克風取得成功，Audio Tracks:', broadcasterMicStream.getAudioTracks().length);
             } catch (err) {
+                console.warn('[Broadcaster] 嚴格參數失敗，嘗試相容麥克風參數:', err);
                 try {
                     broadcasterMicStream = await navigator.mediaDevices.getUserMedia({
                         audio: { echoCancellation: false, autoGainControl: true },
                         video: false
                     });
                 } catch (e) {
-                    broadcasterMicStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+                    console.error('[Broadcaster Error] 完全無法存取麥克風:', e);
+                    showToast("無法存取麥克風，請檢查瀏覽器設定");
                 }
             }
             return broadcasterMicStream;
         }
 
         async function setupBroadcasterPeer(receiverId) {
+            console.log(`[Broadcaster-WebRTC] 為接收端 [${receiverId}] 建立點對點連線...`);
             const stream = await ensureBroadcasterMic();
-            if (!stream) return;
+            if (!stream) {
+                console.error('[Broadcaster-WebRTC] 因無可用麥克風串流，中止建立連線');
+                return;
+            }
 
             if (broadcasterPeers.has(receiverId)) {
                 try { broadcasterPeers.get(receiverId).pc.close(); } catch(e){}
@@ -1619,6 +1717,7 @@
             broadcasterPeers.set(receiverId, peerRecord);
 
             stream.getAudioTracks().forEach(track => {
+                console.log(`[Broadcaster-WebRTC] 加入音訊軌道 [${track.label}] 至連線`);
                 pc.addTrack(track, stream);
             });
 
@@ -1634,6 +1733,7 @@
             };
 
             pc.onconnectionstatechange = () => {
+                console.log(`[Broadcaster-WebRTC] 對 [${receiverId}] 連線狀態變更:`, pc.connectionState);
                 if (pc.connectionState === 'disconnected' || pc.connectionState === 'failed' || pc.connectionState === 'closed') {
                     broadcasterPeers.delete(receiverId);
                 }
@@ -1653,6 +1753,7 @@
                 target: receiverId,
                 sdp: pc.localDescription
             });
+            console.log(`[Broadcaster-WebRTC] 已向 [${receiverId}] 發送 SDP Offer`);
         }
 
         /* --- 接收端音訊播放與實時視覺化等化器 --- */
@@ -1697,15 +1798,20 @@
         }
 
         function playReceiverAudioStream(stream) {
+            console.log('[Receiver-Audio] 收到遠端原音音訊流，Tracks 數量:', stream.getAudioTracks().length);
             if (!remoteAudioEl) {
                 remoteAudioEl = document.createElement('audio');
                 remoteAudioEl.id = 'remoteLiveAudio';
                 remoteAudioEl.autoplay = true;
                 remoteAudioEl.playsInline = true;
-                // 掛載在 DOM 中避免瀏覽器後台節能中斷
+                remoteAudioEl.volume = 1.0;
+                // 掛載在可見 DOM 中防止後台省電被瀏覽器靜默
                 remoteAudioEl.style.position = 'fixed';
-                remoteAudioEl.style.top = '-9999px';
-                remoteAudioEl.style.opacity = '0';
+                remoteAudioEl.style.bottom = '2px';
+                remoteAudioEl.style.right = '2px';
+                remoteAudioEl.style.width = '1px';
+                remoteAudioEl.style.height = '1px';
+                remoteAudioEl.style.opacity = '0.01';
                 remoteAudioEl.style.pointerEvents = 'none';
                 document.body.appendChild(remoteAudioEl);
             }
@@ -1713,17 +1819,20 @@
             
             const p = remoteAudioEl.play();
             if (p !== undefined) {
-                p.catch(() => {
-                    // 若受瀏覽器 Autoplay 政策限制，點擊螢幕任意處立即解鎖播放
+                p.then(() => {
+                    console.log('[Receiver-Audio] 遠端原音已順利自動播放');
+                }).catch((err) => {
+                    console.warn('[Receiver-Audio] 受到瀏覽器自動播放限制，等待觸控螢幕解鎖:', err);
+                    showToast("點擊螢幕任何處解鎖原音收音");
                     const unlock = () => {
                         if (remoteAudioEl) remoteAudioEl.play().catch(() => {});
                         if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
                         document.removeEventListener('click', unlock);
                         document.removeEventListener('touchstart', unlock);
+                        console.log('[Receiver-Audio] 使用者已點擊螢幕解鎖音訊');
                     };
                     document.addEventListener('click', unlock, { once: true });
                     document.addEventListener('touchstart', unlock, { once: true });
-                    showToast("點擊螢幕解鎖即時收音");
                 });
             }
 
@@ -1742,7 +1851,9 @@
                     source.connect(audioAnalyser);
                     startVisualizerAnimation();
                 }
-            } catch (err) {}
+            } catch (err) {
+                console.warn('[Receiver-Audio] 等化器節點連接警告:', err);
+            }
         }
 
         async function startAudioListening() {
@@ -1759,6 +1870,7 @@
                 audioCtx.resume().catch(() => {});
             }
 
+            console.log('[Receiver] 發送 audio_join_req 請求廣播端推送音訊...');
             sendRoomPayload({ type: 'audio_join_req', from: myClientId });
         }
 
@@ -1792,10 +1904,10 @@
         function toggleAudioMonitor() {
             if (isAudioListening) {
                 stopAudioListening();
-                showToast("已靜音即時收音");
+                showToast("已靜音即時原音");
             } else {
                 startAudioListening();
-                showToast("已開啟即時收音");
+                showToast("已開啟即時原音");
             }
         }
 
@@ -1867,28 +1979,27 @@
                 }
             }
 
-            /* WebRTC 零延遲原音通道調度 */
+            /* WebRTC 原音通道信令調度 */
             if (currentMode === 'broadcast') {
                 if (data.type === 'audio_join_req') {
+                    console.log(`[Broadcaster-Signal] 收到 [${data.from}] 的收音請求`);
                     setupBroadcasterPeer(data.from);
                 } else if (data.type === 'audio_answer') {
+                    console.log(`[Broadcaster-Signal] 收到 [${data.from}] 的 SDP Answer`);
                     const peerRecord = broadcasterPeers.get(data.from);
                     if (peerRecord && peerRecord.pc) {
                         await peerRecord.pc.setRemoteDescription(new RTCSessionDescription(data.sdp));
-                        // 處理握手完成前暫存的 ICE candidates
                         while (peerRecord.pendingCandidates.length > 0) {
                             const c = peerRecord.pendingCandidates.shift();
                             try { await peerRecord.pc.addIceCandidate(new RTCIceCandidate(c)); } catch(e){}
                         }
                     }
                 } else if (data.type === 'audio_ice') {
-                    const peerRecord = broadcasterPeers.get(data.from);
-                    if (peerRecord && peerRecord.pc && data.candidate) {
-                        if (peerRecord.pc.remoteDescription && peerRecord.pc.remoteDescription.type) {
-                            try { await peerRecord.pc.addIceCandidate(new RTCIceCandidate(data.candidate)); } catch(e){}
-                        } else {
-                            peerRecord.pendingCandidates.push(data.candidate);
-                        }
+                    let peerRecord = broadcasterPeers.get(data.from);
+                    if (peerRecord && peerRecord.pc && peerRecord.pc.remoteDescription && peerRecord.pc.remoteDescription.type) {
+                        try { await peerRecord.pc.addIceCandidate(new RTCIceCandidate(data.candidate)); } catch(e){}
+                    } else if (peerRecord) {
+                        peerRecord.pendingCandidates.push(data.candidate);
                     }
                 } else if (data.type === 'audio_leave') {
                     const peerRecord = broadcasterPeers.get(data.from);
@@ -1898,21 +2009,16 @@
                     }
                 }
             } else if (currentMode === 'receive') {
-                // 自動重連檢查：若接收端已連線但尚未建立音訊通道，即時重新請求
-                if (isAudioListening && (!receiverPc || receiverPc.connectionState === 'disconnected' || receiverPc.connectionState === 'failed')) {
-                    sendRoomPayload({ type: 'audio_join_req', from: myClientId });
-                }
-
                 if (data.type === 'audio_offer' && data.target === myClientId) {
+                    console.log(`[Receiver-Signal] 收到廣播端的 SDP Offer`);
                     if (receiverPc) {
                         try { receiverPc.close(); } catch(e){}
                         receiverPc = null;
                     }
-                    receiverPendingCandidates = [];
                     receiverPc = new RTCPeerConnection(rtcConfig);
 
                     receiverPc.ontrack = (event) => {
-                        // 關鍵：將硬體抖動緩衝時延設定為 0（極致零延遲傳輸）
+                        console.log('[Receiver-WebRTC] ontrack 觸發');
                         if (event.receiver) {
                             if ('playoutDelayHint' in event.receiver) event.receiver.playoutDelayHint = 0;
                             if ('jitterBufferTarget' in event.receiver) event.receiver.jitterBufferTarget = 0;
@@ -1934,7 +2040,7 @@
 
                     await receiverPc.setRemoteDescription(new RTCSessionDescription(data.sdp));
 
-                    // 處理待定的 ICE Candidate
+                    // 關鍵修復：立即排空在 offer 到達前就已收到的候選位址
                     while (receiverPendingCandidates.length > 0) {
                         const c = receiverPendingCandidates.shift();
                         try { await receiverPc.addIceCandidate(new RTCIceCandidate(c)); } catch(e){}
@@ -1950,16 +2056,47 @@
                         target: data.from,
                         sdp: receiverPc.localDescription
                     });
+                    console.log(`[Receiver-Signal] 已回傳 SDP Answer 給廣播端`);
                 } else if (data.type === 'audio_ice' && data.target === myClientId) {
-                    if (receiverPc && data.candidate) {
-                        if (receiverPc.remoteDescription && receiverPc.remoteDescription.type) {
-                            try { await receiverPc.addIceCandidate(new RTCIceCandidate(data.candidate)); } catch(e){}
-                        } else {
-                            receiverPendingCandidates.push(data.candidate);
-                        }
+                    // 關鍵修復：若 receiverPc 尚未建立或尚未 setRemoteDescription，先存入 pendingCandidates
+                    if (receiverPc && receiverPc.remoteDescription && receiverPc.remoteDescription.type) {
+                        try { await receiverPc.addIceCandidate(new RTCIceCandidate(data.candidate)); } catch(e){}
+                    } else {
+                        receiverPendingCandidates.push(data.candidate);
                     }
                 }
             }
+        }
+
+        function createMqttClient(modeName) {
+            const clientId = 'canto_' + myClientId + '_' + Math.random().toString(16).substr(2, 6);
+            console.log(`[MQTT] 正在連接 EMQX WSS Broker (${modeName}, ClientId: ${clientId})...`);
+            
+            const client = mqtt.connect('wss://broker.emqx.io:8084/mqtt', {
+                clientId: clientId,
+                clean: true,
+                connectTimeout: 8000,
+                keepalive: 30
+            });
+
+            client.on('connect', () => {
+                console.log(`[MQTT] [${modeName}] 連線成功`);
+                client.subscribe(`canto/room_${currentRoomId}`, (err) => {
+                    if (err) console.error(`[MQTT] 訂閱房間 canto/room_${currentRoomId} 失敗:`, err);
+                    else console.log(`[MQTT] 已成功訂閱頻道: canto/room_${currentRoomId}`);
+                });
+            });
+
+            client.on('error', (err) => console.error(`[MQTT Error] [${modeName}]:`, err));
+            client.on('offline', () => console.warn(`[MQTT] [${modeName}] 離線`));
+            client.on('reconnect', () => console.log(`[MQTT] [${modeName}] 嘗試重連中...`));
+
+            client.on('message', async (topic, msg) => {
+                const data = await decryptPayload(msg.toString());
+                if (data) handleIncomingRoomMessage(data);
+            });
+
+            return client;
         }
 
         async function initReceiverCloud() {
@@ -1967,18 +2104,11 @@
             if (mqttClient) {
                 try { mqttClient.end(); } catch (e) {}
             }
-            mqttClient = mqtt.connect('wss://broker.emqx.io:8084/mqtt', { clean: true });
+            mqttClient = createMqttClient('ReceiveMode');
             
             mqttClient.on('connect', () => {
-                mqttClient.subscribe(`canto/room_${currentRoomId}`);
                 showToast("已成功同步房間，即時收音中");
-                // 接收端連線成功後自動開啟零延遲收音監聽
                 startAudioListening();
-            });
-
-            mqttClient.on('message', async (topic, msg) => {
-                const data = await decryptPayload(msg.toString());
-                if (data) handleIncomingRoomMessage(data);
             });
         }
 
@@ -1988,6 +2118,7 @@
                 return;
             }
             currentMode = 'broadcast';
+            console.log('[SyncCast] 切換至廣播版模式');
 
             if (!currentRoomId) currentRoomId = String(Math.floor(100000 + Math.random() * 900000));
             if (!currentSecretKey) currentSecretKey = Math.random().toString(36).substring(2, 8).toUpperCase();
@@ -1997,24 +2128,24 @@
             if (mqttClient) {
                 try { mqttClient.end(); } catch(e) {}
             }
-            mqttClient = mqtt.connect('wss://broker.emqx.io:8084/mqtt', { clean: true });
-            mqttClient.on('connect', () => {
-                mqttClient.subscribe(`canto/room_${currentRoomId}`);
-            });
-            mqttClient.on('message', async (topic, msg) => {
-                const data = await decryptPayload(msg.toString());
-                if (data) handleIncomingRoomMessage(data);
-            });
+            mqttClient = createMqttClient('BroadcastMode');
 
-            // 預先取得廣播端咪高風權限，確保開播時無卡頓
-            await ensureBroadcasterMic();
+            // 關鍵升級：點擊廣播版即全自動授權麥克風並啟動語音辨識與收音
             updateUIState();
             setupMinimalQR();
             openQrModal();
+
+            await ensureBroadcasterMic();
+            if (!userWantsListening) {
+                userWantsListening = true;
+                acquireWakeLock();
+                scheduleSafeRestart();
+            }
         }
 
         function switchToSoloMode() {
             currentMode = 'solo';
+            console.log('[SyncCast] 切換至個人版模式');
             if (mqttClient) {
                 try { mqttClient.end(); } catch(e) {}
                 mqttClient = null;
@@ -2065,7 +2196,7 @@
 
         async function submitJoinRoom() {
             let r = document.getElementById('inputRoomId').value.replace(/\D/g, '').trim();
-            const k = document.getElementById('inputSecretKey').value.trim();
+            const k = document.getElementById('inputSecretKey').value.trim().toUpperCase();
 
             if (!r || r.length < 4) {
                 return alert("請填寫正確的純數字房間號碼！");
@@ -2407,7 +2538,7 @@
                 });
 
             } catch (err) {
-                console.error('開啟置頂字幕視窗失敗:', err);
+                console.error('[PiP Error] 開啟置頂字幕視窗失敗:', err);
             }
         }
 
