@@ -1241,7 +1241,7 @@
 
                 if (textWidth > containerWidth) {
                     const distance = textWidth - containerWidth + 40;
-                    const duration = Math.max(7, Math.round(distance / 42)); // 流暢閱讀速率
+                    const duration = Math.max(7, Math.round(distance / 42));
                     groupElem.style.setProperty('--marquee-dist', `${distance}px`);
                     groupElem.style.setProperty('--marquee-duration', `${duration}s`);
                     groupElem.classList.add('pip-marquee');
@@ -1268,7 +1268,6 @@
             currentGroup = null;
             refreshGroupHighlights();
 
-            // 本地觸發超長走馬燈
             applyPipMarqueeIfNeeded(finalizedElem);
         }
 
@@ -1316,102 +1315,92 @@
             }
         }
 
-        /* ------------------ 4.1 自適應分貝噪音門限引擎 (Noise Gate VAD) ------------------ */
+        /* ------------------ 5. 語音辨識與分貝門限噪聲濾波機制 ------------------ */
+        // Web Audio API 噪聲門限（Noise Gate）引擎
         let audioContext = null;
+        let analyserNode = null;
         let micStream = null;
-        let analyser = null;
-        let audioDataArray = null;
-        let audioAnimId = null;
-        let isVoiceActive = false;
-        let lastVoiceActiveTime = 0;
-        let noiseFloor = 10; // 背景底噪基準 (0-100)
+        let audioMonitorAnim = null;
+        let recentMaxDb = -100;
+        let lastVoiceTime = 0;
 
-        async function startAudioGate() {
+        // 當咪高風擴音講話時近場音量通常大於 -36dB 至 -40dB；遠處雜音通常低於此數值
+        const DB_SPEECH_THRESHOLD = -38.0; 
+
+        async function startAudioGateMonitoring() {
             try {
-                if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-                    isVoiceActive = true;
-                    return;
-                }
-                // 開啟硬體級主動降噪、回音消除與自動增益
+                if (audioContext && audioContext.state !== 'closed') return;
+                
+                // 強制啟用降噪與回音抵消，關閉自動增益避免環境雜音被放大
                 micStream = await navigator.mediaDevices.getUserMedia({
                     audio: {
                         echoCancellation: true,
                         noiseSuppression: true,
-                        autoGainControl: true
+                        autoGainControl: false
                     }
                 });
 
-                const AudioContextClass = window.AudioContext || window.webkitAudioContext;
-                audioContext = new AudioContextClass();
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
                 const source = audioContext.createMediaStreamSource(micStream);
-                analyser = audioContext.createAnalyser();
-                analyser.fftSize = 256;
-                analyser.smoothingTimeConstant = 0.35;
-                source.connect(analyser);
+                analyserNode = audioContext.createAnalyser();
+                analyserNode.fftSize = 512;
+                analyserNode.smoothingTimeConstant = 0.3;
+                source.connect(analyserNode);
 
-                audioDataArray = new Uint8Array(analyser.frequencyBinCount);
+                const dataArray = new Uint8Array(analyserNode.fftSize);
 
-                function checkVolume() {
-                    if (!analyser) return;
-                    analyser.getByteFrequencyData(audioDataArray);
-                    let sum = 0;
-                    for (let i = 0; i < audioDataArray.length; i++) {
-                        sum += audioDataArray[i];
+                function monitorAudio() {
+                    if (!userWantsListening) return;
+                    analyserNode.getByteTimeDomainData(dataArray);
+
+                    let sumSquares = 0;
+                    for (let i = 0; i < dataArray.length; i++) {
+                        const norm = (dataArray[i] - 128) / 128;
+                        sumSquares += norm * norm;
                     }
-                    const avgVolume = sum / audioDataArray.length; // 0 - 255
-                    const normalizedVol = (avgVolume / 255) * 100; // 0 - 100
+                    const rms = Math.sqrt(sumSquares / dataArray.length);
+                    const db = rms > 0 ? 20 * Math.log10(rms) : -100;
 
-                    // 自適應追蹤環境底噪：環境安靜或只有背景微弱交談時緩慢校準底噪
-                    if (normalizedVol < noiseFloor + 5) {
-                        noiseFloor = noiseFloor * 0.94 + normalizedVol * 0.06;
-                    } else if (normalizedVol < 32) {
-                        noiseFloor = noiseFloor * 0.985 + normalizedVol * 0.015;
-                    }
-
-                    // 動態噪音門限：底噪基礎上加 12 單位（最低門限 15），濾除人多時的雜散遠音
-                    const dynamicThreshold = Math.max(15, noiseFloor + 12);
-
-                    if (normalizedVol >= dynamicThreshold) {
-                        isVoiceActive = true;
-                        lastVoiceActiveTime = Date.now();
-                    } else {
-                        // 850ms 尾音保護期，防止換氣或句尾語氣詞被截斷
-                        if (Date.now() - lastVoiceActiveTime > 850) {
-                            isVoiceActive = false;
-                        }
+                    recentMaxDb = Math.max(recentMaxDb * 0.85, db);
+                    if (db >= DB_SPEECH_THRESHOLD) {
+                        lastVoiceTime = Date.now();
                     }
 
-                    audioAnimId = requestAnimationFrame(checkVolume);
+                    audioMonitorAnim = requestAnimationFrame(monitorAudio);
                 }
-                checkVolume();
+                monitorAudio();
             } catch (err) {
-                // 若麥克風權限或 Web Audio 異常則保底放行，不影響基礎提詞使用
-                console.warn("Audio gate init fallback:", err);
-                isVoiceActive = true;
+                // 如果無法調用音訊節點，降級回普通模式
+                console.warn('音頻門限監控無法初始化，降級至標準辨識模式', err);
             }
         }
 
-        function stopAudioGate() {
-            if (audioAnimId) {
-                cancelAnimationFrame(audioAnimId);
-                audioAnimId = null;
+        function stopAudioGateMonitoring() {
+            if (audioMonitorAnim) {
+                cancelAnimationFrame(audioMonitorAnim);
+                audioMonitorAnim = null;
             }
             if (micStream) {
                 micStream.getTracks().forEach(t => t.stop());
                 micStream = null;
             }
-            if (audioContext && audioContext.state !== 'closed') {
+            if (audioContext) {
                 audioContext.close().catch(() => {});
                 audioContext = null;
             }
-            analyser = null;
-            isVoiceActive = false;
+            analyserNode = null;
+            recentMaxDb = -100;
         }
 
-        /* ------------------ 5. 語音辨識機制 ------------------ */
+        // 判斷當前接收到的文字是否來自近場主講聲音（大於分貝門限），而非環境背景音
+        function isLikelyPrimaryVoice() {
+            if (!analyserNode) return true; // 降級保底
+            return (Date.now() - lastVoiceTime) < 800;
+        }
+
         function handleSpeechInterim(interim) {
-            // 當前音量未達主發言者門限，視為周圍嘈雜背景人聲，直接忽視過濾
-            if (!isVoiceActive && (Date.now() - lastVoiceActiveTime > 850)) {
+            // 環境雜音/人聲過小，直接視為環境音忽略
+            if (!isLikelyPrimaryVoice()) {
                 return;
             }
 
@@ -1447,14 +1436,15 @@
         }
 
         function handleSpeechFinal(finalText) {
-            // 背景雜音產生的短暫斷句直接忽略，防止系統混淆
-            if (!isVoiceActive && (Date.now() - lastVoiceActiveTime > 950)) {
+            if (!finalText || !finalText.trim()) return;
+
+            // 門限檢測：非有效聲量，不記入正式提詞
+            if (!isLikelyPrimaryVoice()) {
                 cantoStream.classList.remove('has-interim');
                 interimPart.textContent = "";
                 return;
             }
 
-            if (!finalText || !finalText.trim()) return;
             const cleanFinal = cleanString(finalText);
             const now = Date.now();
             if (cleanFinal === lastFinalCleanText && (now - lastFinalTimestamp < 1800)) {
@@ -1477,6 +1467,7 @@
         let isEngineRunning = false;
         let wakeLock = null;
         let restartDebounce = null;
+        let watchdogTimer = null;
 
         const playIcon = document.getElementById('playIcon');
         const pauseIcon = document.getElementById('pauseIcon');
@@ -1505,6 +1496,16 @@
                     try { recognition.start(); } catch (e) {}
                 }
             }, 80);
+        }
+
+        // 人多混雜時引擎可能無預警掛起，增加看門狗守護
+        function setupWatchdog() {
+            clearInterval(watchdogTimer);
+            watchdogTimer = setInterval(() => {
+                if (userWantsListening && !isEngineRunning) {
+                    scheduleSafeRestart();
+                }
+            }, 2500);
         }
 
         if (SpeechRecognition && !isReceiverMode) {
@@ -1552,16 +1553,18 @@
             if (!recognition) return alert("瀏覽器不支援語音辨識。");
             if (userWantsListening) {
                 userWantsListening = false;
+                clearInterval(watchdogTimer);
                 if (restartDebounce) clearTimeout(restartDebounce);
-                stopAudioGate();
                 finalizeCurrentGroup();
                 releaseWakeLock();
+                stopAudioGateMonitoring();
                 try { recognition.stop(); } catch(e) {}
                 stopListeningUI();
             } else {
                 userWantsListening = true;
-                await startAudioGate();
                 acquireWakeLock();
+                await startAudioGateMonitoring();
+                setupWatchdog();
                 scheduleSafeRestart();
             }
         }
@@ -1783,7 +1786,7 @@
             { name: "放大 (+1級)", size: "2.55rem" },
             { name: "特大 (+2級)", size: "3.00rem" }
         ];
-        let currentPipScaleIdx = 2; // 預設標準
+        let currentPipScaleIdx = 2;
 
         function cyclePipFontSize() {
             currentPipScaleIdx = (currentPipScaleIdx + 1) % pipFontScales.length;
@@ -1793,7 +1796,6 @@
 
             if (pipWindow && !pipWindow.closed) {
                 pipWindow.document.documentElement.style.setProperty('--pip-cantonese-size', cur.size);
-                // 調整字體大小後立即重算走馬燈
                 if (groupList.length > 0) {
                     const lastGroup = groupList[groupList.length - 1];
                     if (lastGroup && lastGroup.elem) {
@@ -1940,7 +1942,6 @@
                     pipWindow.document.head.appendChild(style.cloneNode(true));
                 });
 
-                // 同步當前懸浮字幕大小
                 pipWindow.document.documentElement.style.setProperty(
                     '--pip-cantonese-size',
                     pipFontScales[currentPipScaleIdx].size
@@ -1966,7 +1967,6 @@
                         padding: 0 !important;
                     }
 
-                    /* 滾動容器：單行水平佈局 */
                     .scroll-body {
                         height: 100% !important;
                         width: 100% !important;
@@ -1985,7 +1985,6 @@
                         display: none !important;
                     }
 
-                    /* 文字串流容器：未超出時居中，超出時由左展開 */
                     .cantonese-stream {
                         display: inline-flex !important;
                         flex-direction: row !important;
@@ -2037,7 +2036,6 @@
                         flex-shrink: 0 !important;
                     }
 
-                    /* 超長確認句走馬燈平滑循環動畫 */
                     .phrase-group.active-latest.pip-marquee {
                         margin: 0 !important;
                         animation: pipMarqueeSmooth var(--marquee-duration, 8s) cubic-bezier(0.25, 0.1, 0.25, 1) infinite !important;
@@ -2064,7 +2062,6 @@
                 const btnPip = document.getElementById('btnPip');
                 if (btnPip) btnPip.classList.add('mode-active');
 
-                // 進入時檢查當前最新句是否需要走馬燈
                 if (groupList.length > 0) {
                     const lastGroup = groupList[groupList.length - 1];
                     if (lastGroup && lastGroup.elem) {
