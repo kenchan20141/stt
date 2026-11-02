@@ -399,7 +399,6 @@
             opacity: 0.4;
         }
 
-        /* 最新句組：純米白 + 莫蘭迪金微光 */
         .phrase-group.active-latest {
             color: var(--text-main);
             font-weight: 700;
@@ -459,7 +458,6 @@
 
         #fontToast.show { opacity: 1; transform: translateY(0); }
 
-        /* 彈窗樣式改為 Cinematic Studio */
         .modal-overlay {
             position: fixed;
             top: 0; left: 0; width: 100vw; height: 100vh;
@@ -697,7 +695,6 @@
             transform: translateX(2px);
         }
 
-        /* 咪高風監測與選擇面板 */
         .device-option-item {
             display: flex;
             align-items: center;
@@ -845,7 +842,6 @@
                             <path d="M14 13.5H19"></path>
                         </svg>
                     </button>
-                    <!-- 螢幕底置頂懸浮字幕條 -->
                     <button id="btnPip" class="icon-btn" title="點擊：開關字幕條 | 長按：調節字幕大小(可縮小2級)">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
                             <rect x="2" y="4" width="20" height="13" rx="2"></rect>
@@ -905,10 +901,6 @@
                     CHOOSE INPUT DEVICE / 點擊選取輸入來源:
                 </div>
                 <div id="audioDeviceList" style="display:flex; flex-direction:column; gap:8px; width:100%;"></div>
-                
-                <div style="font-size:0.72rem; color:var(--text-muted); font-family:var(--font-mono); line-height:1.6; border-top:1px solid var(--border); padding-top:10px;">
-                    提示：代碼已優化 420ms 藍牙防跳動緩衝機制，停頓時系統會平穩維持在耳機通道，不再頻繁回跳手機。
-                </div>
             </div>
         </div>
     </div>
@@ -1157,7 +1149,7 @@
             toastTimer = setTimeout(() => fontToast.classList.remove('show'), 2000);
         }
 
-        /* ------------------ 音訊裝置點選綁定與即時音量監聽 ------------------ */
+        /* ------------------ 藍牙話筒強制通話橋接引擎 (Audio Bridge) ------------------ */
         let selectedAudioDeviceId = localStorage.getItem('sync_canto_audio_device_id') || 'default';
         let lastCachedDevices = [];
 
@@ -1170,6 +1162,9 @@
         let testAnalyser = null;
         let testMicStream = null;
         let meterAnimFrame = null;
+
+        // 通話模式全域錨點：用於欺騙安卓系統強制將語音轉入藍牙 SCO 通話通道
+        let globalSCOAnchorStream = null;
 
         async function openAudioDeviceModal() {
             audioDeviceModal.classList.add('active');
@@ -1193,7 +1188,6 @@
                     }
                 };
 
-                // 使用 ideal 柔性約束，保證安卓手機在各版本都不會因 exact 報錯或衝突
                 if (targetDeviceId && targetDeviceId !== 'default') {
                     constraints.audio.deviceId = { ideal: targetDeviceId };
                 }
@@ -1252,7 +1246,6 @@
         function renderDeviceList(inputs) {
             audioDeviceList.innerHTML = '';
 
-            // 預設選項
             const isDefSelected = (selectedAudioDeviceId === 'default');
             const defItem = document.createElement('div');
             defItem.className = `device-option-item ${isDefSelected ? 'selected' : ''}`;
@@ -1269,7 +1262,6 @@
             defItem.onclick = () => selectDevice('default', '預設通訊裝置');
             audioDeviceList.appendChild(defItem);
 
-            // 實體裝置選項
             inputs.forEach((d, i) => {
                 const label = d.label || `音訊裝置 ${i + 1}`;
                 const devId = d.deviceId;
@@ -1301,6 +1293,32 @@
             } catch (e) {
                 audioDeviceList.innerHTML = `<div style="color:var(--text-muted); font-size:0.8rem;">無法列出設備清單</div>`;
             }
+        }
+
+        /* 核心黑科技：向安卓底層發起通話握手，強制觸發藍牙話筒路由 */
+        async function engageBluetoothSCOBridge() {
+            try {
+                if (globalSCOAnchorStream) {
+                    globalSCOAnchorStream.getTracks().forEach(t => t.stop());
+                }
+                const bridgeConstraints = {
+                    audio: {
+                        echoCancellation: true,
+                        noiseSuppression: true,
+                        autoGainControl: true
+                    }
+                };
+                if (selectedAudioDeviceId && selectedAudioDeviceId !== 'default') {
+                    bridgeConstraints.audio.deviceId = { ideal: selectedAudioDeviceId };
+                }
+                globalSCOAnchorStream = await navigator.mediaDevices.getUserMedia(bridgeConstraints);
+                // 保持微秒級通話活躍，欺騙系統全局音訊通道切換至藍牙
+                await new Promise(r => setTimeout(r, 260));
+                if (globalSCOAnchorStream) {
+                    globalSCOAnchorStream.getTracks().forEach(t => t.stop());
+                    globalSCOAnchorStream = null;
+                }
+            } catch (e) {}
         }
 
         /* ------------------ 4. 粵語句組引擎 ------------------ */
@@ -1589,7 +1607,7 @@
             }
         }
 
-        /* ------------------ 5. 語音辨識機制（420ms 藍牙平滑抗跳動） ------------------ */
+        /* ------------------ 5. 語音辨識機制（通話橋接防跳動） ------------------ */
         function handleSpeechInterim(interim) {
             if (!interim || !interim.trim()) {
                 cantoStream.classList.remove('has-interim');
@@ -1667,7 +1685,6 @@
             }
         }
 
-        /* 核心修復：420ms 平滑重啟緩衝，避免安卓在停頓時因過急重啟而降級回手機咪 */
         function scheduleSafeRestart() {
             if (!userWantsListening) return;
             clearTimeout(restartDebounce);
@@ -1687,7 +1704,7 @@
                     }
                     setTimeout(() => { isRestarting = false; }, 250);
                 }
-            }, 420);
+            }, 380);
         }
 
         if (SpeechRecognition && !isReceiverMode) {
@@ -1722,7 +1739,7 @@
                     userWantsListening = false;
                     stopListeningUI();
                 } else if (e.error === 'audio-capture') {
-                    showToast("音訊通道切換中...");
+                    showToast("通道調整中...");
                     scheduleSafeRestart();
                 } else {
                     scheduleSafeRestart();
@@ -1738,10 +1755,9 @@
             };
         }
 
-        function toggleSpeech() {
+        async function toggleSpeech() {
             if (!recognition) return alert("瀏覽器不支援語音辨識。請使用 Chrome 或 Edge 瀏覽器。");
             
-            // 關鍵互斥保護：提詞時徹底關閉診斷流，杜絕雙重佔用導致的收音跳動
             stopMicTester();
 
             if (userWantsListening) {
@@ -1754,6 +1770,8 @@
             } else {
                 userWantsListening = true;
                 acquireWakeLock();
+                // 啟動通話橋接握手，強行將底層音訊通道鎖定至藍牙 SCO
+                await engageBluetoothSCOBridge();
                 scheduleSafeRestart();
             }
         }
@@ -2268,7 +2286,6 @@
             }
         }
 
-        /* 綁定長按與短按至 #btnPip 按鈕 */
         (function setupPipButtonEvents() {
             const btnPip = document.getElementById('btnPip');
             if (!btnPip) return;
@@ -2307,4 +2324,4 @@
         })();
     </script>
 </body>
-</html>
+                    </html>
