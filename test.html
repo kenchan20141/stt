@@ -490,8 +490,7 @@
 
         .modal-header {
             padding: 16px 20px;
-            display: flex;
-            justify-content: space-between;
+            display: space-between;
             align-items: center;
             border-bottom: 1px solid var(--border);
             font-family: var(--font-title);
@@ -1315,28 +1314,23 @@
             }
         }
 
-        /* ------------------ 4.5 純分貝門檻監測引擎 (無硬件降噪) ------------------ */
+        /* ------------------ 4.5 自適應聲量差門限引擎 (非侵入式，無硬件降噪) ------------------ */
         let audioContext = null;
         let audioAnalyser = null;
         let audioSource = null;
         let micMediaStream = null;
         let isAudioGateRunning = false;
-        let isVoiceActive = false;
-        let lastVoiceActiveTime = 0;
 
-        // 分貝門檻 (dBFS)：只有聲量大於此閾值才收音，低於則視為環境音
-        // 擴音講話時近咪聲量通常在 -26dB ~ -12dB，環境雜音一般在 -38dB 以下
-        const DB_GATE_THRESHOLD = -32.0; 
-        const GATE_HOLD_TIME = 650; // 尾音保留時間(毫秒)，避免字句間短暫停頓被截斷
+        // 自適應底噪與說話觸發標記 (預設 true 確保即便分析器暫時無權限亦絕不卡死收音)
+        let isSpeakerActive = true; 
+        let lastVoiceActiveTime = Date.now();
+        let backgroundNoiseFloor = -60.0; // 動態跟隨環境底噪
+        let audioGateAvailable = false;
 
         async function startNoiseGateEngine() {
-            if (audioContext && audioContext.state === 'suspended') {
-                await audioContext.resume();
-            }
             if (isAudioGateRunning) return;
-
             try {
-                // 不使用硬件級降噪、回音消除與自動增益，接收最原始真實聲量
+                // 不使用硬件級降噪與回音消除
                 micMediaStream = await navigator.mediaDevices.getUserMedia({
                     audio: {
                         echoCancellation: false,
@@ -1347,13 +1341,15 @@
 
                 audioContext = new (window.AudioContext || window.webkitAudioContext)();
                 audioAnalyser = audioContext.createAnalyser();
-                audioAnalyser.fftSize = 512;
-                audioAnalyser.smoothingTimeConstant = 0.2;
+                audioAnalyser.fftSize = 256;
+                audioAnalyser.smoothingTimeConstant = 0.3;
 
                 audioSource = audioContext.createMediaStreamSource(micMediaStream);
                 audioSource.connect(audioAnalyser);
 
                 isAudioGateRunning = true;
+                audioGateAvailable = true;
+
                 const sampleBuffer = new Float32Array(audioAnalyser.fftSize);
 
                 function monitorDecibels() {
@@ -1365,15 +1361,25 @@
                         sumSquares += sampleBuffer[i] * sampleBuffer[i];
                     }
                     const rms = Math.sqrt(sumSquares / sampleBuffer.length);
-                    // 計算真實物理分貝值
-                    const db = rms > 0.00001 ? 20 * Math.log10(rms) : -100;
+                    const currentDb = rms > 0.00001 ? 20 * Math.log10(rms) : -90;
+
+                    // 動態追蹤環境底噪：以平滑方式自適應現場人多時的持續環境音
+                    if (currentDb < backgroundNoiseFloor + 1.5) {
+                        backgroundNoiseFloor = backgroundNoiseFloor * 0.95 + currentDb * 0.05;
+                    } else {
+                        backgroundNoiseFloor = backgroundNoiseFloor * 0.998 + currentDb * 0.002;
+                    }
+                    backgroundNoiseFloor = Math.max(-75.0, Math.min(-35.0, backgroundNoiseFloor));
+
+                    // 動態門檻：當前咪高風聲量必須明顯高於環境底噪 8dB 以上，或突破絕對人聲起點
+                    const dynamicThreshold = Math.max(backgroundNoiseFloor + 8.0, -48.0);
 
                     const now = Date.now();
-                    if (db >= DB_GATE_THRESHOLD) {
-                        isVoiceActive = true;
+                    if (currentDb >= dynamicThreshold) {
+                        isSpeakerActive = true;
                         lastVoiceActiveTime = now;
-                    } else if (now - lastVoiceActiveTime > GATE_HOLD_TIME) {
-                        isVoiceActive = false;
+                    } else if (now - lastVoiceActiveTime > 800) {
+                        isSpeakerActive = false;
                     }
 
                     requestAnimationFrame(monitorDecibels);
@@ -1381,13 +1387,17 @@
 
                 requestAnimationFrame(monitorDecibels);
             } catch (err) {
-                console.warn("無法啟動獨立分貝分析模組，系統將採標準模式運行:", err);
+                // 若系統無法同時開啟音頻分析，則降級回退，確保主語音辨識依然 100% 正常收到音
+                audioGateAvailable = false;
+                isSpeakerActive = true;
+                console.log("音訊分析降級，維持常規收音。");
             }
         }
 
         function stopNoiseGateEngine() {
             isAudioGateRunning = false;
-            isVoiceActive = false;
+            audioGateAvailable = false;
+            isSpeakerActive = true;
             if (audioSource) {
                 try { audioSource.disconnect(); } catch (e) {}
                 audioSource = null;
@@ -1406,10 +1416,8 @@
 
         /* ------------------ 5. 語音辨識機制 ------------------ */
         function handleSpeechInterim(interim) {
-            // 聲量未達分貝門檻：視為周遭人多環境雜音，直接忽略不予收音
-            if (!isVoiceActive && (Date.now() - lastVoiceActiveTime > GATE_HOLD_TIME)) {
-                cantoStream.classList.remove('has-interim');
-                interimPart.textContent = "";
+            // 若音量分析器啟用，且當前聲音只是低於門限的背景雜音碎語，則不接收
+            if (audioGateAvailable && !isSpeakerActive && (Date.now() - lastVoiceActiveTime > 800)) {
                 return;
             }
 
@@ -1445,8 +1453,8 @@
         }
 
         function handleSpeechFinal(finalText) {
-            // 若整句結束時檢測到為低分貝環境噪音，予以捨棄，防止混淆主講內容
-            if (!isVoiceActive && (Date.now() - lastVoiceActiveTime > 800)) {
+            // 若為背景環境雜音且無說話者主音量支持，則予以過濾
+            if (audioGateAvailable && !isSpeakerActive && (Date.now() - lastVoiceActiveTime > 1200)) {
                 cantoStream.classList.remove('has-interim');
                 interimPart.textContent = "";
                 return;
@@ -1546,7 +1554,7 @@
             };
         }
 
-        async function toggleSpeech() {
+        function toggleSpeech() {
             if (!recognition) return alert("瀏覽器不支援語音辨識。");
             if (userWantsListening) {
                 userWantsListening = false;
@@ -1558,9 +1566,11 @@
                 stopListeningUI();
             } else {
                 userWantsListening = true;
-                await startNoiseGateEngine();
                 acquireWakeLock();
-                scheduleSafeRestart();
+                // 優先啟動語音辨識，確保麥克風收音通暢
+                try { recognition.start(); } catch (e) {}
+                // 背景非同步啟動動態門限，若設備衝突亦不影響辨識
+                setTimeout(() => { startNoiseGateEngine(); }, 250);
             }
         }
 
@@ -2112,4 +2122,4 @@
         })();
     </script>
 </body>
-</html>
+                                                                                                                                        </html>
