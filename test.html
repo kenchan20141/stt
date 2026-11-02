@@ -704,7 +704,7 @@
             justify-content: space-between;
             background: #18191B;
             border: 1px solid var(--border);
-            padding: 12px 16px;
+            padding: 13px 16px;
             border-radius: 4px;
             cursor: pointer;
             transition: all 0.2s ease;
@@ -712,13 +712,14 @@
         }
 
         .device-option-item:hover {
-            border-color: var(--primary);
+            border-color: var(--primary-hover);
             background: #202124;
         }
 
         .device-option-item.selected {
             border-color: var(--primary);
-            background: rgba(184, 155, 114, 0.12);
+            background: rgba(184, 155, 114, 0.14);
+            box-shadow: inset 0 0 8px rgba(184, 155, 114, 0.15);
         }
 
         .device-info {
@@ -734,12 +735,22 @@
         }
 
         .device-name {
-            font-size: 0.95rem;
+            font-size: 0.92rem;
             color: var(--text-main);
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
             font-family: var(--font-sans);
+        }
+
+        .device-check-icon {
+            color: var(--primary);
+            display: none;
+            flex-shrink: 0;
+        }
+
+        .device-option-item.selected .device-check-icon {
+            display: block;
         }
 
         .mic-meter-box {
@@ -789,7 +800,7 @@
                 
                 <div class="btn-group">
                     <!-- 咪高風／音訊診斷按鈕 -->
-                    <button id="btnAudioDevice" class="icon-btn" title="咪高風收音測試與裝置" onclick="openAudioDeviceModal()">
+                    <button id="btnAudioDevice" class="icon-btn" title="選擇咪高風 / 藍牙耳機" onclick="openAudioDeviceModal()">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
                             <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path>
                             <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
@@ -867,11 +878,11 @@
         </div>
     </main>
 
-    <!-- 音訊測試與診斷視窗 -->
+    <!-- 音訊測試與選取視窗 -->
     <div id="audioDeviceModal" class="modal-overlay" onclick="closeModalOnBackdrop(event)">
         <div class="modal-window" style="max-width: 440px;">
             <div class="modal-header">
-                <span style="font-weight: 500;">Audio Input Test / 收音檢測</span>
+                <span style="font-weight: 500;">Audio Input / 咪高風收音鎖定</span>
                 <button class="icon-btn" style="width:28px; height:28px;" onclick="closeAudioDeviceModal()">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
                 </button>
@@ -886,17 +897,17 @@
                         <div id="meterBarFill" class="meter-bar-fill"></div>
                     </div>
                     <div style="font-size:0.7rem; color:var(--text-muted);">
-                        請對著耳機輕輕吹氣或刮擦收音孔。若綠色進度條跳動，代表耳機已成功輸入聲音。
+                        點擊下方列表直接「鎖定」藍牙耳機。輕擦耳機收音孔，綠條跳動即代表鎖定成功。
                     </div>
                 </div>
 
                 <div style="font-size:0.75rem; color:var(--text-muted); font-family:var(--font-mono);">
-                    DETECTED INPUTS / 偵測到的裝置:
+                    CHOOSE INPUT DEVICE / 點擊選取輸入來源:
                 </div>
                 <div id="audioDeviceList" style="display:flex; flex-direction:column; gap:8px; width:100%;"></div>
                 
                 <div style="font-size:0.72rem; color:var(--text-muted); font-family:var(--font-mono); line-height:1.6; border-top:1px solid var(--border); padding-top:10px;">
-                    重要注意：安卓手機的 Chrome 語音辨識直接跟隨系統通話通道。請務必在手機藍牙設定中確認耳機已開啟「通話」權限。
+                    提示：代碼已優化 420ms 藍牙防跳動緩衝機制，停頓時系統會平穩維持在耳機通道，不再頻繁回跳手機。
                 </div>
             </div>
         </div>
@@ -1146,7 +1157,10 @@
             toastTimer = setTimeout(() => fontToast.classList.remove('show'), 2000);
         }
 
-        /* ------------------ 收音測試與音量診斷（避免麥克風獨佔衝突） ------------------ */
+        /* ------------------ 音訊裝置點選綁定與即時音量監聽 ------------------ */
+        let selectedAudioDeviceId = localStorage.getItem('sync_canto_audio_device_id') || 'default';
+        let lastCachedDevices = [];
+
         const audioDeviceModal = document.getElementById('audioDeviceModal');
         const audioDeviceList = document.getElementById('audioDeviceList');
         const meterBarFill = document.getElementById('meterBarFill');
@@ -1159,7 +1173,7 @@
 
         async function openAudioDeviceModal() {
             audioDeviceModal.classList.add('active');
-            await startMicTester();
+            await startMicTester(selectedAudioDeviceId);
             await refreshAudioDeviceList();
         }
 
@@ -1168,9 +1182,23 @@
             audioDeviceModal.classList.remove('active');
         }
 
-        async function startMicTester() {
+        async function startMicTester(targetDeviceId) {
+            stopMicTester();
             try {
-                testMicStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                const constraints = {
+                    audio: {
+                        echoCancellation: true,
+                        noiseSuppression: true,
+                        autoGainControl: true
+                    }
+                };
+
+                // 使用 ideal 柔性約束，保證安卓手機在各版本都不會因 exact 報錯或衝突
+                if (targetDeviceId && targetDeviceId !== 'default') {
+                    constraints.audio.deviceId = { ideal: targetDeviceId };
+                }
+
+                testMicStream = await navigator.mediaDevices.getUserMedia(constraints);
                 testAudioContext = new (window.AudioContext || window.webkitAudioContext)();
                 testAnalyser = testAudioContext.createAnalyser();
                 testAnalyser.fftSize = 256;
@@ -1193,12 +1221,13 @@
                 };
                 updateMeter();
             } catch (err) {
-                meterText.innerText = '未授權';
+                meterText.innerText = '未授權/無法連接';
             }
         }
 
         function stopMicTester() {
             if (meterAnimFrame) cancelAnimationFrame(meterAnimFrame);
+            meterAnimFrame = null;
             if (testMicStream) {
                 testMicStream.getTracks().forEach(t => t.stop());
                 testMicStream = null;
@@ -1207,32 +1236,68 @@
                 testAudioContext.close().catch(() => {});
                 testAudioContext = null;
             }
+            testAnalyser = null;
             meterBarFill.style.width = '0%';
             meterText.innerText = '0%';
+        }
+
+        async function selectDevice(deviceId, label) {
+            selectedAudioDeviceId = deviceId;
+            localStorage.setItem('sync_canto_audio_device_id', deviceId);
+            showToast(`已鎖定: ${label.slice(0, 14)}`);
+            renderDeviceList(lastCachedDevices);
+            await startMicTester(deviceId);
+        }
+
+        function renderDeviceList(inputs) {
+            audioDeviceList.innerHTML = '';
+
+            // 預設選項
+            const isDefSelected = (selectedAudioDeviceId === 'default');
+            const defItem = document.createElement('div');
+            defItem.className = `device-option-item ${isDefSelected ? 'selected' : ''}`;
+            defItem.innerHTML = `
+                <div class="device-info">
+                    <svg class="device-icon-type" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path>
+                        <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
+                    </svg>
+                    <span class="device-name">預設通訊裝置 (系統自動)</span>
+                </div>
+                <svg class="device-check-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"></polyline></svg>
+            `;
+            defItem.onclick = () => selectDevice('default', '預設通訊裝置');
+            audioDeviceList.appendChild(defItem);
+
+            // 實體裝置選項
+            inputs.forEach((d, i) => {
+                const label = d.label || `音訊裝置 ${i + 1}`;
+                const devId = d.deviceId;
+                const isSelected = (selectedAudioDeviceId === devId);
+                const isBT = /(bluetooth|藍牙|headset|earphone|airpods|buds|freebuds|wh-|wf-|bose|sony)/i.test(label);
+
+                const item = document.createElement('div');
+                item.className = `device-option-item ${isSelected ? 'selected' : ''}`;
+                item.innerHTML = `
+                    <div class="device-info">
+                        <svg class="device-icon-type" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            ${isBT ? '<path d="M6.5 6.5l11 11L12 23V1l5.5 5.5-11 11"></path>' : '<path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>'}
+                        </svg>
+                        <span class="device-name">${label} ${isBT ? '<span style="color:var(--primary); font-size:0.75rem;">(藍牙)</span>' : ''}</span>
+                    </div>
+                    <svg class="device-check-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                `;
+                item.onclick = () => selectDevice(devId, label);
+                audioDeviceList.appendChild(item);
+            });
         }
 
         async function refreshAudioDeviceList() {
             audioDeviceList.innerHTML = `<div style="color:var(--text-muted); font-size:0.8rem; font-family:var(--font-mono);">載入中...</div>`;
             try {
                 const devices = await navigator.mediaDevices.enumerateDevices();
-                const inputs = devices.filter(d => d.kind === 'audioinput');
-                audioDeviceList.innerHTML = '';
-
-                inputs.forEach((d, i) => {
-                    const label = d.label || `音訊裝置 ${i + 1}`;
-                    const isBT = /(bluetooth|藍牙|headset|earphone|airpods|buds|freebuds|wh-|wf-|bose|sony)/i.test(label);
-                    const item = document.createElement('div');
-                    item.className = 'device-option-item selected';
-                    item.innerHTML = `
-                        <div class="device-info">
-                            <svg class="device-icon-type" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                ${isBT ? '<path d="M6.5 6.5l11 11L12 23V1l5.5 5.5-11 11"></path>' : '<path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>'}
-                            </svg>
-                            <span class="device-name">${label} ${isBT ? '<span style="color:var(--primary); font-size:0.75rem;">(藍牙)</span>' : ''}</span>
-                        </div>
-                    `;
-                    audioDeviceList.appendChild(item);
-                });
+                lastCachedDevices = devices.filter(d => d.kind === 'audioinput');
+                renderDeviceList(lastCachedDevices);
             } catch (e) {
                 audioDeviceList.innerHTML = `<div style="color:var(--text-muted); font-size:0.8rem;">無法列出設備清單</div>`;
             }
@@ -1524,7 +1589,7 @@
             }
         }
 
-        /* ------------------ 5. 語音辨識機制（核心安全啟動） ------------------ */
+        /* ------------------ 5. 語音辨識機制（420ms 藍牙平滑抗跳動） ------------------ */
         function handleSpeechInterim(interim) {
             if (!interim || !interim.trim()) {
                 cantoStream.classList.remove('has-interim');
@@ -1579,6 +1644,7 @@
         let recognition = null;
         let userWantsListening = false;
         let isEngineRunning = false;
+        let isRestarting = false;
         let wakeLock = null;
         let restartDebounce = null;
 
@@ -1601,14 +1667,27 @@
             }
         }
 
+        /* 核心修復：420ms 平滑重啟緩衝，避免安卓在停頓時因過急重啟而降級回手機咪 */
         function scheduleSafeRestart() {
             if (!userWantsListening) return;
             clearTimeout(restartDebounce);
             restartDebounce = setTimeout(() => {
-                if (userWantsListening && !isEngineRunning && recognition) {
-                    try { recognition.start(); } catch (e) {}
+                if (userWantsListening && !isEngineRunning && recognition && !isRestarting) {
+                    isRestarting = true;
+                    try {
+                        recognition.start();
+                    } catch (e) {
+                        setTimeout(() => {
+                            if (userWantsListening && !isEngineRunning) {
+                                try { recognition.start(); } catch(err) {}
+                            }
+                            isRestarting = false;
+                        }, 500);
+                        return;
+                    }
+                    setTimeout(() => { isRestarting = false; }, 250);
                 }
-            }, 100);
+            }, 420);
         }
 
         if (SpeechRecognition && !isReceiverMode) {
@@ -1620,6 +1699,7 @@
 
             recognition.onstart = () => {
                 isEngineRunning = true;
+                isRestarting = false;
                 toggleBtn.classList.add('active');
                 playIcon.style.display = 'none';
                 pauseIcon.style.display = 'block';
@@ -1642,7 +1722,7 @@
                     userWantsListening = false;
                     stopListeningUI();
                 } else if (e.error === 'audio-capture') {
-                    showToast("錯誤：無法抓取音訊，請確認藍牙正常");
+                    showToast("音訊通道切換中...");
                     scheduleSafeRestart();
                 } else {
                     scheduleSafeRestart();
@@ -1660,6 +1740,10 @@
 
         function toggleSpeech() {
             if (!recognition) return alert("瀏覽器不支援語音辨識。請使用 Chrome 或 Edge 瀏覽器。");
+            
+            // 關鍵互斥保護：提詞時徹底關閉診斷流，杜絕雙重佔用導致的收音跳動
+            stopMicTester();
+
             if (userWantsListening) {
                 userWantsListening = false;
                 if (restartDebounce) clearTimeout(restartDebounce);
