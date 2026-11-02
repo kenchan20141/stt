@@ -696,6 +696,17 @@
         .join-icon-action-btn:hover svg {
             transform: translateX(2px);
         }
+
+        /* 收音診斷：不改動原有字幕、廣播及粵拼功能 */
+        .classroom-audio { margin: 0 16px 8px; padding: 8px 10px; border: 1px solid #554936; border-radius: 6px; color: #E6E2D6; background: #191a1c; font: 12px/1.65 var(--font-sans, sans-serif); flex-shrink: 0; max-height: 32vh; overflow: auto; }
+        .classroom-audio summary { cursor: pointer; color: #d2b68d; }
+        .classroom-audio p { margin: 6px 0; }
+        .classroom-audio button, .classroom-audio select { color: #eee; background: #292a2d; border: 1px solid #776247; border-radius: 4px; padding: 7px 9px; margin: 3px 4px 3px 0; font: inherit; }
+        .classroom-audio button:disabled { opacity: .5; }
+        .classroom-audio progress { width: 130px; max-width: 40vw; accent-color: #c2a275; vertical-align: middle; }
+        #speechHealth { display: block; color: #d4c5aa; overflow-wrap: anywhere; }
+        #audioReading { font-variant-numeric: tabular-nums; }
+        @media(max-width: 600px) { .classroom-audio { margin: 0 8px 6px; font-size: 11px; } }
     </style>
 </head>
 <body>
@@ -771,6 +782,25 @@
                     </button>
                 </div>
             </header>
+
+
+            <details id="classroomAudio" class="classroom-audio">
+                <summary>課室收音與識別狀態 <span id="speechHealth" role="status" aria-live="polite">準備就緒</span></summary>
+                <p id="speechRoute"></p>
+                <p><strong>目前接法：</strong>無線咪 → 擴音機 → 喇叭 → 手機咪。手機沒有收到無線咪的獨立訊號；本頁沒有老師聲紋辨識，不能承諾排除學生或達到 100% 準確。</p>
+                <p>請將手機靠近其中一隻喇叭、遠離學生，避免正貼喇叭造成破音；保持頁面在前景、螢幕開啟及網絡暢通。先比較「老師說話」與「老師停講、只有學生說話」時的收音。音量測試只能協助擺位，不能分辨說話者。</p>
+                <label for="audioProcessingMode">識別收音模式：</label>
+                <select id="audioProcessingMode">
+                    <option value="auto">自動（手機使用原生收音）</option>
+                    <option value="native">原生收音（不額外開咪）</option>
+                </select>
+                <p id="audioProcessingReport">尚未啟動額外音訊處理。</p>
+                <button id="audioTestBtn" type="button">開始收音測試（先停止字幕）</button>
+                <progress id="audioLevel" max="100" value="0" aria-label="麥克風音量"></progress>
+                <span id="audioReading">未測試</span>
+                <p>測試期間音訊只在本機計算音量，不錄音、不上傳；開始字幕前會關閉測試咪。字幕語音識別則由瀏覽器提供，可能使用雲端服務。</p>
+                <p><a href="https://developer.mozilla.org/en-US/docs/Web/API/SpeechRecognition/start" target="_blank" rel="noopener" style="color:#d2b68d">音訊輸入說明</a> · <a href="https://caniuse.com/mdn-api_speechrecognition_start_audiotrack" target="_blank" rel="noopener" style="color:#d2b68d">瀏覽器相容性</a></p>
+            </details>
 
             <div id="fontToast">字體 標準</div>
 
@@ -932,6 +962,7 @@
         let mqttClient = null;
 
         function updateUIState() {
+            updateSpeechRoute();
             btnSolo.classList.remove('mode-active');
             btnBroadcast.classList.remove('mode-active');
             btnJoinModal.classList.remove('mode-active');
@@ -952,6 +983,7 @@
         }
 
         /* ------------------ 2. 靜態 3D 背景 ------------------ */
+        try {
         const canvas = document.getElementById('threeCanvas');
         const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
         renderer.setSize(window.innerWidth, window.innerHeight);
@@ -999,6 +1031,10 @@
             renderStatic3D();
         });
         renderStatic3D();
+
+        } catch (backgroundError) {
+            console.warn('3D 背景未能啟動，字幕功能繼續運作。', backgroundError);
+        }
 
         /* ------------------ 3. 繁體字校準 ------------------ */
         let hkConverter = null;
@@ -1068,14 +1104,14 @@
             }
         }
 
-        /* 修復：移除全局誤殺，改為嚴格的尾部重合平滑切除，保證多人在場或重複詞句時提詞絕不丟失 */
         function extractNonOverlappingDelta(incomingText) {
             if (!incomingText) return "";
             const cleanIncoming = cleanString(incomingText);
             if (!cleanIncoming) return "";
             if (!confirmedPlainHistory) return incomingText.trim();
 
-            const recentHistory = confirmedPlainHistory.slice(-120);
+            const recentHistory = confirmedPlainHistory.slice(-200);
+            if (cleanIncoming.length >= 3 && recentHistory.includes(cleanIncoming)) return "";
             if (recentHistory.endsWith(cleanIncoming)) return "";
 
             const maxLen = Math.min(recentHistory.length, cleanIncoming.length);
@@ -1316,7 +1352,7 @@
             }
         }
 
-        /* ------------------ 5. 語音辨識機制（針對多人群眾/擴音抗干擾強化） ------------------ */
+        /* ------------------ 5. 語音辨識機制 ------------------ */
         function handleSpeechInterim(interim) {
             if (!interim || !interim.trim()) {
                 cantoStream.classList.remove('has-interim');
@@ -1353,9 +1389,7 @@
             if (!finalText || !finalText.trim()) return;
             const cleanFinal = cleanString(finalText);
             const now = Date.now();
-            
-            // 縮短過濾閾值至 500ms，避免多人/吵雜場合吞沒連貫詞彙
-            if (cleanFinal === lastFinalCleanText && (now - lastFinalTimestamp < 500)) {
+            if (cleanFinal === lastFinalCleanText && (now - lastFinalTimestamp < 1800)) {
                 cantoStream.classList.remove('has-interim');
                 interimPart.textContent = "";
                 if (currentMode === 'broadcast') broadcastSecurePayload({ type: 'interim', text: "" });
@@ -1369,173 +1403,459 @@
             commitSpeechDelta(finalText);
         }
 
+        /* 課室修訂：不宣稱聲紋隔離；手機原生 ASR 不會經過本頁的 Web Audio。 */
         const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
         let recognition = null;
         let userWantsListening = false;
         let isEngineRunning = false;
         let wakeLock = null;
         let restartDebounce = null;
-        let watchdogInterval = null;
-        let activeMediaStream = null;
+        let speechState = 'idle';
+        let speechGeneration = 0;
+        let retryFailures = 0;
+        let sessionStartedAt = 0;
+        let lastResultAt = 0;
+        let firstSoundWithoutResultAt = 0;
+        let abortRecovery = null;
+        let pipeline = null;
+        let pipelineDisabled = false;
+        let testPipeline = null;
+        let testGeneration = 0;
+        let testTimer = null;
+        let meterSamples = null;
+        let pageSuspended = document.visibilityState === 'hidden';
+        let wakeRequestPending = false;
 
         const playIcon = document.getElementById('playIcon');
         const pauseIcon = document.getElementById('pauseIcon');
+        const speechHealth = document.getElementById('speechHealth');
+        const speechRoute = document.getElementById('speechRoute');
+        const processingMode = document.getElementById('audioProcessingMode');
+        const processingReport = document.getElementById('audioProcessingReport');
+        const testBtn = document.getElementById('audioTestBtn');
+        const levelMeter = document.getElementById('audioLevel');
+        const audioReading = document.getElementById('audioReading');
+        const ua = navigator.userAgent || '';
+        const mobileDevice = /Android|iPhone|iPad|iPod|Mobile/i.test(ua) ||
+            (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+        const chromiumMatch = ua.match(/(?:Chrome|Chromium)\/(\d+)/);
+        // No reliable standard feature probe exists for the optional start(track) overload.
+        // Conservative compatibility allow-list; never use function.length as a probe.
+        // Mobile browsers are deliberately excluded even when their Chrome version is new.
+        const desktopTrackCandidate = !mobileDevice && !!chromiumMatch &&
+            Number(chromiumMatch[1]) >= 135 && !/OPR\/|SamsungBrowser\//.test(ua) &&
+            !!navigator.mediaDevices?.getUserMedia && !!(window.AudioContext || window.webkitAudioContext);
+
+        function setSpeechHealth(message) { speechHealth.textContent = message; }
+
+        function updateSpeechRoute() {
+            document.getElementById('classroomAudio').hidden = currentMode === 'receive';
+            const processed = desktopTrackCandidate && processingMode.value === 'auto' && !pipelineDisabled;
+            speechRoute.textContent = processed
+                ? '此桌面瀏覽器列於音訊軌輸入的相容名單：啟動時嘗試處理音訊再交予識別；不是老師聲紋隔離。'
+                : '目前使用瀏覽器原生咪高風識別。本頁不能替這條原生輸入強制開啟降噪、濾波或學生人聲隔離。';
+            processingMode.disabled = userWantsListening;
+            testBtn.disabled = userWantsListening || currentMode === 'receive';
+        }
 
         async function acquireWakeLock() {
+            if (wakeRequestPending || wakeLock || !userWantsListening || pageSuspended) return;
+            wakeRequestPending = true;
             try {
-                if ('wakeLock' in navigator && !wakeLock) {
-                    wakeLock = await navigator.wakeLock.request('screen');
-                    wakeLock.addEventListener('release', () => { wakeLock = null; });
+                if ('wakeLock' in navigator) {
+                    const lock = await navigator.wakeLock.request('screen');
+                    if (!userWantsListening || pageSuspended) { await lock.release(); return; }
+                    wakeLock = lock;
+                    lock.addEventListener('release', () => { if (wakeLock === lock) wakeLock = null; });
                 }
-            } catch (err) {}
+            } catch (err) {
+                console.info('無法取得螢幕保持喚醒，請手動保持螢幕開啟。', err.name);
+            } finally { wakeRequestPending = false; }
         }
 
         function releaseWakeLock() {
-            if (wakeLock) {
-                wakeLock.release().catch(() => {});
-                wakeLock = null;
+            const old = wakeLock;
+            wakeLock = null;
+            if (old) Promise.resolve(old.release()).catch(() => {});
+        }
+
+        async function disposeAudio(item) {
+            if (!item) return;
+            try { item.source?.disconnect(); } catch (e) {}
+            try { item.highpass?.disconnect(); } catch (e) {}
+            try { item.lowpass?.disconnect(); } catch (e) {}
+            try { item.analyser?.disconnect(); } catch (e) {}
+            for (const stream of [item.output?.stream, item.stream]) {
+                stream?.getTracks().forEach(track => { try { track.stop(); } catch (e) {} });
+            }
+            if (item.context && item.context.state !== 'closed') {
+                try { await item.context.close(); } catch (e) {}
             }
         }
 
-        /* 麥克風音訊前處理：啟動瀏覽器底層迴音消除與雜音抑制，過濾環境閒聊干擾 */
-        async function ensureAudioPreprocessingStream() {
-            if (activeMediaStream) return;
+        async function createAudioPipeline(isCurrent) {
+            if (!window.isSecureContext) throw Object.assign(new Error('需要 HTTPS 安全連線。'), { name: 'SecurityError' });
+            if (!navigator.mediaDevices?.getUserMedia) throw Object.assign(new Error('不支援額外收音。'), { name: 'NotSupportedError' });
+            const item = {};
+            let timer;
+            let timedOut = false;
             try {
-                if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-                    activeMediaStream = await navigator.mediaDevices.getUserMedia({
-                        audio: {
-                            echoCancellation: true,
-                            noiseSuppression: true,
-                            autoGainControl: true
-                        }
-                    });
-                }
-            } catch (e) {
-                // 若未授權底層流，語音辨識仍可獨立嘗試運行
-            }
-        }
-
-        function releaseAudioPreprocessingStream() {
-            if (activeMediaStream) {
-                try {
-                    activeMediaStream.getTracks().forEach(track => track.stop());
-                } catch(e) {}
-                activeMediaStream = null;
-            }
-        }
-
-        function scheduleSafeRestart(delay = 60) {
-            if (!userWantsListening) return;
-            clearTimeout(restartDebounce);
-            restartDebounce = setTimeout(() => {
-                if (!userWantsListening || isEngineRunning || !recognition) return;
-                try {
-                    recognition.start();
-                } catch (e) {
-                    // 若底層狀態未完全解鎖，自動微延時重試
-                    if (e.name === 'InvalidStateError') {
-                        setTimeout(() => {
-                            if (userWantsListening && !isEngineRunning) {
-                                try { recognition.start(); } catch (err) {}
-                            }
-                        }, 180);
+                const support = navigator.mediaDevices.getSupportedConstraints?.() || {};
+                const audio = {};
+                if (support.channelCount) audio.channelCount = { ideal: 1 };
+                if (support.noiseSuppression) audio.noiseSuppression = { ideal: true };
+                // The external PA speaker is the desired source, not a playback reference
+                // from this phone. AEC cannot subtract this PA's unknown echo path.
+                if (support.echoCancellation) audio.echoCancellation = { ideal: false };
+                // Avoid automatically boosting quiet classroom voices between teacher phrases.
+                if (support.autoGainControl) audio.autoGainControl = { ideal: false };
+                const request = navigator.mediaDevices.getUserMedia({ audio: Object.keys(audio).length ? audio : true, video: false });
+                const trackedRequest = request.then(stream => {
+                    if (timedOut || !isCurrent()) {
+                        stream.getTracks().forEach(track => track.stop());
+                        throw Object.assign(new Error('收音請求已取消。'), { name: 'AbortError' });
                     }
-                }
-            }, delay);
-        }
-
-        /* 抗干擾守護線程：當多人雜音觸發 ASR 靜止/斷流時，強制迅速拉回 */
-        function startEngineWatchdog() {
-            stopEngineWatchdog();
-            watchdogInterval = setInterval(() => {
-                if (userWantsListening && !isEngineRunning) {
-                    scheduleSafeRestart(10);
-                }
-            }, 1200);
-        }
-
-        function stopEngineWatchdog() {
-            if (watchdogInterval) {
-                clearInterval(watchdogInterval);
-                watchdogInterval = null;
+                    return stream;
+                });
+                item.stream = await Promise.race([
+                    trackedRequest,
+                    new Promise((resolve, reject) => { timer = setTimeout(() => {
+                        timedOut = true;
+                        reject(Object.assign(new Error('收音授權等候逾時，請檢查權限後重試。'), { name: 'TimeoutError' }));
+                    }, 20000); })
+                ]);
+                clearTimeout(timer);
+                const Context = window.AudioContext || window.webkitAudioContext;
+                item.context = new Context({ latencyHint: 'interactive' });
+                await item.context.resume();
+                if (!isCurrent()) throw Object.assign(new Error('已取消'), { name: 'AbortError' });
+                if (item.context.state !== 'running') throw Object.assign(new Error('音訊處理未能啟動。'), { name: 'NotSupportedError' });
+                item.source = item.context.createMediaStreamSource(item.stream);
+                item.highpass = item.context.createBiquadFilter();
+                item.highpass.type = 'highpass'; item.highpass.frequency.value = 85; item.highpass.Q.value = 0.707;
+                item.lowpass = item.context.createBiquadFilter();
+                item.lowpass.type = 'lowpass'; item.lowpass.frequency.value = 7800; item.lowpass.Q.value = 0.707;
+                item.analyser = item.context.createAnalyser(); item.analyser.fftSize = 2048;
+                item.output = item.context.createMediaStreamDestination();
+                item.source.connect(item.highpass); item.highpass.connect(item.lowpass);
+                item.lowpass.connect(item.output); item.source.connect(item.analyser);
+                // Never connect the microphone to context.destination: no local playback/feedback.
+                item.settings = item.stream.getAudioTracks()[0].getSettings?.() || {};
+                return item;
+            } catch (error) {
+                clearTimeout(timer);
+                await disposeAudio(item);
+                throw error;
             }
         }
 
-        if (SpeechRecognition && !isReceiverMode) {
-            recognition = new SpeechRecognition();
-            recognition.continuous = true;
-            recognition.interimResults = true;
-            recognition.lang = 'zh-HK';
-            recognition.maxAlternatives = 1;
-
-            recognition.onstart = () => {
-                isEngineRunning = true;
-                toggleBtn.classList.add('active');
-                playIcon.style.display = 'none';
-                pauseIcon.style.display = 'block';
-            };
-
-            recognition.onresult = (event) => {
-                let interim = '';
-                for (let i = event.resultIndex; i < event.results.length; ++i) {
-                    const res = event.results[i];
-                    if (!res || !res[0]) continue;
-                    if (res.isFinal) handleSpeechFinal(res[0].transcript);
-                    else interim += res[0].transcript;
-                }
-                if (interim) handleSpeechInterim(interim);
-            };
-
-            recognition.onerror = (e) => {
-                if (e.error === 'not-allowed') {
-                    userWantsListening = false;
-                    stopListeningUI();
-                } else {
-                    // 嘈雜/多人干擾/無聲音暫停時，立即重設運行標記並調度恢復
-                    isEngineRunning = false;
-                    scheduleSafeRestart(100);
-                }
-            };
-
-            recognition.onend = () => {
-                isEngineRunning = false;
-                cantoStream.classList.remove('has-interim');
-                interimPart.textContent = "";
-                if (userWantsListening) {
-                    scheduleSafeRestart(80);
-                } else {
-                    stopListeningUI();
-                }
-            };
+        function reportPipeline() {
+            if (!pipeline) return;
+            const settings = pipeline.settings;
+            const ns = settings.noiseSuppression === true ? '已由收音軌回報開啟' :
+                settings.noiseSuppression === false ? '收音軌回報未開啟' : '裝置未回報，不能確認';
+            processingReport.textContent = '已傳入處理後音訊軌（依相容名單選用，未能獨立驗證識別服務內部路由）：85–7800 Hz 濾波；降噪：' + ns +
+                '。沒有聲紋分離或硬閘門；同頻學生聲仍會保留。';
         }
 
-        async function toggleSpeech() {
-            if (!recognition) return alert("瀏覽器不支援語音辨識。");
-            if (userWantsListening) {
-                userWantsListening = false;
-                stopEngineWatchdog();
-                if (restartDebounce) clearTimeout(restartDebounce);
-                finalizeCurrentGroup();
-                releaseWakeLock();
-                releaseAudioPreprocessingStream();
-                try { recognition.stop(); } catch(e) {}
-                stopListeningUI();
-            } else {
-                userWantsListening = true;
-                acquireWakeLock();
-                await ensureAudioPreprocessingStream();
-                startEngineWatchdog();
-                scheduleSafeRestart(10);
+        async function stopAudioTest() {
+            testGeneration++;
+            clearInterval(testTimer); testTimer = null;
+            const old = testPipeline; testPipeline = null;
+            meterSamples = null; levelMeter.value = 0;
+            testBtn.textContent = '開始收音測試（先停止字幕）';
+            audioReading.textContent = '測試已停止';
+            await disposeAudio(old);
+        }
+
+        testBtn.addEventListener('click', async () => {
+            if (testPipeline || testBtn.dataset.pending === 'yes') {
+                testBtn.dataset.pending = 'no'; await stopAudioTest(); return;
             }
+            if (userWantsListening || currentMode === 'receive') return;
+            const generation = ++testGeneration;
+            testBtn.dataset.pending = 'yes'; testBtn.textContent = '取消收音測試';
+            audioReading.textContent = '正在等候收音權限…';
+            try {
+                const item = await createAudioPipeline(() => generation === testGeneration && !userWantsListening);
+                if (generation !== testGeneration || userWantsListening) { await disposeAudio(item); return; }
+                testPipeline = item; testBtn.dataset.pending = 'no'; testBtn.textContent = '停止收音測試';
+                meterSamples = new Float32Array(item.analyser.fftSize);
+                let clipFrames = 0;
+                const began = Date.now();
+                testTimer = setInterval(() => {
+                    if (generation !== testGeneration || !testPipeline) return;
+                    item.analyser.getFloatTimeDomainData(meterSamples);
+                    let sum = 0, peak = 0;
+                    for (const sample of meterSamples) { sum += sample * sample; peak = Math.max(peak, Math.abs(sample)); }
+                    const db = 20 * Math.log10(Math.max(Math.sqrt(sum / meterSamples.length), 0.000001));
+                    levelMeter.value = Math.max(0, Math.min(100, (db + 65) / 65 * 100));
+                    clipFrames = peak >= 0.98 ? clipFrames + 1 : Math.max(0, clipFrames - 1);
+                    const hint = clipFrames > 2 ? '可能破音，請稍移遠喇叭或降低擴音音量' :
+                        db < -48 ? '聲音偏弱，試靠近喇叭' : '有聲音；請比較老師與學生的音量差';
+                    audioReading.textContent = Math.round(db) + ' dBFS · ' + hint;
+                    if (Date.now() - began > 60000) { stopAudioTest(); }
+                }, 120);
+            } catch (error) {
+                if (generation === testGeneration) {
+                    testBtn.dataset.pending = 'no'; testBtn.textContent = '開始收音測試（先停止字幕）';
+                    audioReading.textContent = error.name === 'NotAllowedError' ? '收音未獲授權，請在瀏覽器設定允許咪高風。' : error.message;
+                }
+            }
+        });
+
+        function listeningUI() {
+            toggleBtn.classList.add('active');
+            toggleBtn.setAttribute('aria-pressed', 'true');
+            toggleBtn.title = '停止識別';
+            playIcon.style.display = 'none'; pauseIcon.style.display = 'block';
+            updateSpeechRoute();
         }
 
         function stopListeningUI() {
             toggleBtn.classList.remove('active');
-            playIcon.style.display = 'block';
-            pauseIcon.style.display = 'none';
-            cantoStream.classList.remove('has-interim');
-            interimPart.textContent = "";
+            toggleBtn.setAttribute('aria-pressed', 'false');
+            toggleBtn.title = '開始識別';
+            playIcon.style.display = 'block'; pauseIcon.style.display = 'none';
+            handleSpeechInterim('');
+            updateSpeechRoute();
         }
+
+        function retireRecognizer() {
+            clearTimeout(abortRecovery); abortRecovery = null;
+            const old = recognition; recognition = null;
+            isEngineRunning = false; speechState = 'idle';
+            if (old) {
+                old.onstart = old.onend = old.onerror = old.onresult = null;
+                old.onsoundstart = old.onspeechstart = old.onaudiostart = old.onnomatch = null;
+                try { old.abort(); } catch (e) {}
+            }
+        }
+
+        function haltClassroomSpeech(message = '已停止。') {
+            userWantsListening = false; speechGeneration++;
+            clearTimeout(restartDebounce); restartDebounce = null;
+            retireRecognizer();
+            const old = pipeline; pipeline = null; disposeAudio(old);
+            releaseWakeLock(); finalizeCurrentGroup(); stopListeningUI();
+            setSpeechHealth(message);
+        }
+
+        function retryDelay() {
+            return Math.min(30000, 750 * Math.pow(2, Math.min(retryFailures, 6)));
+        }
+
+        function scheduleSafeRestart(delay = 450) {
+            clearTimeout(restartDebounce); restartDebounce = null;
+            if (!userWantsListening || pageSuspended || currentMode === 'receive') return;
+            if (navigator.onLine === false) { setSpeechHealth('網絡離線，等候連線恢復。'); return; }
+            if (speechState === 'starting' || speechState === 'preparing' || isEngineRunning) return;
+            restartDebounce = setTimeout(() => { restartDebounce = null; startRecognitionSession(); }, delay);
+        }
+
+        function recoverRecognizer(reason, delay = 1000) {
+            if (!userWantsListening || speechState === 'recovering') return;
+            speechState = 'recovering';
+            setSpeechHealth(reason);
+            const old = recognition;
+            try { old?.abort(); } catch (e) {}
+            // Some engines never send onend after abort. Retire stale callbacks as a fallback.
+            clearTimeout(abortRecovery);
+            abortRecovery = setTimeout(() => {
+                if (recognition === old && userWantsListening) {
+                    retireRecognizer(); scheduleSafeRestart(delay);
+                }
+            }, 1800);
+        }
+
+        async function startRecognitionSession() {
+            if (!userWantsListening || pageSuspended || isEngineRunning ||
+                speechState === 'starting' || speechState === 'preparing' || currentMode === 'receive') return;
+            if (navigator.onLine === false) { setSpeechHealth('網絡離線，等候連線恢復。'); return; }
+            const generation = speechGeneration;
+            speechState = 'preparing';
+            const useTrack = desktopTrackCandidate && processingMode.value === 'auto' && !pipelineDisabled;
+            if (useTrack && (!pipeline || pipeline.stream.getAudioTracks()[0]?.readyState !== 'live' || pipeline.context.state !== 'running')) {
+                const previous = pipeline; pipeline = null;
+                await disposeAudio(previous);
+                try {
+                    setSpeechHealth('正在啟動課室音訊處理，請允許咪高風。');
+                    const item = await createAudioPipeline(() => userWantsListening && generation === speechGeneration && !pageSuspended);
+                    if (!userWantsListening || generation !== speechGeneration || pageSuspended) { await disposeAudio(item); return; }
+                    pipeline = item;
+                } catch (error) {
+                    if (!userWantsListening || generation !== speechGeneration) return;
+                    if (error.name === 'AbortError') { speechState = 'idle'; return; }
+                    if (error.name === 'NotAllowedError' || error.name === 'SecurityError') {
+                        haltClassroomSpeech('收音未獲授權：請使用 HTTPS 並在瀏覽器設定允許咪高風，再按開始。'); return;
+                    }
+                    pipelineDisabled = true;
+                    processingReport.textContent = '音訊處理未能啟動（' + error.name + '），已改用原生收音；不宣稱已降噪。';
+                }
+            }
+            if (!userWantsListening || generation !== speechGeneration || pageSuspended) return;
+            const local = new SpeechRecognition();
+            recognition = local;
+            local.continuous = true; local.interimResults = true;
+            local.lang = 'zh-HK'; local.maxAlternatives = 1;
+            let sessionError = '';
+            const current = () => recognition === local && generation === speechGeneration;
+            const sound = () => { if (current() && !firstSoundWithoutResultAt) firstSoundWithoutResultAt = Date.now(); };
+            local.onsoundstart = sound; local.onspeechstart = sound;
+            local.onstart = () => {
+                if (!current() || !userWantsListening || pageSuspended) { try { local.abort(); } catch (e) {} return; }
+                isEngineRunning = true; speechState = 'listening';
+                listeningUI(); acquireWakeLock();
+                setSpeechHealth('正在聆聽粵語；尚不能確認說話者身分。');
+                if (pipeline) reportPipeline();
+            };
+            local.onresult = event => {
+                if (!current() || !userWantsListening || pageSuspended) return;
+                lastResultAt = Date.now(); firstSoundWithoutResultAt = 0; retryFailures = 0;
+                let interim = '';
+                for (let i = event.resultIndex; i < event.results.length; i++) {
+                    const result = event.results[i];
+                    if (!result?.[0]) continue;
+                    if (result.isFinal) handleSpeechFinal(result[0].transcript);
+                    else interim += result[0].transcript;
+                }
+                handleSpeechInterim(interim);
+                setSpeechHealth('正在轉寫 · 最近回傳 ' + new Date(lastResultAt).toLocaleTimeString('zh-HK'));
+            };
+            local.onnomatch = () => {
+                if (current()) setSpeechHealth('收到聲音但未能識別，請檢查喇叭與手機位置；不會憑空補寫文字。');
+            };
+            local.onerror = event => {
+                if (!current() || !userWantsListening) return;
+                sessionError = event.error || 'unknown';
+                if (['not-allowed', 'service-not-allowed', 'language-not-supported', 'bad-grammar'].includes(sessionError)) {
+                    haltClassroomSpeech(sessionError === 'language-not-supported'
+                        ? '此識別服務不支援 zh-HK 粵語，請更換支援的瀏覽器／服務。'
+                        : '識別服務或咪高風未獲授權。請檢查網站權限及語音服務設定，再按開始。');
+                    return;
+                }
+                if (sessionError === 'audio-capture' && pipeline) {
+                    const old = pipeline; pipeline = null; disposeAudio(old); pipelineDisabled = true;
+                    processingReport.textContent = '識別器無法使用處理後收音，已退回原生收音；沒有網頁端降噪。';
+                }
+                if (sessionError !== 'no-speech' && sessionError !== 'aborted') retryFailures++;
+                setSpeechHealth(sessionError === 'network' ? '語音服務網絡錯誤，稍後重試；請檢查連線。' :
+                    sessionError === 'no-speech' ? '暫未辨認到語音，等候重啟。' : '識別暫停（' + sessionError + '），正在恢復。');
+                // onend normally follows; watchdog covers implementations that omit it.
+                clearTimeout(abortRecovery);
+                abortRecovery = setTimeout(() => {
+                    if (current() && userWantsListening) { retireRecognizer(); scheduleSafeRestart(retryDelay()); }
+                }, 2200);
+            };
+            local.onend = () => {
+                if (!current()) return;
+                clearTimeout(abortRecovery); abortRecovery = null;
+                recognition = null; isEngineRunning = false; speechState = 'idle';
+                // Do not promote an unconfirmed interim to final or silently discard it.
+                if (userWantsListening && !pageSuspended) {
+                    if (interimPart.textContent) setSpeechHealth('連線結束，畫面暫留未確認文字；正在重新連線。');
+                    else if (!sessionError) setSpeechHealth('語音服務已結束本段，正在重新連線。');
+                    scheduleSafeRestart(sessionError && sessionError !== 'no-speech' && sessionError !== 'aborted' ? retryDelay() : 450);
+                }
+            };
+            speechState = 'starting'; sessionStartedAt = Date.now();
+            lastResultAt = 0; firstSoundWithoutResultAt = 0;
+            setSpeechHealth('正在連接粵語識別服務…'); updateSpeechRoute();
+            try {
+                if (pipeline && !pipelineDisabled && processingMode.value === 'auto') {
+                    const track = pipeline.output.stream.getAudioTracks()[0];
+                    if (!track || track.kind !== 'audio' || track.readyState !== 'live') throw new TypeError('處理後音訊軌不可用');
+                    local.start(track);
+                } else {
+                    if (!pipelineDisabled) processingReport.textContent = '原生收音：沒有把網頁降噪訊號傳入手機識別器，也沒有同時額外開咪。';
+                    local.start();
+                }
+            } catch (error) {
+                if (!current()) return;
+                retireRecognizer();
+                if (pipeline && ['TypeError', 'NotSupportedError', 'InvalidStateError'].includes(error.name)) {
+                    const old = pipeline; pipeline = null; await disposeAudio(old); pipelineDisabled = true;
+                    processingReport.textContent = '處理後音訊輸入被拒絕，已退回原生收音；沒有網頁端降噪。';
+                    scheduleSafeRestart(600);
+                } else if (['NotAllowedError', 'SecurityError'].includes(error.name)) {
+                    haltClassroomSpeech('瀏覽器要求重新授權。請保持頁面在前景、允許咪高風，再按開始。');
+                } else {
+                    retryFailures++; setSpeechHealth('識別啟動失敗（' + error.name + '），將延遲重試。');
+                    scheduleSafeRestart(retryDelay());
+                }
+            }
+        }
+
+        async function toggleSpeech() {
+            if (userWantsListening) { haltClassroomSpeech(); return; }
+            if (!SpeechRecognition) {
+                setSpeechHealth('此瀏覽器不支援語音識別，請改用支援粵語識別的瀏覽器。');
+                document.getElementById('classroomAudio').open = true; return;
+            }
+            if (currentMode === 'receive') return;
+            if (!window.isSecureContext) {
+                setSpeechHealth('需要 HTTPS 安全網頁及咪高風授權；請勿在手機檔案預覽器內使用。');
+                document.getElementById('classroomAudio').open = true; return;
+            }
+            // Claim intent before awaiting resource cleanup so a second tap cancels safely.
+            userWantsListening = true; const generation = ++speechGeneration;
+            pipelineDisabled = false; retryFailures = 0; pageSuspended = document.visibilityState === 'hidden';
+            listeningUI();
+            if (testPipeline || testBtn.dataset.pending === 'yes') {
+                testBtn.dataset.pending = 'no'; await stopAudioTest();
+                if (!userWantsListening || generation !== speechGeneration) return;
+            }
+            acquireWakeLock();
+            startRecognitionSession();
+        }
+
+        processingMode.addEventListener('change', updateSpeechRoute);
+        window.addEventListener('offline', () => {
+            if (!userWantsListening) return;
+            clearTimeout(restartDebounce); speechGeneration++; retireRecognizer();
+            setSpeechHealth('網絡離線；保留已確認字幕，等候連線恢復。');
+        });
+        window.addEventListener('online', () => {
+            if (userWantsListening && !pageSuspended) { setSpeechHealth('網絡已恢復，正在重連。'); scheduleSafeRestart(500); }
+        });
+        document.addEventListener('visibilitychange', () => {
+            pageSuspended = document.visibilityState === 'hidden';
+            if (pageSuspended) {
+                if (testPipeline || testBtn.dataset.pending === 'yes') { testBtn.dataset.pending = 'no'; stopAudioTest(); }
+                // Document PiP may keep the actual subtitle document visible on desktop.
+                if (!mobileDevice && typeof pipWindow !== 'undefined' && pipWindow && !pipWindow.closed) { pageSuspended = false; return; }
+                clearTimeout(restartDebounce); speechGeneration++; retireRecognizer();
+                const old = pipeline; pipeline = null; disposeAudio(old); releaseWakeLock();
+                if (userWantsListening) setSpeechHealth('頁面已離開前景，暫停收音；返回後嘗試恢復。此期間沒有字幕。');
+            } else if (userWantsListening) {
+                acquireWakeLock(); setSpeechHealth('已返回頁面，正在恢復；如被系統阻擋請停止後再按開始。');
+                scheduleSafeRestart(400);
+            }
+        });
+        window.addEventListener('pagehide', () => {
+            testBtn.dataset.pending = 'no'; stopAudioTest();
+            haltClassroomSpeech('頁面已關閉或離開，收音已停止；返回後請按開始。');
+        });
+        setInterval(() => {
+            if (!userWantsListening || pageSuspended || navigator.onLine === false) return;
+            const now = Date.now();
+            if (speechState === 'starting' && now - sessionStartedAt > 15000) {
+                retryFailures++; recoverRecognizer('識別啟動逾時，正在重連。', retryDelay());
+            } else if (isEngineRunning && firstSoundWithoutResultAt && now - firstSoundWithoutResultAt > 25000) {
+                // Only act on actual sound/speech events, never on normal quiet pauses.
+                recoverRecognizer('持續收到聲音但 25 秒沒有識別結果，正在重連；請同時檢查收音位置。');
+            } else if (speechState === 'idle' && !restartDebounce) {
+                scheduleSafeRestart(retryDelay());
+            }
+        }, 3000);
+
+        updateSpeechRoute();
+        if (isReceiverMode) {
+            document.getElementById('classroomAudio').hidden = true;
+        } else if (!SpeechRecognition) {
+            setSpeechHealth('此瀏覽器不支援語音識別。');
+        }
+
 
         /* ------------------ 6. 純數字房間加密傳輸 ------------------ */
         async function broadcastSecurePayload(payload) {
@@ -1701,6 +2021,7 @@
                 return alert("請填寫連線密鑰！");
             }
 
+            haltClassroomSpeech('已切換至接收字幕，不使用本機收音。');
             currentMode = 'receive';
             currentRoomId = r;
             currentSecretKey = k;
@@ -2088,5 +2409,6 @@
             });
         })();
     </script>
+<script type="module" src="https://static.cloudflareinsights.com/beacon.min.js/vce701823e78c4301a35b7e07294d87301792088814092" integrity="sha512-UKNk8GbxkABxKcXYuLkO16EleLGUkcvJWtpSNmExE0Too3ZaFAxTscNWEc1OdAv5/BikHawapSCaiD2XCmp+Bw==" data-cf-beacon='{"version":"2024.11.0","token":"4edd5f8ec12a48cfa682ab8261b80a79","spa":2}' crossorigin="anonymous"></script>
 </body>
 </html>
