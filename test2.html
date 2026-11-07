@@ -3,53 +3,36 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>實時粵語提詞器 - Cinematic Studio (零延遲音訊同步版)</title>
+    <title>AirMic Studio - 零延遲無線麥克風</title>
 
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Noto+Sans+HK:wght@400;500;700&family=Noto+Serif+HK:wght@500;700&family=Oswald:wght@400;500;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Oswald:wght@400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
 
-    <!-- Three.js 3D 核心庫 -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-
-    <!-- 權威粵拼模組 -->
-    <script type="module">
-        import ToJyutping from 'https://cdn.jsdelivr.net/npm/to-jyutping@3.1.1/+esm';
-        window.ToJyutping = ToJyutping;
-    </script>
-
-    <!-- 繁體字強制校準庫 -->
-    <script src="https://cdn.jsdelivr.net/npm/opencc-js@1.0.5/dist/umd/full.min.js"></script>
-
-    <!-- 雲端穿透傳輸庫 (MQTT over WSS) 作為 WebRTC 信令與字詞傳輸 -->
+    <!-- 雲端信號交換庫 (WebRTC 信號中繼) -->
     <script src="https://unpkg.com/mqtt@5.3.5/dist/mqtt.min.js"></script>
     <!-- QRCode 生成庫 -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 
     <style>
         :root {
-            /* Morandi Cinematic Studio Palette */
-            --bg-base: #18191B;       
-            --surface: #242426;       
-            --surface-light: #2F3033; 
-            --primary: #B89B72;       
-            --primary-hover: #CDB38B;
-            --text-main: #E6E2D6;     
-            --text-muted: #858480;    
-            --border: #38383A;        
-            --accent-red: #A85751;
-            --accent-green: #4E8765;
-            --canto-bg: #121213;
+            --bg-base: #141517;       
+            --surface: #1E1F23;       
+            --surface-light: #2A2B30; 
+            --primary: #C5A059;       
+            --primary-hover: #D8B46E;
+            --text-main: #EDEAE1;     
+            --text-muted: #808082;    
+            --border: #323338;        
+            --accent-red: #D94A43;
+            --accent-green: #3EB370;
 
             --font-title: 'Oswald', sans-serif;
             --font-mono: 'Space Mono', monospace;
-            --font-sans: 'Inter', "Noto Sans HK", sans-serif;
-            --font-serif: "Noto Serif HK", serif;
+            --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
 
-            --shadow-depth: 0 24px 50px rgba(0, 0, 0, 0.7);
+            --shadow-depth: 0 24px 60px rgba(0, 0, 0, 0.8);
             --inner-glow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
-            --cantonese-size: 2.15rem;
-            --pip-cantonese-size: 2.15rem;
         }
 
         * {
@@ -62,7 +45,7 @@
 
         body {
             background-color: var(--bg-base);
-            background-image: radial-gradient(circle at 50% 0%, #222428 0%, var(--bg-base) 85%);
+            background-image: radial-gradient(circle at 50% 0%, #202227 0%, var(--bg-base) 85%);
             color: var(--text-main);
             font-family: var(--font-sans);
             height: 100vh;
@@ -74,9 +57,9 @@
             -webkit-font-smoothing: antialiased;
         }
 
-        /* 35MM 膠片旁印水印裝飾 */
+        /* 機身飾條水印 */
         body::before {
-            content: "35MM // CINE-SYNC FORMAT ▻ LIVE AUDIO ULTRA-LOW LATENCY";
+            content: "AIR-LINK // P2P ZERO-LATENCY OPUS AUDIO ENGINE";
             position: fixed;
             top: 50%;
             left: 20px;
@@ -84,428 +67,362 @@
             transform-origin: left center;
             font-size: 10px;
             font-family: var(--font-mono);
-            letter-spacing: 6px;
-            color: rgba(133, 132, 128, 0.28);
+            letter-spacing: 5px;
+            color: rgba(255, 255, 255, 0.12);
             white-space: nowrap;
             pointer-events: none;
             z-index: 2;
         }
 
-        #threeCanvas {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100vw;
-            height: 100vh;
-            z-index: 1;
-            pointer-events: none;
-            opacity: 0.65;
-        }
-
-        .teleprompter-rig {
+        .studio-rig {
             position: relative;
             z-index: 10;
             width: 100%;
-            max-width: 920px;
+            max-width: 720px;
             height: 100vh;
             height: 100dvh;
-            max-height: 940px;
+            max-height: 860px;
             display: flex;
             flex-direction: column;
-            padding: 24px 20px 28px 20px;
+            padding: 20px;
             box-sizing: border-box;
-            pointer-events: auto;
         }
 
-        /* 電影工作室風格機箱外觀 */
-        .rig-screen-enclosure {
+        .rig-enclosure {
             flex: 1;
             display: flex;
             flex-direction: column;
             background: var(--surface);
-            border-radius: 6px;
-            border: 1px solid rgba(0, 0, 0, 0.85);
+            border-radius: 8px;
+            border: 1px solid var(--border);
             box-shadow: var(--shadow-depth), var(--inner-glow);
             overflow: hidden;
             position: relative;
-            min-height: 0;
         }
 
-        /* 頂部導航控制列 */
+        /* 頂部 Header */
         header {
-            padding: 14px 24px;
+            padding: 14px 20px;
             display: flex;
             justify-content: space-between;
             align-items: center;
             border-bottom: 1px solid var(--border);
-            background: #1C1D1F;
-            z-index: 30;
+            background: #18191B;
             flex-shrink: 0;
             gap: 12px;
-            min-height: 60px;
         }
 
         .brand-meta {
             display: flex;
             align-items: center;
             gap: 12px;
-            flex-shrink: 0;
-            min-width: 0;
-        }
-
-        .brand-logo-icon {
-            display: none;
-            color: var(--primary);
-            width: 20px;
-            height: 20px;
-            flex-shrink: 0;
         }
 
         .brand-title {
-            font-size: 1.05rem;
-            font-weight: 500;
+            font-size: 1.15rem;
+            font-weight: 600;
             color: var(--text-main);
             letter-spacing: 2px;
             font-family: var(--font-title);
             text-transform: uppercase;
-            white-space: nowrap;
         }
 
         .brand-title span {
             color: var(--primary);
             font-size: 0.8rem;
             font-family: var(--font-mono);
-            letter-spacing: 1px;
             margin-left: 6px;
         }
 
-        /* 狀態指示燈 */
         .status-dot {
-            width: 7px;
-            height: 7px;
+            width: 8px;
+            height: 8px;
             border-radius: 50%;
-            background: var(--border);
-            flex-shrink: 0;
+            background: #4A4B50;
+            display: inline-block;
             transition: all 0.3s ease;
         }
 
-        .status-dot.broadcast {
-            background: var(--primary);
-            box-shadow: 0 0 10px var(--primary);
-            animation: pulseDot 2s infinite ease-in-out;
+        .status-dot.active-live {
+            background: var(--accent-red);
+            box-shadow: 0 0 10px var(--accent-red);
+            animation: pulseLive 1.4s infinite ease-in-out;
         }
 
-        .status-dot.receive {
-            background: var(--primary-hover);
-            box-shadow: 0 0 10px var(--primary-hover);
-            animation: pulseDot 2s infinite ease-in-out;
+        .status-dot.active-connected {
+            background: var(--accent-green);
+            box-shadow: 0 0 10px var(--accent-green);
         }
 
-        @keyframes pulseDot {
-            0%, 100% { opacity: 0.9; transform: scale(1); }
-            50% { opacity: 0.3; transform: scale(0.85); }
+        @keyframes pulseLive {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.35; transform: scale(0.85); }
         }
 
         .btn-group {
             display: flex;
             align-items: center;
             gap: 8px;
-            flex-shrink: 0;
-            flex-wrap: nowrap;
         }
 
         .icon-btn {
             background: var(--surface-light);
             border: 1px solid var(--border);
             color: var(--text-muted);
-            width: 40px;
-            height: 40px;
+            height: 38px;
+            padding: 0 12px;
             border-radius: 4px;
-            display: flex;
+            display: inline-flex;
             align-items: center;
             justify-content: center;
+            gap: 8px;
             cursor: pointer;
-            transition: all 0.25s ease;
+            transition: all 0.2s ease;
             outline: none;
-            position: relative;
-            flex-shrink: 0;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+            font-family: var(--font-mono);
+            font-size: 0.75rem;
+            letter-spacing: 1px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.4);
         }
 
         .icon-btn:hover {
-            background: #38393D;
+            background: #36373D;
             color: var(--text-main);
-            border-color: #4E4F54;
-            transform: translateY(-1px);
-        }
-
-        .icon-btn:active {
-            transform: scale(0.95);
-        }
-
-        .icon-btn svg {
-            width: 18px;
-            height: 18px;
-            stroke-width: 2;
+            border-color: #4B4C52;
         }
 
         .icon-btn.mode-active {
-            background: rgba(184, 155, 114, 0.15);
+            background: rgba(197, 160, 89, 0.15);
             border-color: var(--primary);
             color: var(--primary);
-            box-shadow: inset 0 0 12px rgba(184, 155, 114, 0.15);
+            box-shadow: inset 0 0 12px rgba(197, 160, 89, 0.2);
         }
 
-        .icon-btn.audio-active {
-            background: rgba(78, 135, 101, 0.2);
-            border-color: var(--accent-green);
-            color: #72C092;
-            box-shadow: inset 0 0 10px rgba(78, 135, 101, 0.3);
+        .icon-btn svg {
+            width: 16px;
+            height: 16px;
         }
 
-        .power-btn {
-            background: rgba(168, 87, 81, 0.2);
-            border: 1px solid var(--accent-red);
-            color: var(--accent-red);
-            width: 40px;
-            height: 40px;
-            border-radius: 4px;
-            flex-shrink: 0;
-        }
-
-        .power-btn:hover {
-            background: rgba(168, 87, 81, 0.35);
-            color: #ffffff;
-            border-color: #c96b65;
-        }
-
-        .power-btn.active {
-            background: var(--primary);
-            color: #121212;
-            border-color: var(--primary);
-            box-shadow: 0 0 18px rgba(184, 155, 114, 0.4);
-        }
-
-        .power-btn.active:hover {
-            background: var(--primary-hover);
-        }
-
-        /* 響應式佈局 */
-        @media (max-width: 640px) {
-            body::before { display: none; }
-            .teleprompter-rig {
-                max-width: 100%;
-                height: 100dvh;
-                padding: 6px 6px 10px 6px;
-            }
-
-            .rig-screen-enclosure {
-                border-radius: 4px;
-            }
-
-            header {
-                padding: 8px 12px;
-                min-height: 50px;
-                gap: 8px;
-            }
-
-            .brand-title { display: none; }
-            .brand-logo-icon { display: flex; }
-
-            .btn-group { gap: 5px; }
-
-            .icon-btn {
-                width: 34px;
-                height: 34px;
-            }
-
-            .icon-btn svg {
-                width: 16px;
-                height: 16px;
-            }
-
-            .power-btn {
-                width: 34px;
-                height: 34px;
-            }
-
-            #btnPip { display: none !important; }
-
-            .scroll-body {
-                padding: 16px 18px 40px 18px !important;
-            }
-        }
-
-        /* 視口取景框 */
-        .viewport-container {
+        /* 核心中央控制視口 */
+        .workspace-viewport {
             flex: 1;
             display: flex;
             flex-direction: column;
-            overflow: hidden;
-            width: 100%;
-            min-height: 0; 
-            background-color: var(--canto-bg);
+            justify-content: space-between;
+            align-items: center;
+            padding: 32px 24px;
             position: relative;
-            box-shadow: inset 0 8px 32px rgba(0, 0, 0, 0.85);
-        }
-
-        .viewport-container::after {
-            content: "";
-            position: absolute;
-            inset: 16px;
-            border: 1px solid rgba(230, 226, 214, 0.08);
-            pointer-events: none;
-            background: 
-                linear-gradient(to right, rgba(230, 226, 214, 0.12) 1px, transparent 1px) 50% 50% / 24px 1px no-repeat,
-                linear-gradient(to bottom, rgba(230, 226, 214, 0.12) 1px, transparent 1px) 50% 50% / 1px 24px no-repeat;
-            z-index: 2;
-        }
-
-        .viewport-container::before {
-            content: "";
-            position: absolute;
-            top: 0; left: 0; right: 0;
-            height: 40px;
-            background: linear-gradient(to bottom, #121213 25%, transparent);
-            z-index: 10;
-            pointer-events: none;
-        }
-
-        .scroll-body {
-            flex: 1;
+            background: #121315;
+            box-shadow: inset 0 0 40px rgba(0,0,0,0.85);
             overflow-y: auto;
-            scroll-behavior: smooth;
-            -webkit-overflow-scrolling: touch;
-            padding: 28px 36px 54px 36px;
-            position: relative;
-            z-index: 1;
         }
 
-        .cantonese-stream {
-            font-family: var(--font-serif);
-            font-size: var(--cantonese-size);
-            line-height: 1.85;
-            letter-spacing: 1px;
-            display: flex;
-            flex-direction: column;
-            gap: 22px;
-            word-break: break-word;
-        }
-
-        .phrase-group {
-            display: block;
-            position: relative;
-            line-height: 1.85;
-            word-break: break-word;
-            transition: color 0.4s ease, opacity 0.4s ease;
-        }
-
-        .phrase-group.past {
-            color: var(--text-muted);
-            font-weight: 400;
-            opacity: 0.4;
-        }
-
-        .phrase-group.active-latest {
-            color: var(--text-main);
-            font-weight: 700;
-            opacity: 1;
-            text-shadow: 0 0 16px rgba(230, 226, 214, 0.25);
-            animation: phrasePop 0.22s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-        }
-
-        .phrase-item.interim {
-            color: var(--primary-hover);
-            font-weight: 700;
-            opacity: 0.95;
-            text-shadow: 0 0 16px rgba(205, 179, 139, 0.4);
-            display: inline;
-            background: transparent;
-            border: none;
-            padding: 0;
-            margin: 0;
-        }
-
-        .phrase-item.interim:empty {
-            display: none;
-        }
-
-        @keyframes phrasePop {
-            0% { opacity: 0; transform: translateY(6px); }
-            100% { opacity: 1; transform: translateY(0); }
-        }
-
-        .bottom-safe-spacer {
-            height: calc(140px + env(safe-area-inset-bottom, 24px));
-            width: 100%;
-            pointer-events: none;
-            flex-shrink: 0;
-        }
-
-        #fontToast {
-            position: fixed;
-            top: 72px;
-            right: 24px;
-            background: #18191B;
-            border: 1px solid var(--primary);
-            color: var(--primary);
-            font-size: 0.75rem;
-            font-family: var(--font-mono);
-            letter-spacing: 2px;
-            text-transform: uppercase;
-            padding: 6px 14px;
-            border-radius: 4px;
-            pointer-events: none;
-            opacity: 0;
-            transform: translateY(-4px);
-            transition: all 0.25s ease;
-            z-index: 40;
-            box-shadow: 0 8px 20px rgba(0, 0, 0, 0.6);
-        }
-
-        #fontToast.show { opacity: 1; transform: translateY(0); }
-
-        /* 瀏覽器自動播放限制解除橫幅 */
-        .audio-unmute-banner {
-            position: fixed;
-            bottom: 24px;
-            left: 50%;
-            transform: translateX(-50%);
-            background: var(--primary);
-            color: #121213;
-            font-family: var(--font-mono);
-            font-size: 0.82rem;
-            font-weight: 700;
-            letter-spacing: 1.5px;
-            text-transform: uppercase;
-            padding: 12px 24px;
-            border-radius: 30px;
-            cursor: pointer;
-            z-index: 120;
-            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.7);
+        /* 狀態卡片顯示 */
+        .session-info-badge {
             display: flex;
             align-items: center;
-            gap: 10px;
-            transition: transform 0.2s ease, background 0.2s ease;
+            gap: 14px;
+            background: #18191C;
+            border: 1px solid var(--border);
+            padding: 6px 16px;
+            border-radius: 30px;
+            font-family: var(--font-mono);
+            font-size: 0.75rem;
+            letter-spacing: 2px;
+            color: var(--text-muted);
         }
 
-        .audio-unmute-banner:hover {
-            background: var(--primary-hover);
-            transform: translateX(-50%) scale(1.03);
+        .session-info-badge strong {
+            color: var(--primary);
+            font-weight: 700;
         }
 
-        /* 彈窗樣式改為 Cinematic Studio */
+        /* 動態波形與電平畫布 */
+        .meter-container {
+            width: 100%;
+            max-width: 480px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 12px;
+            margin: 20px 0;
+        }
+
+        #visualizerCanvas {
+            width: 100%;
+            height: 100px;
+            background: #0E0F10;
+            border-radius: 6px;
+            border: 1px solid #232428;
+            box-shadow: inset 0 2px 10px rgba(0,0,0,0.8);
+        }
+
+        /* 中央巨大互動主掣 */
+        .main-action-zone {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 18px;
+            margin: auto 0;
+        }
+
+        .big-push-btn {
+            width: 160px;
+            height: 160px;
+            border-radius: 50%;
+            background: #191A1D;
+            border: 3px solid var(--border);
+            color: var(--text-muted);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            outline: none;
+            transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+            box-shadow: 0 12px 30px rgba(0, 0, 0, 0.6), inset 0 2px 4px rgba(255,255,255,0.05);
+            position: relative;
+        }
+
+        .big-push-btn svg {
+            width: 50px;
+            height: 50px;
+            margin-bottom: 8px;
+            transition: transform 0.25s ease;
+        }
+
+        .big-push-btn span {
+            font-family: var(--font-title);
+            font-size: 1.1rem;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+        }
+
+        .big-push-btn:hover {
+            border-color: #555760;
+            color: var(--text-main);
+            transform: translateY(-2px);
+        }
+
+        .big-push-btn:active {
+            transform: scale(0.96);
+        }
+
+        /* 發射中 (ON AIR) 狀態 */
+        .big-push-btn.broadcasting {
+            background: radial-gradient(circle, #521815 0%, #200E0D 100%);
+            border-color: var(--accent-red);
+            color: #FFFFFF;
+            box-shadow: 0 0 35px rgba(217, 74, 67, 0.45);
+        }
+
+        .big-push-btn.broadcasting svg {
+            color: var(--accent-red);
+            animation: micPulse 1.8s infinite ease-in-out;
+        }
+
+        /* 接收播放中狀態 */
+        .big-push-btn.receiving {
+            background: radial-gradient(circle, #103422 0%, #0C1E15 100%);
+            border-color: var(--accent-green);
+            color: #FFFFFF;
+            box-shadow: 0 0 35px rgba(62, 179, 112, 0.45);
+        }
+
+        .big-push-btn.receiving svg {
+            color: var(--accent-green);
+        }
+
+        @keyframes micPulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.08); }
+        }
+
+        .latency-hint {
+            font-family: var(--font-mono);
+            font-size: 0.72rem;
+            color: var(--text-muted);
+            letter-spacing: 1px;
+            text-align: center;
+        }
+
+        /* 底部參數與音量推桿控制欄 */
+        .footer-controls {
+            width: 100%;
+            background: #18191B;
+            border-top: 1px solid var(--border);
+            padding: 16px 24px;
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+        }
+
+        .slider-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 16px;
+        }
+
+        .slider-label {
+            font-family: var(--font-mono);
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 1.5px;
+            width: 130px;
+        }
+
+        .slider-wrapper {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            gap: 14px;
+        }
+
+        input[type="range"] {
+            flex: 1;
+            -webkit-appearance: none;
+            height: 6px;
+            background: #2B2C31;
+            border-radius: 3px;
+            outline: none;
+        }
+
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            background: var(--primary);
+            cursor: pointer;
+            box-shadow: 0 0 8px rgba(197, 160, 89, 0.7);
+            transition: transform 0.15s ease;
+        }
+
+        input[type="range"]::-webkit-slider-thumb:hover {
+            transform: scale(1.15);
+        }
+
+        .val-display {
+            font-family: var(--font-mono);
+            font-size: 0.82rem;
+            color: var(--primary);
+            width: 45px;
+            text-align: right;
+        }
+
+        /* 彈窗樣式 */
         .modal-overlay {
             position: fixed;
             top: 0; left: 0; width: 100vw; height: 100vh;
-            background: rgba(18, 18, 19, 0.92);
-            backdrop-filter: blur(14px);
-            -webkit-backdrop-filter: blur(14px);
+            background: rgba(14, 15, 17, 0.94);
+            backdrop-filter: blur(10px);
             z-index: 100;
             display: none;
             align-items: center;
             justify-content: center;
-            padding: 16px;
+            padding: 20px;
         }
 
         .modal-overlay.active { display: flex; }
@@ -514,13 +431,10 @@
             background: var(--surface);
             border: 1px solid var(--border);
             width: 100%;
-            max-width: 680px;
-            max-height: 85vh;
-            border-radius: 6px;
-            display: flex;
-            flex-direction: column;
+            max-width: 400px;
+            border-radius: 8px;
             overflow: hidden;
-            box-shadow: var(--shadow-depth), var(--inner-glow);
+            box-shadow: var(--shadow-depth);
         }
 
         .modal-header {
@@ -532,1821 +446,563 @@
             font-family: var(--font-title);
             font-size: 1.15rem;
             letter-spacing: 2px;
-            text-transform: uppercase;
             color: var(--text-main);
-            background: #1E1F21;
+            background: #18191B;
         }
 
         .modal-body {
             padding: 24px;
-            overflow-y: auto;
-            flex: 1;
-            line-height: 2.6;
-            background: #141416;
             display: flex;
-            flex-wrap: wrap;
-            gap: 2px;
-        }
-
-        ruby.jp-ruby {
-            display: inline-flex;
-            flex-direction: column-reverse;
+            flex-direction: column;
             align-items: center;
-            margin: 2px 5px;
-            line-height: 1;
-        }
-
-        ruby.jp-ruby rt.c-rt {
-            display: block;
-            font-size: 0.8rem;
-            line-height: 1;
-            font-family: var(--font-mono);
-            color: var(--primary);
-            margin-bottom: 6px;
-        }
-
-        ruby.jp-ruby span.c-char {
-            display: block;
-            font-size: 1.65rem;
-            font-weight: 600;
-            font-family: var(--font-serif);
-            color: var(--text-main);
-        }
-
-        span.jp-punct {
-            font-size: 1.65rem;
-            line-height: 1.2;
-            color: var(--text-muted);
-            margin: 0 3px;
-        }
-
-        .modal-footer {
-            padding: 14px 20px;
-            border-top: 1px solid var(--border);
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            background: #1C1D1F;
+            gap: 18px;
         }
 
         #qrContainer {
-            background: var(--text-main);
+            background: #FFFFFF;
             padding: 12px;
-            border-radius: 4px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            margin: 0 auto;
-            border: 1px solid rgba(0,0,0,0.8);
+            border-radius: 6px;
         }
 
-        #roomLinkText {
+        .room-num-box {
             font-family: var(--font-mono);
-            font-size: 0.72rem;
-            color: var(--text-muted);
-            word-break: break-all;
-            cursor: pointer;
-            background: #101011;
-            padding: 10px 14px;
-            border-radius: 4px;
-            border: 1px solid var(--border);
-            width: 100%;
-            text-align: center;
-            transition: all 0.2s ease;
-        }
-
-        #roomLinkText:hover {
-            color: var(--text-main);
-            border-color: var(--primary);
-        }
-
-        .pin-display-box {
-            display: flex;
-            gap: 12px;
-            width: 100%;
-            justify-content: center;
-        }
-
-        .pin-item {
-            background: #101011;
-            border: 1px solid var(--border);
-            padding: 12px 10px;
-            border-radius: 4px;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            flex: 1;
-            box-shadow: inset 0 2px 10px rgba(0,0,0,0.8);
-        }
-
-        .pin-label {
-            font-size: 0.68rem;
-            color: var(--text-muted);
-            font-family: var(--font-mono);
-            letter-spacing: 2px;
-            text-transform: uppercase;
-            margin-bottom: 4px;
-        }
-
-        .pin-val {
-            font-family: var(--font-mono);
-            font-size: 1.35rem;
+            font-size: 2rem;
             font-weight: 700;
+            letter-spacing: 4px;
             color: var(--primary);
-            letter-spacing: 3px;
-        }
-
-        .input-group {
-            display: flex;
-            flex-direction: column;
-            gap: 8px;
-            width: 100%;
-            text-align: left;
-        }
-
-        .input-label {
-            font-size: 0.72rem;
-            color: var(--text-muted);
-            font-family: var(--font-mono);
-            letter-spacing: 2px;
-            text-transform: uppercase;
         }
 
         .app-input {
             width: 100%;
-            background: #121213;
+            background: #121315;
             border: 1px solid var(--border);
             padding: 12px 16px;
             border-radius: 4px;
             color: var(--primary);
             font-family: var(--font-mono);
-            font-size: 1.1rem;
-            letter-spacing: 2px;
+            font-size: 1.25rem;
+            letter-spacing: 3px;
+            text-align: center;
             outline: none;
-            transition: all 0.3s ease;
-            box-shadow: inset 0 2px 10px rgba(0,0,0,0.8);
         }
 
         .app-input:focus {
             border-color: var(--primary);
-            box-shadow: inset 0 2px 10px rgba(0,0,0,0.8), 0 0 0 1px var(--primary);
         }
 
-        .join-icon-action-btn {
-            width: 52px;
-            height: 52px;
-            margin: 8px auto 0 auto;
-            border-radius: 4px;
-            border: 1px solid var(--primary);
-            background: var(--surface-light);
-            color: var(--primary);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            cursor: pointer;
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
-            transition: all 0.28s ease;
-            outline: none;
-            position: relative;
-        }
-
-        .join-icon-action-btn:hover {
-            border-color: var(--primary-hover);
-            color: #121212;
+        .btn-confirm {
+            width: 100%;
             background: var(--primary);
-            box-shadow: 0 8px 20px rgba(184, 155, 114, 0.25);
-            transform: translateY(-2px);
+            color: #121315;
+            border: none;
+            padding: 12px;
+            border-radius: 4px;
+            font-family: var(--font-title);
+            font-size: 1.1rem;
+            letter-spacing: 2px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: background 0.2s;
         }
 
-        .join-icon-action-btn:active {
-            transform: translateY(1px) scale(0.96);
+        .btn-confirm:hover {
+            background: var(--primary-hover);
         }
 
-        .join-icon-action-btn svg {
-            width: 22px;
-            height: 22px;
-            transition: transform 0.25s ease;
-        }
-
-        .join-icon-action-btn:hover svg {
-            transform: translateX(2px);
+        @media (max-width: 600px) {
+            body::before { display: none; }
+            .studio-rig { padding: 8px; }
+            .brand-title span { display: none; }
+            .slider-label { width: 90px; }
         }
     </style>
 </head>
 <body>
 
-    <!-- 零延遲聲音播放器 (接收端接收音訊用) -->
-    <audio id="remoteAudio" autoplay playsinline style="display:none;"></audio>
-
-    <!-- 自動播放解鎖浮動提示 (針對 iOS/Chrome 等瀏覽器限制) -->
-    <div id="audioUnmuteBanner" class="audio-unmute-banner" style="display:none;" onclick="enableReceiverAudio()">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
-            <path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"></path>
-        </svg>
-        <span>點擊開啟實時語音播放 (已連線)</span>
-    </div>
-
-    <canvas id="threeCanvas"></canvas>
-
-    <main id="teleprompterRig" class="teleprompter-rig">
-        <div class="rig-screen-enclosure">
+    <main class="studio-rig">
+        <div class="rig-enclosure">
+            <!-- 頂部操控列 -->
             <header>
                 <div class="brand-meta">
-                    <svg class="brand-logo-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path>
-                        <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
-                        <line x1="12" y1="19" x2="12" y2="23"></line>
-                    </svg>
-                    <span class="brand-title">SyncCast <span>LIVE AUDIO PROMPTER</span></span>
                     <span id="statusDot" class="status-dot"></span>
+                    <span class="brand-title">AirMic <span>ZERO-LATENCY WIRELESS MIC</span></span>
                 </div>
                 
                 <div class="btn-group">
-                    <button id="btnSolo" class="icon-btn mode-active" title="個人版" onclick="switchToSoloMode()">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
-                            <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
-                            <circle cx="12" cy="7" r="4"></circle>
+                    <button id="btnRoleBroadcast" class="icon-btn mode-active" onclick="switchRole('broadcaster')">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path>
+                            <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
+                            <line x1="12" y1="19" x2="12" y2="23"></line>
                         </svg>
+                        <span>發射端 (咪)</span>
                     </button>
-                    <button id="btnBroadcast" class="icon-btn" title="廣播版" onclick="switchToBroadcastMode()">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
-                            <path d="M4.9 19.1C1 15.2 1 8.8 4.9 4.9"></path>
-                            <path d="M7.8 16.2c-2.3-2.3-2.3-6.1 0-8.5"></path>
-                            <circle cx="12" cy="12" r="2"></circle>
-                            <path d="M16.2 7.8c2.3 2.3 2.3 6.1 0 8.5"></path>
-                            <path d="M19.1 4.9C23 8.8 23 15.1 19.1 19"></path>
-                        </svg>
-                    </button>
-                    <button id="btnJoinModal" class="icon-btn" title="輸入數字代碼加入" onclick="openJoinModal()">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
-                            <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"></path>
-                            <polyline points="10 17 15 12 10 7"></polyline>
-                            <line x1="15" y1="12" x2="3" y2="12"></line>
-                        </svg>
-                    </button>
-
-                    <!-- 實時音訊監聽狀態 / 快速靜音開關 -->
-                    <button id="btnAudioToggle" class="icon-btn" title="實時音訊監聽" onclick="toggleAudioMonitor()">
-                        <svg id="audioOnIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <button id="btnRoleReceiver" class="icon-btn" onclick="switchRole('receiver')">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                             <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
                             <path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"></path>
                         </svg>
-                        <svg id="audioOffIcon" style="display:none;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                            <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
-                            <line x1="23" y1="9" x2="17" y2="15"></line>
-                            <line x1="17" y1="9" x2="23" y2="15"></line>
-                        </svg>
+                        <span>接收端 (喇叭)</span>
                     </button>
-
-                    <button class="icon-btn" title="粵拼注音" onclick="openPhoneticModal()">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
-                            <path d="M3 18v-6a9 9 0 0 1 18 0v6"></path>
-                            <path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z"></path>
-                        </svg>
-                    </button>
-                    <button class="icon-btn" title="字體大小" onclick="cycleFontSize()">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
-                            <path d="M3.5 17.5L6.5 9.5L9.5 17.5"></path>
-                            <path d="M4.8 14.5H8.2"></path>
-                            <path d="M12.5 17.5L16.5 6.5L20.5 17.5"></path>
-                            <path d="M14 13.5H19"></path>
-                        </svg>
-                    </button>
-                    <!-- 螢幕底置頂懸浮字幕條：短按開關 | 長按循環調節字幕大小 -->
-                    <button id="btnPip" class="icon-btn" title="點擊：開關字幕條 | 長按：調節字幕大小">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
-                            <rect x="2" y="4" width="20" height="13" rx="2"></rect>
-                            <path d="M2 17h20"></path>
-                            <line x1="7" y1="20" x2="17" y2="20"></line>
-                        </svg>
-                    </button>
-                    <!-- 開關 / 麥克風錄音按鈕 (廣播端控制) -->
-                    <button id="toggleBtn" class="icon-btn power-btn" title="開關收音與辨識" onclick="toggleSpeech()">
-                        <svg id="playIcon" viewBox="0 0 24 24" fill="currentColor">
-                            <path d="M8 5.14v13.72a1 1 0 0 0 1.5.86l11-6.86a1 1 0 0 0 0-1.72l-11-6.86a1 1 0 0 0-1.5.86z"></path>
-                        </svg>
-                        <svg id="pauseIcon" style="display:none;" viewBox="0 0 24 24" fill="currentColor">
-                            <rect x="6" y="5" width="4" height="14" rx="1.5"></rect>
-                            <rect x="14" y="5" width="4" height="14" rx="1.5"></rect>
+                    <button id="btnPair" class="icon-btn" onclick="openPairModal()" title="配對設定">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <rect x="2" y="2" width="20" height="8" rx="2" ry="2"></rect>
+                            <rect x="2" y="14" width="20" height="8" rx="2" ry="2"></rect>
+                            <line x1="6" y1="6" x2="6.01" y2="6"></line>
+                            <line x1="6" y1="18" x2="6.01" y2="18"></line>
                         </svg>
                     </button>
                 </div>
             </header>
 
-            <div id="fontToast">字體 標準</div>
+            <!-- 工作區視窗 -->
+            <div class="workspace-viewport">
+                <div class="session-info-badge">
+                    <span>ROOM: <strong id="roomCodeDisplay">------</strong></span>
+                    <span>STATUS: <strong id="linkStatusText">STANDBY</strong></span>
+                </div>
 
-            <div class="viewport-container">
-                <div id="cantoScroll" class="scroll-body">
-                    <div id="cantoStream" class="cantonese-stream">
-                        <div id="interimPart" class="phrase-item interim"></div>
+                <!-- 大動作切換圓鈕 -->
+                <div class="main-action-zone">
+                    <button id="mainToggleBtn" class="big-push-btn" onclick="handleMainAction()">
+                        <svg id="btnIconMic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path>
+                            <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
+                            <line x1="12" y1="19" x2="12" y2="23"></line>
+                        </svg>
+                        <svg id="btnIconSpeaker" style="display:none;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
+                            <path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"></path>
+                        </svg>
+                        <span id="mainBtnText">開啟咪高風</span>
+                    </button>
+                    <div id="subHintText" class="latency-hint">點擊上方按鈕開始超低延遲語音串流</div>
+                </div>
+
+                <!-- 實時音訊頻譜 & LED VU 表 -->
+                <div class="meter-container">
+                    <canvas id="visualizerCanvas" width="480" height="100"></canvas>
+                    <div style="width:100%; display:flex; justify-content:space-between; font-family:var(--font-mono); font-size:0.65rem; color:var(--text-muted);">
+                        <span>-48dB</span>
+                        <span>-24dB</span>
+                        <span>-12dB</span>
+                        <span>-6dB</span>
+                        <span>0dB (PEAK)</span>
                     </div>
-                    <div class="bottom-safe-spacer"></div>
+                </div>
+            </div>
+
+            <!-- 底部調節台 -->
+            <div class="footer-controls">
+                <div class="slider-row">
+                    <span class="slider-label" id="gainLabel">咪增益 / GAIN</span>
+                    <div class="slider-wrapper">
+                        <input id="gainSlider" type="range" min="0" max="3" step="0.05" value="1.0" oninput="updateGain(this.value)">
+                        <span id="gainValueDisplay" class="val-display">100%</span>
+                    </div>
                 </div>
             </div>
         </div>
     </main>
 
-    <!-- 廣播分享視窗 -->
-    <div id="qrModal" class="modal-overlay" onclick="closeModalOnBackdrop(event)">
-        <div class="modal-window" style="max-width: 380px; text-align: center;">
-            <div class="modal-header">
-                <span style="font-weight: 500;">Studio Broadcast / 廣播配對</span>
-                <button class="icon-btn" style="width:28px; height:28px;" onclick="closeQrModal()">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
-                </button>
-            </div>
-            <div class="modal-body" style="display:flex; flex-direction:column; align-items:center; gap:16px; padding: 24px;">
-                <div id="qrContainer"></div>
-
-                <div class="pin-display-box">
-                    <div class="pin-item">
-                        <span class="pin-label">Room Code</span>
-                        <span id="qrRoomCodeDisplay" class="pin-val">------</span>
-                    </div>
-                    <div class="pin-item">
-                        <span class="pin-label">Secret Key</span>
-                        <span id="qrSecretKeyDisplay" class="pin-val" style="color: var(--primary);">------</span>
-                    </div>
-                </div>
-
-                <div id="roomLinkText" onclick="copyShareLink()" title="點擊複製完整連結"></div>
-                <div style="font-size: 0.72rem; color: var(--text-muted); line-height: 1.5; font-family: var(--font-mono);">
-                    接收端開啟連結後將同步顯示字幕，並以 WebRTC 零延遲輸出廣播端實時聲音。
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- 加入房間彈窗 -->
-    <div id="joinModal" class="modal-overlay" onclick="closeModalOnBackdrop(event)">
-        <div class="modal-window" style="max-width: 400px;">
-            <div class="modal-header">
-                <span style="font-weight: 500;">Join Session / 加入房間</span>
-                <button class="icon-btn" style="width:28px; height:28px;" onclick="closeJoinModal()">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
-                </button>
-            </div>
-            <div class="modal-body" style="display:flex; flex-direction:column; gap:16px; padding:24px;">
-                <div class="input-group">
-                    <label class="input-label">Room Access Code</label>
-                    <input id="inputRoomId" type="text" inputmode="numeric" pattern="[0-9]*" class="app-input" placeholder="6 位數字房間號" autocomplete="off" />
-                </div>
-                <div class="input-group">
-                    <label class="input-label">Secret Key</label>
-                    <input id="inputSecretKey" type="text" class="app-input" placeholder="輸入連線密鑰" autocomplete="off" />
-                </div>
-               
-                <button class="join-icon-action-btn" title="立即連線" aria-label="立即連線" onclick="submitJoinRoom()">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <path class="arrow-stem" d="M4 12h11"></path>
-                        <path class="arrow-head" d="M11 8l4 4-4 4"></path>
-                        <path class="node-ring" d="M19 8v8"></path>
-                    </svg>
-                </button>
-            </div>
-        </div>
-    </div>
-
-    <!-- 粵拼注音彈窗 -->
-    <div id="phoneticModal" class="modal-overlay" onclick="closeModalOnBackdrop(event)">
+    <!-- 配對資訊視窗 -->
+    <div id="pairModal" class="modal-overlay" onclick="closeModalOnBackdrop(event)">
         <div class="modal-window">
             <div class="modal-header">
-                <span>Phonetic & Reading / 粵拼注音與朗讀</span>
-                <button class="icon-btn" style="width:28px; height:28px;" onclick="closePhoneticModal()">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
-                </button>
+                <span>配對終端 / CONNECT</span>
+                <button class="icon-btn" style="width:30px; height:30px; padding:0;" onclick="closePairModal()">✕</button>
             </div>
-            <div id="modalContent" class="modal-body"></div>
-            <div class="modal-footer">
-                <span id="ttsStatus" style="font-size: 0.82rem; color: var(--text-muted); font-family: var(--font-mono); text-transform: uppercase;">READY</span>
-                <button id="ttsPlayBtn" class="icon-btn" style="background:var(--primary); color:#121212; border-color:transparent;" onclick="speakCurrentText()">
-                    <svg viewBox="0 0 24 24" fill="currentColor"><polygon points="6 3 20 12 6 21 6 3"></polygon></svg>
-                </button>
+            <div class="modal-body">
+                <div id="qrContainer"></div>
+                <div style="text-align:center;">
+                    <div style="font-size:0.75rem; color:var(--text-muted); font-family:var(--font-mono); margin-bottom:4px;">純數字房間號</div>
+                    <div id="modalRoomNum" class="room-num-box">------</div>
+                </div>
+                <div style="width:100%; border-top:1px solid var(--border); padding-top:16px;">
+                    <div style="font-size:0.75rem; color:var(--text-muted); font-family:var(--font-mono); margin-bottom:8px;">或在此設備手動加入其他房間：</div>
+                    <input id="inputJoinRoom" type="text" inputmode="numeric" pattern="[0-9]*" class="app-input" placeholder="輸入 6 位數字" />
+                </div>
+                <button class="btn-confirm" onclick="submitManualJoin()">立即加入該房間</button>
             </div>
         </div>
     </div>
 
     <script>
-        /* ------------------ 0. 端到端加密引擎 (AES-256-GCM) ------------------ */
-        let cryptoKey = null;
-
-        async function initEncryptionKey(keyString) {
-            const enc = new TextEncoder();
-            const keyHash = await crypto.subtle.digest('SHA-256', enc.encode(keyString));
-            cryptoKey = await crypto.subtle.importKey(
-                'raw',
-                keyHash,
-                { name: 'AES-GCM' },
-                false,
-                ['encrypt', 'decrypt']
-            );
-        }
-
-        async function encryptPayload(plainObj) {
-            if (!cryptoKey) return JSON.stringify(plainObj);
-            const iv = crypto.getRandomValues(new Uint8Array(12));
-            const enc = new TextEncoder();
-            const cipherBuffer = await crypto.subtle.encrypt(
-                { name: 'AES-GCM', iv },
-                cryptoKey,
-                enc.encode(JSON.stringify(plainObj))
-            );
-            return JSON.stringify({
-                iv: Array.from(iv).map(b => b.toString(16).padStart(2, '0')).join(''),
-                cipher: btoa(String.fromCharCode(...new Uint8Array(cipherBuffer)))
-            });
-        }
-
-        async function decryptPayload(rawMsgString) {
-            try {
-                const packet = JSON.parse(rawMsgString);
-                if (!cryptoKey || !packet.iv || !packet.cipher) return packet;
-                const iv = new Uint8Array(packet.iv.match(/.{1,2}/g).map(b => parseInt(b, 16)));
-                const cipherBytes = Uint8Array.from(atob(packet.cipher), c => c.charCodeAt(0));
-                const decryptedBuffer = await crypto.subtle.decrypt(
-                    { name: 'AES-GCM', iv },
-                    cryptoKey,
-                    cipherBytes
-                );
-                return JSON.parse(new TextDecoder().decode(decryptedBuffer));
-            } catch (err) {
-                return null;
-            }
-        }
-
-        /* ------------------ 1. 運行模式設定 (個人 / 廣播 / 接收) ------------------ */
+        /* ------------------ 0. 系統狀態與參數 ------------------ */
         const urlParams = new URLSearchParams(window.location.search);
-        const joinRoom = urlParams.get('room') ? urlParams.get('room').replace(/\D/g, '') : null;
-        const joinKey = window.location.hash.replace('#', '');
-        const isReceiverMode = Boolean(joinRoom && joinKey);
+        let assignedRoom = urlParams.get('room') ? urlParams.get('room').replace(/\D/g, '') : null;
+        let myRole = urlParams.get('role') === 'receiver' || assignedRoom ? 'receiver' : 'broadcaster';
 
-        const myPeerId = 'peer_' + Math.random().toString(36).substring(2, 9);
-        let currentMode = isReceiverMode ? 'receive' : 'solo';
-        let currentRoomId = joinRoom || '';
-        let currentSecretKey = joinKey || '';
+        let currentRoomId = assignedRoom || String(Math.floor(100000 + Math.random() * 900000));
+        let myPeerId = 'peer_' + Math.random().toString(36).substring(2, 9);
 
-        const statusDot = document.getElementById('statusDot');
-        const btnSolo = document.getElementById('btnSolo');
-        const btnBroadcast = document.getElementById('btnBroadcast');
-        const btnJoinModal = document.getElementById('btnJoinModal');
-        const toggleBtn = document.getElementById('toggleBtn');
-        const btnAudioToggle = document.getElementById('btnAudioToggle');
-        const audioOnIcon = document.getElementById('audioOnIcon');
-        const audioOffIcon = document.getElementById('audioOffIcon');
-
-        let mqttClient = null;
-
-        function updateUIState() {
-            btnSolo.classList.remove('mode-active');
-            btnBroadcast.classList.remove('mode-active');
-            btnJoinModal.classList.remove('mode-active');
-            statusDot.className = 'status-dot';
-
-            if (currentMode === 'solo') {
-                btnSolo.classList.add('mode-active');
-                toggleBtn.style.display = 'flex';
-                btnAudioToggle.style.display = 'none';
-            } else if (currentMode === 'broadcast') {
-                btnBroadcast.classList.add('mode-active');
-                statusDot.classList.add('broadcast');
-                toggleBtn.style.display = 'flex';
-                btnAudioToggle.style.display = 'flex';
-            } else if (currentMode === 'receive') {
-                btnJoinModal.classList.add('mode-active');
-                toggleBtn.style.display = 'none';
-                btnAudioToggle.style.display = 'flex';
-                statusDot.classList.add('receive');
-            }
-        }
-
-        /* ------------------ 2. 零延遲 WebRTC P2P 音訊引擎 ------------------ */
+        let isStreaming = false;
+        let isReceiving = false;
         let localAudioStream = null;
-        const peerConnections = new Map(); // broadcaster: receiverPeerId -> RTCPeerConnection
-        let receiverPC = null;              // receiver: RTCPeerConnection
-        let broadcasterPeerId = null;
-        const remoteAudio = document.getElementById('remoteAudio');
-        const audioUnmuteBanner = document.getElementById('audioUnmuteBanner');
+        let audioContext = null;
+        let gainNode = null;
+        let analyser = null;
+        let remoteAudioElem = null;
+
+        let peerConnections = {}; // targetPeerId -> RTCPeerConnection
+        let mqttClient = null;
 
         const rtcConfig = {
             iceServers: [
                 { urls: 'stun:stun.l.google.com:19302' },
-                { urls: 'stun:stun1.l.google.com:19302' },
-                { urls: 'stun:stun2.l.google.com:19302' }
+                { urls: 'stun:stun1.l.google.com:19302' }
             ]
         };
 
-        // 廣播端：取得麥克風串流 (啟用超低延遲與降噪設定)
-        async function getLocalAudioStream() {
-            if (localAudioStream && localAudioStream.active) {
-                return localAudioStream;
+        const roomCodeDisplay = document.getElementById('roomCodeDisplay');
+        const modalRoomNum = document.getElementById('modalRoomNum');
+        const linkStatusText = document.getElementById('linkStatusText');
+        const statusDot = document.getElementById('statusDot');
+        const mainToggleBtn = document.getElementById('mainToggleBtn');
+        const btnIconMic = document.getElementById('btnIconMic');
+        const btnIconSpeaker = document.getElementById('btnIconSpeaker');
+        const mainBtnText = document.getElementById('mainBtnText');
+        const subHintText = document.getElementById('subHintText');
+        const gainLabel = document.getElementById('gainLabel');
+        const gainSlider = document.getElementById('gainSlider');
+        const gainValueDisplay = document.getElementById('gainValueDisplay');
+        const btnRoleBroadcast = document.getElementById('btnRoleBroadcast');
+        const btnRoleReceiver = document.getElementById('btnRoleReceiver');
+
+        /* ------------------ 1. WebRTC & MQTT 信號中繼 (極低延遲架構) ------------------ */
+        function initSignaling() {
+            if (mqttClient) {
+                try { mqttClient.end(); } catch (e) {}
             }
+
+            mqttClient = mqtt.connect('wss://broker.emqx.io:8084/mqtt', { clean: true });
+
+            mqttClient.on('connect', () => {
+                mqttClient.subscribe(`airmic/room_${currentRoomId}`);
+                linkStatusText.innerText = "ONLINE";
+                statusDot.className = 'status-dot active-connected';
+
+                if (myRole === 'receiver') {
+                    // 接收端發送準備接收通知
+                    sendSignal({ type: 'receiver-ready', from: myPeerId });
+                }
+            });
+
+            mqttClient.on('message', async (topic, payload) => {
+                try {
+                    const data = JSON.parse(payload.toString());
+                    if (data.from === myPeerId) return; // 忽略自己
+
+                    if (data.type === 'receiver-ready' && myRole === 'broadcaster' && localAudioStream) {
+                        // 有新的接收端進入，發射端建立連線並發送 Offer
+                        initiatePeerConnection(data.from);
+                    } else if (data.type === 'offer' && myRole === 'receiver') {
+                        handleRemoteOffer(data.from, data.sdp);
+                    } else if (data.type === 'answer' && myRole === 'broadcaster') {
+                        if (peerConnections[data.from]) {
+                            await peerConnections[data.from].setRemoteDescription(new RTCSessionDescription(data.sdp));
+                        }
+                    } else if (data.type === 'candidate') {
+                        const pc = peerConnections[data.from];
+                        if (pc && data.candidate) {
+                            try {
+                                await pc.addIceCandidate(new RTCIceCandidate(data.candidate));
+                            } catch (e) {}
+                        }
+                    }
+                } catch (e) {}
+            });
+        }
+
+        function sendSignal(msgObj) {
+            if (mqttClient && mqttClient.connected) {
+                mqttClient.publish(`airmic/room_${currentRoomId}`, JSON.stringify(msgObj));
+            }
+        }
+
+        /* ------------------ 2. 發射端：開啟麥克風與點對點推流 ------------------ */
+        async function startBroadcaster() {
             try {
+                // 請求低延遲麥克風約束 (禁用回音消除避免處理引入延遲；開啟降噪)
                 localAudioStream = await navigator.mediaDevices.getUserMedia({
                     audio: {
-                        echoCancellation: true,
+                        echoCancellation: false,
                         noiseSuppression: true,
                         autoGainControl: true,
                         latency: 0,
-                        channelCount: 1,
-                        sampleRate: 48000
+                        channelCount: 1
                     },
                     video: false
                 });
-                return localAudioStream;
+
+                setupAudioContext(localAudioStream, false);
+                isStreaming = true;
+
+                // UI 更新
+                mainToggleBtn.classList.add('broadcasting');
+                mainBtnText.innerText = "ON AIR (直播中)";
+                subHintText.innerText = "麥克風運作中，發音即刻超低延遲同步到音響";
+                statusDot.className = 'status-dot active-live';
+                linkStatusText.innerText = "TRANSMITTING";
+
+                // 廣播給所有在此房間的接收端
+                sendSignal({ type: 'broadcaster-started', from: myPeerId });
+
+                // 保持螢幕喚醒
+                if ('wakeLock' in navigator) {
+                    navigator.wakeLock.request('screen').catch(() => {});
+                }
+
             } catch (err) {
-                console.error("無法取得麥克風音訊:", err);
-                showToast("麥克風收音失敗");
-                return null;
+                alert("無法存取麥克風，請檢查權限：" + err.message);
             }
         }
 
-        // 安全新增 ICE Candidate (防止 remoteDescription 未就緒之例外)
-        async function addIceCandidateSafely(pc, candidate) {
-            if (!pc || !candidate) return;
-            try {
-                if (pc.remoteDescription && pc.remoteDescription.type) {
-                    await pc.addIceCandidate(new RTCIceCandidate(candidate));
-                } else {
-                    if (!pc._iceQueue) pc._iceQueue = [];
-                    pc._iceQueue.push(candidate);
-                }
-            } catch (e) {
-                console.warn("ICE error:", e);
+        function stopBroadcaster() {
+            if (localAudioStream) {
+                localAudioStream.getTracks().forEach(t => t.stop());
+                localAudioStream = null;
             }
+            Object.values(peerConnections).forEach(pc => pc.close());
+            peerConnections = {};
+
+            isStreaming = false;
+            mainToggleBtn.classList.remove('broadcasting');
+            mainBtnText.innerText = "開啟咪高風";
+            subHintText.innerText = "點擊上方按鈕開始超低延遲語音串流";
+            statusDot.className = 'status-dot active-connected';
+            linkStatusText.innerText = "ONLINE";
         }
 
-        // 廣播端：為新加入的接收者建立專屬 WebRTC 連線
-        async function createPeerConnectionForReceiver(targetPeerId) {
-            if (peerConnections.has(targetPeerId)) {
-                try { peerConnections.get(targetPeerId).close(); } catch(e) {}
-            }
-
+        async function initiatePeerConnection(targetReceiverId) {
             const pc = new RTCPeerConnection(rtcConfig);
-            peerConnections.set(targetPeerId, pc);
+            peerConnections[targetReceiverId] = pc;
 
-            const stream = await getLocalAudioStream();
-            if (stream) {
-                stream.getAudioTracks().forEach(track => {
-                    pc.addTrack(track, stream);
-                });
-            }
+            localAudioStream.getAudioTracks().forEach(track => {
+                pc.addTrack(track, localAudioStream);
+            });
 
-            pc.onicecandidate = (event) => {
-                if (event.candidate) {
-                    broadcastSecurePayload({
-                        type: 'webrtc_ice',
-                        target: targetPeerId,
-                        from: myPeerId,
-                        candidate: event.candidate
-                    });
-                }
-            };
-
-            pc.onconnectionstatechange = () => {
-                if (['disconnected', 'failed', 'closed'].includes(pc.connectionState)) {
-                    peerConnections.delete(targetPeerId);
+            pc.onicecandidate = (e) => {
+                if (e.candidate) {
+                    sendSignal({ type: 'candidate', from: myPeerId, target: targetReceiverId, candidate: e.candidate });
                 }
             };
 
             const offer = await pc.createOffer({
                 offerToReceiveAudio: false,
-                offerToReceiveVideo: false
+                offerToReceiveVideo: false,
+                voiceActivityDetection: false
             });
+
+            // 優化 Opus SDP: 限制最低延遲
+            offer.sdp = offer.sdp.replace('useinbandfec=1', 'useinbandfec=1;minptime=10;cbr=1');
             await pc.setLocalDescription(offer);
 
-            broadcastSecurePayload({
-                type: 'webrtc_offer',
-                target: targetPeerId,
-                from: myPeerId,
-                sdp: pc.localDescription
-            });
+            sendSignal({ type: 'offer', from: myPeerId, target: targetReceiverId, sdp: offer });
         }
 
-        // 接收端：初始化 WebRTC 接收端實例並發送問候邀請
-        async function initReceiverWebRTC() {
-            if (receiverPC) {
-                try { receiverPC.close(); } catch(e) {}
-            }
+        /* ------------------ 3. 接收端：播放音訊與擴音輸出 ------------------ */
+        async function handleRemoteOffer(broadcasterId, offerSdp) {
+            const pc = new RTCPeerConnection(rtcConfig);
+            peerConnections[broadcasterId] = pc;
 
-            receiverPC = new RTCPeerConnection(rtcConfig);
-            receiverPC._iceQueue = [];
-
-            receiverPC.ontrack = (event) => {
-                if (event.streams && event.streams[0]) {
-                    remoteAudio.srcObject = event.streams[0];
-                    playReceiverAudio();
+            pc.onicecandidate = (e) => {
+                if (e.candidate) {
+                    sendSignal({ type: 'candidate', from: myPeerId, target: broadcasterId, candidate: e.candidate });
                 }
             };
 
-            receiverPC.onicecandidate = (event) => {
-                if (event.candidate && broadcasterPeerId) {
-                    broadcastSecurePayload({
-                        type: 'webrtc_ice',
-                        target: broadcasterPeerId,
-                        from: myPeerId,
-                        candidate: event.candidate
-                    });
-                }
+            pc.ontrack = (event) => {
+                const stream = event.streams[0];
+                setupAudioContext(stream, true);
+
+                isReceiving = true;
+                mainToggleBtn.classList.add('receiving');
+                mainBtnText.innerText = "RECEIVING (播放中)";
+                subHintText.innerText = "已連線至麥克風發射端，音訊正在即時輸出";
+                statusDot.className = 'status-dot active-live';
+                linkStatusText.innerText = "LINKED LIVE";
             };
 
-            // 通知廣播端有人加入，請求發送音訊串流
-            broadcastSecurePayload({
-                type: 'peer_hello',
-                from: myPeerId
-            });
+            await pc.setRemoteDescription(new RTCSessionDescription(offerSdp));
+            const answer = await pc.createAnswer();
+            await pc.setLocalDescription(answer);
+
+            sendSignal({ type: 'answer', from: myPeerId, target: broadcasterId, sdp: answer });
         }
 
-        function playReceiverAudio() {
-            remoteAudio.play().then(() => {
-                audioUnmuteBanner.style.display = 'none';
-                updateAudioIcon(true);
-                showToast("語音零延遲串流中");
-            }).catch(err => {
-                console.warn("自動播放受瀏覽器策略限制，顯示解鎖按鈕:", err);
-                audioUnmuteBanner.style.display = 'flex';
-                updateAudioIcon(false);
-            });
-        }
-
-        function enableReceiverAudio() {
-            remoteAudio.play().then(() => {
-                audioUnmuteBanner.style.display = 'none';
-                updateAudioIcon(true);
-                showToast("實時聲音已開啟");
-            }).catch(e => console.error(e));
-        }
-
-        function updateAudioIcon(isPlaying) {
-            if (isPlaying) {
-                audioOnIcon.style.display = 'block';
-                audioOffIcon.style.display = 'none';
-                btnAudioToggle.classList.add('audio-active');
-            } else {
-                audioOnIcon.style.display = 'none';
-                audioOffIcon.style.display = 'block';
-                btnAudioToggle.classList.remove('audio-active');
+        /* ------------------ 4. 專業 Web Audio 增益放大與 LED 電平 ------------------ */
+        function setupAudioContext(stream, isPlaybackDestination) {
+            if (!audioContext) {
+                audioContext = new (window.AudioContext || window.webkitAudioContext)({
+                    latencyHint: 'interactive'
+                });
             }
-        }
 
-        function toggleAudioMonitor() {
-            if (currentMode === 'receive') {
-                if (remoteAudio.srcObject) {
-                    remoteAudio.muted = !remoteAudio.muted;
-                    updateAudioIcon(!remoteAudio.muted);
-                    showToast(remoteAudio.muted ? "音訊已靜音" : "音訊已開啟");
-                } else {
-                    showToast("等待廣播端音訊連線...");
-                }
-            } else if (currentMode === 'broadcast') {
-                if (localAudioStream) {
-                    const tracks = localAudioStream.getAudioTracks();
-                    if (tracks.length > 0) {
-                        const nextState = !tracks[0].enabled;
-                        tracks.forEach(t => t.enabled = nextState);
-                        updateAudioIcon(nextState);
-                        showToast(nextState ? "麥克風輸出已恢復" : "麥克風已靜音");
-                    }
-                }
+            if (audioContext.state === 'suspended') {
+                audioContext.resume();
             }
-        }
 
-        /* ------------------ 3. 靜態 3D 背景 ------------------ */
-        const canvas = document.getElementById('threeCanvas');
-        const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
-        renderer.setSize(window.innerWidth, window.innerHeight);
-        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+            const source = audioContext.createMediaStreamSource(stream);
+            gainNode = audioContext.createGain();
+            analyser = audioContext.createAnalyser();
 
-        const scene = new THREE.Scene();
-        const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 100);
-        camera.position.set(0, 0, 24);
+            analyser.fftSize = 64;
+            gainNode.gain.value = parseFloat(gainSlider.value);
 
-        const machineGroup = new THREE.Group();
-        scene.add(machineGroup);
+            source.connect(gainNode);
+            gainNode.connect(analyser);
 
-        const hoodMat = new THREE.MeshStandardMaterial({ color: 0x18191B, metalness: 0.85, roughness: 0.35 });
-        const bezelMat = new THREE.MeshStandardMaterial({ color: 0x242426, metalness: 0.9, roughness: 0.25 });
-
-        const chassis = new THREE.Mesh(new THREE.BoxGeometry(19.5, 23.5, 2.0), hoodMat);
-        chassis.position.z = -1.2;
-        machineGroup.add(chassis);
-
-        const topHood = new THREE.Mesh(new THREE.BoxGeometry(19.6, 0.35, 3.2), bezelMat);
-        topHood.position.set(0, 11.8, 0.4);
-        topHood.rotation.x = 0.15;
-        machineGroup.add(topHood);
-
-        const leftHood = new THREE.Mesh(new THREE.BoxGeometry(0.35, 23.6, 3.2), bezelMat);
-        leftHood.position.set(-9.85, 0, 0.4);
-        leftHood.rotation.y = -0.15;
-        machineGroup.add(leftHood);
-
-        const rightHood = leftHood.clone();
-        rightHood.position.x = 9.85;
-        rightHood.rotation.y = 0.15;
-        machineGroup.add(rightHood);
-
-        scene.add(new THREE.AmbientLight(0xffffff, 0.4));
-        const keyLight = new THREE.DirectionalLight(0xB89B72, 0.65);
-        keyLight.position.set(10, 15, 18);
-        scene.add(keyLight);
-
-        function renderStatic3D() { renderer.render(scene, camera); }
-        window.addEventListener('resize', () => {
-            camera.aspect = window.innerWidth / window.innerHeight;
-            camera.updateProjectionMatrix();
-            renderer.setSize(window.innerWidth, window.innerHeight);
-            renderStatic3D();
-        });
-        renderStatic3D();
-
-        /* ------------------ 4. 繁體字校準 ------------------ */
-        let hkConverter = null;
-        try {
-            if (window.OpenCC) {
-                hkConverter = window.OpenCC.Converter({ from: 'cn', to: 'hk' });
+            if (isPlaybackDestination) {
+                // 接收端將聲音導向喇叭輸出
+                gainNode.connect(audioContext.destination);
             }
-        } catch (e) {}
 
-        function convertToHK(str) {
-            if (!str) return '';
-            if (hkConverter) {
-                try { return hkConverter(str); } catch(e) {}
-            }
-            return str;
+            drawVisualizer();
         }
 
-        function cleanString(str) {
-            return (str || '').replace(/[，。？！、\s\.,!\?…—]/g, '');
+        function updateGain(val) {
+            const num = parseFloat(val);
+            if (gainNode) gainNode.gain.value = num;
+            gainValueDisplay.innerText = Math.round(num * 100) + '%';
         }
 
-        const fontToast = document.getElementById('fontToast');
-        let toastTimer = null;
-        function showToast(msg) {
-            fontToast.innerText = msg;
-            fontToast.classList.add('show');
-            clearTimeout(toastTimer);
-            toastTimer = setTimeout(() => fontToast.classList.remove('show'), 1500);
-        }
+        /* ------------------ 5. 畫布：LED 級聯電平動態繪製 ------------------ */
+        const canvas = document.getElementById('visualizerCanvas');
+        const ctx = canvas.getContext('2d');
 
-        /* ------------------ 5. 粵語句組引擎 ------------------ */
-        const QUESTION_ENDINGS = /(點解|係咪|係唔係|係未|得唔得|好唔好|幾時|邊個|邊度|邊處|點樣|點做|點算|成點|做咩|做乜|做乜嘢|嗎|下話|得未|好未|係咪呀|係唔係呀|點樣呀|做咩呀|邊個呀|幾時呀)$/;
-        const EXCLAMATION_ENDINGS = /(太好喇|好犀利|超勁|正呀|好正|利害|搞錯|痴線|唔係卦|救命|嘩|哇|好嘢|真係誇張|真係正|勁呀|正話|好痛呀|好正呀)$/;
-
-        const cantoScroll = document.getElementById('cantoScroll');
-        const cantoStream = document.getElementById('cantoStream');
-        const interimPart = document.getElementById('interimPart');
-
-        let autoScrollCanto = true;
-        let confirmedPlainHistory = "";
-        let lastFinalCleanText = "";
-        let lastFinalTimestamp = 0;
-
-        const groupList = [];
-        let currentGroup = null;
-        let longPauseTimer = null;
-
-        const MAX_VALID_SENTENCES_PER_GROUP = 3;
-        const LONG_PAUSE_THRESHOLD = 1400;
-
-        cantoScroll.addEventListener('scroll', () => {
-            if (!pipWindow || pipWindow.closed) {
-                autoScrollCanto = (cantoScroll.scrollHeight - cantoScroll.scrollTop - cantoScroll.clientHeight) < 120;
-            }
-        });
-
-        function scrollCantoToBottom() {
-            if (pipWindow && !pipWindow.closed) {
-                cantoScroll.scrollTop = 0;
+        function drawVisualizer() {
+            requestAnimationFrame(drawVisualizer);
+            if (!analyser) {
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
                 return;
             }
 
-            if (autoScrollCanto) {
-                requestAnimationFrame(() => {
-                    cantoScroll.scrollTop = cantoScroll.scrollHeight;
+            const dataArray = new Uint8Array(analyser.frequencyBinCount);
+            analyser.getByteFrequencyData(dataArray);
+
+            ctx.fillStyle = '#0E0F10';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            let sum = 0;
+            for (let i = 0; i < dataArray.length; i++) sum += dataArray[i];
+            const avg = sum / dataArray.length; // 0 ~ 255
+
+            // 繪製 LED 柱段 (橫向多格立體表)
+            const numBars = 32;
+            const barWidth = (canvas.width / numBars) - 3;
+            const levelRatio = avg / 120; // 敏感度系數
+
+            for (let i = 0; i < numBars; i++) {
+                const threshold = i / numBars;
+                let barColor = '#242528';
+
+                if (levelRatio > threshold) {
+                    if (threshold > 0.85) barColor = '#D94A43'; // 紅色過載峰值
+                    else if (threshold > 0.65) barColor = '#C5A059'; // 琥珀警戒
+                    else barColor = '#3EB370'; // 綠色正常
+                }
+
+                ctx.fillStyle = barColor;
+                const barHeight = Math.min(canvas.height - 16, Math.max(8, (avg * 0.7)));
+                ctx.fillRect(i * (barWidth + 3) + 4, (canvas.height - barHeight) / 2, barWidth, barHeight);
+            }
+        }
+
+        /* ------------------ 6. 操作邏輯與角色切換 ------------------ */
+        function switchRole(role) {
+            if (isStreaming) stopBroadcaster();
+            myRole = role;
+
+            btnRoleBroadcast.classList.remove('mode-active');
+            btnRoleReceiver.classList.remove('mode-active');
+            mainToggleBtn.className = 'big-push-btn';
+
+            if (role === 'broadcaster') {
+                btnRoleBroadcast.classList.add('mode-active');
+                btnIconMic.style.display = 'block';
+                btnIconSpeaker.style.display = 'none';
+                mainBtnText.innerText = "開啟咪高風";
+                gainLabel.innerText = "咪增益 / MIC GAIN";
+                subHintText.innerText = "點擊上方按鈕開始超低延遲語音串流";
+            } else {
+                btnRoleReceiver.classList.add('mode-active');
+                btnIconMic.style.display = 'none';
+                btnIconSpeaker.style.display = 'block';
+                mainBtnText.innerText = "啟用音響播放";
+                gainLabel.innerText = "喇叭音量 / VOLUME";
+                subHintText.innerText = "點擊以允許瀏覽器播放音訊串流";
+            }
+            updateURLParams();
+        }
+
+        function handleMainAction() {
+            // 解除瀏覽器音訊限制
+            if (audioContext && audioContext.state === 'suspended') {
+                audioContext.resume();
+            }
+
+            if (myRole === 'broadcaster') {
+                if (!isStreaming) startBroadcaster();
+                else stopBroadcaster();
+            } else {
+                // 接收端點擊以解鎖音訊自動播放機制
+                if (!audioContext) {
+                    audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                }
+                audioContext.resume().then(() => {
+                    mainBtnText.innerText = "音訊已就緒";
+                    subHintText.innerText = "已解鎖音響播放權限，正等待發射端傳送聲音...";
+                    sendSignal({ type: 'receiver-ready', from: myPeerId });
                 });
             }
         }
 
-        function extractNonOverlappingDelta(incomingText) {
-            if (!incomingText) return "";
-            const cleanIncoming = cleanString(incomingText);
-            if (!cleanIncoming) return "";
-            if (!confirmedPlainHistory) return incomingText.trim();
-
-            const recentHistory = confirmedPlainHistory.slice(-200);
-            if (cleanIncoming.length >= 3 && recentHistory.includes(cleanIncoming)) return "";
-            if (recentHistory.endsWith(cleanIncoming)) return "";
-
-            const maxLen = Math.min(recentHistory.length, cleanIncoming.length);
-            let overlapLen = 0;
-            for (let len = maxLen; len >= 1; len--) {
-                if (recentHistory.endsWith(cleanIncoming.slice(0, len))) {
-                    overlapLen = len;
-                    break;
-                }
-            }
-            if (overlapLen === cleanIncoming.length) return "";
-
-            if (overlapLen > 0) {
-                let cleanCount = 0;
-                let cutIndex = 0;
-                for (let i = 0; i < incomingText.length; i++) {
-                    if (!/[，。？！、\s\.,!\?…—]/.test(incomingText[i])) cleanCount++;
-                    if (cleanCount === overlapLen) {
-                        cutIndex = i + 1;
-                        break;
-                    }
-                }
-                return incomingText.slice(cutIndex).trim();
-            }
-            return incomingText.trim();
+        function updateURLParams() {
+            roomCodeDisplay.innerText = currentRoomId;
+            modalRoomNum.innerText = currentRoomId;
+            const newUrl = `${window.location.origin}${window.location.pathname}?room=${currentRoomId}&role=${myRole}`;
+            window.history.replaceState(null, '', newUrl);
         }
 
-        const wordSegmenter = (typeof Intl !== 'undefined' && Intl.Segmenter)
-            ? new Intl.Segmenter('zh-HK', { granularity: 'word' }) : null;
+        /* ------------------ 7. 配對彈窗與 QR Code ------------------ */
+        const pairModal = document.getElementById('pairModal');
+        const qrContainer = document.getElementById('qrContainer');
 
-        const LEXICON = {
-            strongParticles: new Set(['啦', '喇', '㗎', '喎', '囉', '啫', '咋', '添', '之嘛', '喇喎', '㗎啦', '㗎喇', '㗎咋', '咩', '呢', '呀嘛', '嗎', '下話', '嘅']),
-            connectives: new Set(['但係', '不過', '然而', '跟住', '然後', '所以', '因此', '而且', '即係話', '另外', '總之', '事實上', '仲有', '反之', '換言之', '其實']),
-            starters: new Set(['我哋', '你哋', '佢哋', '大家', '其實我', '如果', '因為', '咁樣']),
-            glueWords: new Set(['緊', '咗', '過', '嘅', '同埋', '一齊', '喺', '去', '想', '要'])
-        };
+        function openPairModal() {
+            pairModal.classList.add('active');
+            qrContainer.innerHTML = '';
 
-        function splitIntoSemanticClauses(rawText) {
-            if (!rawText) return [];
-            const text = rawText.trim().replace(/^[，。？！、\.,!\?\s…—]+|[，。？！、\.,!\?\s…—]+$/g, '');
-            if (!text) return [];
-            if (cleanString(text).length <= 7) return [text];
+            // 生成專門讓另一台手機直接以「接收」或「發射」配對的連結
+            const oppositeRole = (myRole === 'broadcaster') ? 'receiver' : 'broadcaster';
+            const targetUrl = `${window.location.origin}${window.location.pathname}?room=${currentRoomId}&role=${oppositeRole}`;
 
-            const rawBlocks = text.split(/[，。？！、\.,!\?\n\r]+/);
-            const finalClauses = [];
-
-            for (let block of rawBlocks) {
-                block = block.trim();
-                const blockClean = cleanString(block);
-                if (!blockClean) continue;
-                if (blockClean.length <= 8) {
-                    finalClauses.push(block);
-                    continue;
-                }
-
-                let words = wordSegmenter ? Array.from(wordSegmenter.segment(block)).map(s => s.segment) : block.split('');
-                let currentClause = "";
-                let splitScore = 0;
-
-                for (let i = 0; i < words.length; i++) {
-                    const word = words[i];
-                    const nextWord = words[i + 1] || "";
-                    currentClause += word;
-
-                    const curLen = cleanString(currentClause).length;
-                    const remainingLen = cleanString(words.slice(i + 1).join('')).length;
-
-                    if (remainingLen < 3) continue;
-
-                    splitScore = 0;
-                    if (curLen >= 6) splitScore += (curLen - 5) * 6;
-                    if (LEXICON.strongParticles.has(word)) splitScore += 40;
-                    if (LEXICON.connectives.has(nextWord)) splitScore += 45;
-                    if (LEXICON.starters.has(nextWord) && curLen >= 6) splitScore += 30;
-                    if (LEXICON.glueWords.has(word)) splitScore -= 40;
-
-                    if (splitScore >= 65 || curLen >= 13) {
-                        finalClauses.push(currentClause.trim());
-                        currentClause = "";
-                    }
-                }
-                if (currentClause.trim()) finalClauses.push(currentClause.trim());
-            }
-            return finalClauses.filter(c => cleanString(c).length > 0);
-        }
-
-        function getClausePunctuation(rawClauseText, isGroupFinalClause = false) {
-            const clean = cleanString(rawClauseText);
-            if (QUESTION_ENDINGS.test(clean)) return '？';
-            if (EXCLAMATION_ENDINGS.test(clean)) return '！';
-            if (isGroupFinalClause) return '。';
-            return '，';
-        }
-
-        function renderGroupText(group, isFinalized = false) {
-            const clauses = group.clauses;
-            if (clauses.length === 0) return "";
-            let fullStr = "";
-            for (let i = 0; i < clauses.length; i++) {
-                const pureText = clauses[i].replace(/[，。？！、\.,!\?\s…—]+$/g, '').trim();
-                if (!pureText) continue;
-                const isLast = (i === clauses.length - 1);
-                const punct = getClausePunctuation(pureText, isLast && isFinalized);
-                fullStr += pureText + punct;
-            }
-            return fullStr;
-        }
-
-        function refreshGroupHighlights() {
-            const total = groupList.length;
-            groupList.forEach((group, index) => {
-                if (index === total - 1) {
-                    group.elem.classList.remove('past');
-                    group.elem.classList.add('active-latest');
-                } else {
-                    group.elem.classList.remove('active-latest');
-                    group.elem.classList.add('past');
-                }
-            });
-        }
-
-        function createNewGroup() {
-            const groupElem = document.createElement('div');
-            groupElem.className = 'phrase-group active-latest';
-            cantoStream.insertBefore(groupElem, interimPart);
-
-            const newGroup = { elem: groupElem, clauses: [], validCount: 0, fullText: "" };
-            groupList.push(newGroup);
-
-            if (groupList.length > 50) {
-                const old = groupList.shift();
-                if (old?.elem?.parentNode) old.elem.parentNode.removeChild(old.elem);
-            }
-            refreshGroupHighlights();
-            return newGroup;
-        }
-
-        /* ------------------ PiP 懸浮視窗專用：走馬燈計算引擎 ------------------ */
-        function resetPipMarquee() {
-            groupList.forEach(g => {
-                if (g && g.elem) {
-                    g.elem.classList.remove('pip-marquee');
-                    g.elem.style.removeProperty('--marquee-dist');
-                    g.elem.style.removeProperty('--marquee-duration');
-                }
-            });
-        }
-
-        function applyPipMarqueeIfNeeded(groupElem) {
-            if (!pipWindow || pipWindow.closed || !groupElem) return;
-
-            groupElem.classList.remove('pip-marquee');
-            groupElem.style.removeProperty('--marquee-dist');
-            groupElem.style.removeProperty('--marquee-duration');
-            cantoScroll.scrollLeft = 0;
-
-            requestAnimationFrame(() => {
-                if (!pipWindow || pipWindow.closed) return;
-                cantoScroll.scrollLeft = 0;
-
-                const containerWidth = cantoScroll.clientWidth - 56;
-                const textWidth = groupElem.scrollWidth;
-
-                if (textWidth > containerWidth) {
-                    const distance = textWidth - containerWidth + 40;
-                    const duration = Math.max(7, Math.round(distance / 42));
-                    groupElem.style.setProperty('--marquee-dist', `${distance}px`);
-                    groupElem.style.setProperty('--marquee-duration', `${duration}s`);
-                    groupElem.classList.add('pip-marquee');
-                }
-            });
-        }
-
-        function finalizeCurrentGroup() {
-            clearTimeout(longPauseTimer);
-            longPauseTimer = null;
-            if (!currentGroup) return;
-
-            currentGroup.fullText = renderGroupText(currentGroup, true);
-            currentGroup.elem.textContent = currentGroup.fullText;
-
-            cantoStream.classList.remove('has-interim');
-            const finalizedElem = currentGroup.elem;
-            const fullTextToSend = currentGroup.fullText;
-
-            if (currentMode === 'broadcast') {
-                broadcastSecurePayload({ type: 'finalize', fullText: fullTextToSend });
-            }
-
-            currentGroup = null;
-            refreshGroupHighlights();
-            applyPipMarqueeIfNeeded(finalizedElem);
-        }
-
-        function commitSpeechDelta(rawText) {
-            clearTimeout(longPauseTimer);
-            let delta = convertToHK(rawText).trim();
-            delta = extractNonOverlappingDelta(delta);
-            if (!delta) return;
-
-            const semanticClauses = splitIntoSemanticClauses(delta);
-            if (semanticClauses.length === 0) return;
-
-            for (const clause of semanticClauses) {
-                const cleanLen = cleanString(clause).length;
-                if (cleanLen === 0) continue;
-                const cleanClause = cleanString(clause);
-                if (confirmedPlainHistory.endsWith(cleanClause)) continue;
-
-                const isValidSentence = cleanLen > 5;
-                if (!currentGroup) currentGroup = createNewGroup();
-
-                currentGroup.clauses.push(clause);
-                if (isValidSentence) currentGroup.validCount++;
-
-                currentGroup.fullText = renderGroupText(currentGroup, false);
-                currentGroup.elem.textContent = currentGroup.fullText;
-
-                confirmedPlainHistory += cleanClause;
-                if (confirmedPlainHistory.length > 1000) confirmedPlainHistory = confirmedPlainHistory.slice(-600);
-
-                if (currentMode === 'broadcast') {
-                    broadcastSecurePayload({ type: 'update_group', fullText: currentGroup.fullText });
-                }
-
-                if (currentGroup.validCount >= MAX_VALID_SENTENCES_PER_GROUP) {
-                    finalizeCurrentGroup();
-                }
-            }
-
-            refreshGroupHighlights();
-            scrollCantoToBottom();
-
-            if (currentGroup) {
-                longPauseTimer = setTimeout(() => { finalizeCurrentGroup(); }, LONG_PAUSE_THRESHOLD);
-            }
-        }
-
-        /* ------------------ 6. 語音辨識機制 ------------------ */
-        function handleSpeechInterim(interim) {
-            if (!interim || !interim.trim()) {
-                cantoStream.classList.remove('has-interim');
-                interimPart.textContent = "";
-                if (currentMode === 'broadcast') broadcastSecurePayload({ type: 'interim', text: "" });
-                return;
-            }
-
-            let delta = extractNonOverlappingDelta(convertToHK(interim.trim()));
-            if (!delta) {
-                delta = convertToHK(interim.trim());
-            }
-
-            resetPipMarquee();
-            cantoStream.classList.add('has-interim');
-            interimPart.textContent = delta;
-
-            if (currentMode === 'broadcast') {
-                broadcastSecurePayload({ type: 'interim', text: delta });
-            }
-
-            if (pipWindow && !pipWindow.closed) {
-                requestAnimationFrame(() => {
-                    if (cantoScroll.scrollWidth > cantoScroll.clientWidth) {
-                        cantoScroll.scrollLeft = cantoScroll.scrollWidth - cantoScroll.clientWidth + 20;
-                    }
-                });
-            } else {
-                scrollCantoToBottom();
-            }
-        }
-
-        function handleSpeechFinal(finalText) {
-            if (!finalText || !finalText.trim()) return;
-            const cleanFinal = cleanString(finalText);
-            const now = Date.now();
-            if (cleanFinal === lastFinalCleanText && (now - lastFinalTimestamp < 1800)) {
-                cantoStream.classList.remove('has-interim');
-                interimPart.textContent = "";
-                if (currentMode === 'broadcast') broadcastSecurePayload({ type: 'interim', text: "" });
-                return;
-            }
-            lastFinalCleanText = cleanFinal;
-            lastFinalTimestamp = now;
-            cantoStream.classList.remove('has-interim');
-            interimPart.textContent = "";
-            if (currentMode === 'broadcast') broadcastSecurePayload({ type: 'interim', text: "" });
-            commitSpeechDelta(finalText);
-        }
-
-        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-        let recognition = null;
-        let userWantsListening = false;
-        let isEngineRunning = false;
-        let wakeLock = null;
-        let restartDebounce = null;
-
-        const playIcon = document.getElementById('playIcon');
-        const pauseIcon = document.getElementById('pauseIcon');
-
-        async function acquireWakeLock() {
-            try {
-                if ('wakeLock' in navigator && !wakeLock) {
-                    wakeLock = await navigator.wakeLock.request('screen');
-                    wakeLock.addEventListener('release', () => { wakeLock = null; });
-                }
-            } catch (err) {}
-        }
-
-        function releaseWakeLock() {
-            if (wakeLock) {
-                wakeLock.release().catch(() => {});
-                wakeLock = null;
-            }
-        }
-
-        function scheduleSafeRestart() {
-            if (!userWantsListening) return;
-            clearTimeout(restartDebounce);
-            restartDebounce = setTimeout(() => {
-                if (userWantsListening && !isEngineRunning && recognition) {
-                    try { recognition.start(); } catch (e) {}
-                }
-            }, 80);
-        }
-
-        if (SpeechRecognition && !isReceiverMode) {
-            recognition = new SpeechRecognition();
-            recognition.continuous = true;
-            recognition.interimResults = true;
-            recognition.lang = 'zh-HK';
-            recognition.maxAlternatives = 1;
-
-            recognition.onstart = () => {
-                isEngineRunning = true;
-                toggleBtn.classList.add('active');
-                playIcon.style.display = 'none';
-                pauseIcon.style.display = 'block';
-            };
-
-            recognition.onresult = (event) => {
-                let interim = '';
-                for (let i = event.resultIndex; i < event.results.length; ++i) {
-                    const res = event.results[i];
-                    if (!res || !res[0]) continue;
-                    if (res.isFinal) handleSpeechFinal(res[0].transcript);
-                    else interim += res[0].transcript;
-                }
-                if (interim) handleSpeechInterim(interim);
-            };
-
-            recognition.onerror = (e) => {
-                if (e.error === 'not-allowed') {
-                    userWantsListening = false;
-                    stopListeningUI();
-                } else scheduleSafeRestart();
-            };
-
-            recognition.onend = () => {
-                isEngineRunning = false;
-                cantoStream.classList.remove('has-interim');
-                interimPart.textContent = "";
-                if (userWantsListening) scheduleSafeRestart();
-                else stopListeningUI();
-            };
-        }
-
-        async function toggleSpeech() {
-            if (!recognition) return alert("瀏覽器不支援語音辨識。");
-
-            if (userWantsListening) {
-                userWantsListening = false;
-                if (restartDebounce) clearTimeout(restartDebounce);
-                finalizeCurrentGroup();
-                releaseWakeLock();
-                try { recognition.stop(); } catch(e) {}
-                
-                // 暫停廣播端麥克風音訊輸出
-                if (localAudioStream) {
-                    localAudioStream.getAudioTracks().forEach(t => t.enabled = false);
-                    updateAudioIcon(false);
-                }
-                stopListeningUI();
-            } else {
-                userWantsListening = true;
-                acquireWakeLock();
-
-                // 啟動廣播端硬體麥克風
-                if (currentMode === 'broadcast') {
-                    const stream = await getLocalAudioStream();
-                    if (stream) {
-                        stream.getAudioTracks().forEach(t => t.enabled = true);
-                        updateAudioIcon(true);
-                    }
-                }
-                scheduleSafeRestart();
-            }
-        }
-
-        function stopListeningUI() {
-            toggleBtn.classList.remove('active');
-            playIcon.style.display = 'block';
-            pauseIcon.style.display = 'none';
-            cantoStream.classList.remove('has-interim');
-            interimPart.textContent = "";
-        }
-
-        /* ------------------ 7. 加密傳輸與信令 (字詞 + WebRTC) ------------------ */
-        async function broadcastSecurePayload(payload) {
-            if (mqttClient && mqttClient.connected) {
-                const encryptedString = await encryptPayload(payload);
-                mqttClient.publish(`canto/room_${currentRoomId}`, encryptedString);
-            }
-        }
-
-        async function initReceiverCloud() {
-            await initEncryptionKey(currentSecretKey);
-            if (mqttClient) {
-                try { mqttClient.end(); } catch (e) {}
-            }
-            mqttClient = mqtt.connect('wss://broker.emqx.io:8084/mqtt', { clean: true });
-            
-            mqttClient.on('connect', () => {
-                mqttClient.subscribe(`canto/room_${currentRoomId}`);
-                showToast("已同步房間，正在建立實時音訊...");
-                initReceiverWebRTC();
-            });
-
-            mqttClient.on('message', async (topic, msg) => {
-                const data = await decryptPayload(msg.toString());
-                if (!data) return;
-
-                // WebRTC 信令處理 (端到端直接接通音訊)
-                if (data.type === 'webrtc_offer' && data.target === myPeerId) {
-                    broadcasterPeerId = data.from;
-                    if (!receiverPC) await initReceiverWebRTC();
-                    await receiverPC.setRemoteDescription(new RTCSessionDescription(data.sdp));
-
-                    // 處理佇列中的 ICE candidate
-                    if (receiverPC._iceQueue && receiverPC._iceQueue.length > 0) {
-                        for (const c of receiverPC._iceQueue) {
-                            await receiverPC.addIceCandidate(new RTCIceCandidate(c)).catch(() => {});
-                        }
-                        receiverPC._iceQueue = [];
-                    }
-
-                    const answer = await receiverPC.createAnswer();
-                    await receiverPC.setLocalDescription(answer);
-
-                    broadcastSecurePayload({
-                        type: 'webrtc_answer',
-                        target: broadcasterPeerId,
-                        from: myPeerId,
-                        sdp: receiverPC.localDescription
-                    });
-                    return;
-                }
-
-                if (data.type === 'webrtc_ice' && data.target === myPeerId) {
-                    if (receiverPC) {
-                        await addIceCandidateSafely(receiverPC, data.candidate);
-                    }
-                    return;
-                }
-
-                // 提詞字詞串流處理
-                if (data.type === 'interim') {
-                    const text = data.text || "";
-                    if (text) {
-                        resetPipMarquee();
-                        cantoStream.classList.add('has-interim');
-                        interimPart.textContent = text;
-
-                        if (pipWindow && !pipWindow.closed) {
-                            requestAnimationFrame(() => {
-                                if (cantoScroll.scrollWidth > cantoScroll.clientWidth) {
-                                    cantoScroll.scrollLeft = cantoScroll.scrollWidth - cantoScroll.clientWidth + 20;
-                                }
-                            });
-                        } else {
-                            scrollCantoToBottom();
-                        }
-                    } else {
-                        cantoStream.classList.remove('has-interim');
-                        interimPart.textContent = "";
-                    }
-                } else if (data.type === 'update_group') {
-                    cantoStream.classList.remove('has-interim');
-                    interimPart.textContent = ""; 
-
-                    if (!currentGroup) currentGroup = createNewGroup();
-                    currentGroup.fullText = data.fullText;
-                    currentGroup.elem.textContent = data.fullText;
-                    refreshGroupHighlights();
-                    
-                    if (pipWindow && !pipWindow.closed) {
-                        requestAnimationFrame(() => {
-                            if (cantoScroll.scrollWidth > cantoScroll.clientWidth) {
-                                cantoScroll.scrollLeft = cantoScroll.scrollWidth - cantoScroll.clientWidth + 20;
-                            }
-                        });
-                    } else {
-                        scrollCantoToBottom();
-                    }
-                } else if (data.type === 'finalize') {
-                    cantoStream.classList.remove('has-interim');
-                    interimPart.textContent = ""; 
-
-                    let elemToMarquee = null;
-                    if (currentGroup) {
-                        currentGroup.fullText = data.fullText;
-                        currentGroup.elem.textContent = data.fullText;
-                        elemToMarquee = currentGroup.elem;
-                        currentGroup = null;
-                        refreshGroupHighlights();
-                    } else if (groupList.length > 0) {
-                        const last = groupList[groupList.length - 1];
-                        if (last && data.fullText) {
-                            last.fullText = data.fullText;
-                            last.elem.textContent = data.fullText;
-                            elemToMarquee = last.elem;
-                        }
-                    }
-
-                    if (elemToMarquee) {
-                        applyPipMarqueeIfNeeded(elemToMarquee);
-                    }
-                }
-            });
-        }
-
-        async function switchToBroadcastMode() {
-            if (currentMode === 'broadcast') {
-                openQrModal();
-                return;
-            }
-            currentMode = 'broadcast';
-
-            if (!currentRoomId) currentRoomId = String(Math.floor(100000 + Math.random() * 900000));
-            if (!currentSecretKey) currentSecretKey = Math.random().toString(36).substring(2, 8).toUpperCase();
-
-            await initEncryptionKey(currentSecretKey);
-
-            if (!mqttClient) {
-                mqttClient = mqtt.connect('wss://broker.emqx.io:8084/mqtt', { clean: true });
-            }
-
-            mqttClient.on('connect', () => {
-                mqttClient.subscribe(`canto/room_${currentRoomId}`);
-            });
-
-            // 廣播端監聽來自接收端的信令請求
-            mqttClient.on('message', async (topic, msg) => {
-                if (currentMode !== 'broadcast') return;
-                const data = await decryptPayload(msg.toString());
-                if (!data) return;
-
-                if (data.type === 'peer_hello') {
-                    // 新接收者上線，為其建立零延遲音訊連線
-                    createPeerConnectionForReceiver(data.from);
-                } else if (data.type === 'webrtc_answer' && data.target === myPeerId) {
-                    const pc = peerConnections.get(data.from);
-                    if (pc) {
-                        await pc.setRemoteDescription(new RTCSessionDescription(data.sdp));
-                    }
-                } else if (data.type === 'webrtc_ice' && data.target === myPeerId) {
-                    const pc = peerConnections.get(data.from);
-                    if (pc && data.candidate) {
-                        await addIceCandidateSafely(pc, data.candidate);
-                    }
-                }
-            });
-
-            // 預先取得麥克風收音權限
-            await getLocalAudioStream();
-            updateAudioIcon(true);
-
-            updateUIState();
-            setupMinimalQR();
-            openQrModal();
-        }
-
-        function switchToSoloMode() {
-            currentMode = 'solo';
-            if (mqttClient) {
-                try { mqttClient.end(); } catch(e) {}
-                mqttClient = null;
-            }
-            peerConnections.forEach(pc => pc.close());
-            peerConnections.clear();
-            updateUIState();
-        }
-
-        function setupMinimalQR() {
-            const currentUrl = `${window.location.origin}${window.location.pathname}?room=${currentRoomId}#${currentSecretKey}`;
-            
-            document.getElementById('roomLinkText').innerText = currentUrl;
-            document.getElementById('qrRoomCodeDisplay').innerText = currentRoomId;
-            document.getElementById('qrSecretKeyDisplay').innerText = currentSecretKey;
-
-            const qrContainer = document.getElementById('qrContainer');
-            qrContainer.innerHTML = "";
             new QRCode(qrContainer, {
-                text: currentUrl,
+                text: targetUrl,
                 width: 170,
                 height: 170,
-                colorDark: "#18191B",
-                colorLight: "#E6E2D6",
+                colorDark: "#121315",
+                colorLight: "#FFFFFF",
                 correctLevel: QRCode.CorrectLevel.M
             });
         }
 
-        function copyShareLink() {
-            const currentUrl = `${window.location.origin}${window.location.pathname}?room=${currentRoomId}#${currentSecretKey}`;
-            const shareText = `【粵語提詞器同步】\n純數字房間號：${currentRoomId}\n密鑰：${currentSecretKey}\n連結：${currentUrl}`;
-            navigator.clipboard.writeText(shareText).then(() => {
-                showToast("已複製房間資訊");
-            }).catch(() => {
-                navigator.clipboard.writeText(currentUrl).then(() => showToast("已複製連結"));
-            });
+        function closePairModal() { pairModal.classList.remove('active'); }
+        function closeModalOnBackdrop(e) { if (e.target === pairModal) closePairModal(); }
+
+        function submitManualJoin() {
+            const val = document.getElementById('inputJoinRoom').value.replace(/\D/g, '').trim();
+            if (val.length < 4) return alert("請輸入有效的房間號碼");
+            currentRoomId = val;
+            updateURLParams();
+            closePairModal();
+            initSignaling();
         }
 
-        /* ------------------ 純數字房間手動加入機制 ------------------ */
-        const joinModal = document.getElementById('joinModal');
-        function openJoinModal() { joinModal.classList.add('active'); }
-        function closeJoinModal() { joinModal.classList.remove('active'); }
-
-        async function submitJoinRoom() {
-            let r = document.getElementById('inputRoomId').value.replace(/\D/g, '').trim();
-            const k = document.getElementById('inputSecretKey').value.trim();
-
-            if (!r || r.length < 4) {
-                return alert("請填寫正確的純數字房間號碼！");
-            }
-            if (!k) {
-                return alert("請填寫連線密鑰！");
-            }
-
-            currentMode = 'receive';
-            currentRoomId = r;
-            currentSecretKey = k;
-
-            const newUrl = `${window.location.origin}${window.location.pathname}?room=${currentRoomId}#${currentSecretKey}`;
-            window.history.replaceState(null, '', newUrl);
-
-            updateUIState();
-            closeJoinModal();
-            await initReceiverCloud();
-        }
-
-        const qrModal = document.getElementById('qrModal');
-        function openQrModal() { qrModal.classList.add('active'); }
-        function closeQrModal() { qrModal.classList.remove('active'); }
-
-        updateUIState();
-        if (isReceiverMode) {
-            initReceiverCloud();
-        }
-
-        /* ------------------ 8. 主視窗字體調節 ------------------ */
-        const fontScales = [
-            { name: "標準", canto: "2.15rem" },
-            { name: "放大", canto: "2.60rem" },
-            { name: "特大", canto: "3.10rem" }
-        ];
-        let currentScaleIdx = 0;
-
-        function cycleFontSize() {
-            currentScaleIdx = (currentScaleIdx + 1) % fontScales.length;
-            const cur = fontScales[currentScaleIdx];
-            document.documentElement.style.setProperty('--cantonese-size', cur.canto);
-            showToast(`主字體 ${cur.name}`);
-            scrollCantoToBottom();
-        }
-
-        /* ------------------ 9. 懸浮字幕大小多級調節 ------------------ */
-        const pipFontScales = [
-            { name: "極小 (-2級)", size: "1.40rem" },
-            { name: "緊湊 (-1級)", size: "1.75rem" },
-            { name: "標準", size: "2.15rem" },
-            { name: "放大 (+1級)", size: "2.55rem" },
-            { name: "特大 (+2級)", size: "3.00rem" }
-        ];
-        let currentPipScaleIdx = 2;
-
-        function cyclePipFontSize() {
-            currentPipScaleIdx = (currentPipScaleIdx + 1) % pipFontScales.length;
-            const cur = pipFontScales[currentPipScaleIdx];
-            
-            document.documentElement.style.setProperty('--pip-cantonese-size', cur.size);
-
-            if (pipWindow && !pipWindow.closed) {
-                pipWindow.document.documentElement.style.setProperty('--pip-cantonese-size', cur.size);
-                if (groupList.length > 0) {
-                    const lastGroup = groupList[groupList.length - 1];
-                    if (lastGroup && lastGroup.elem) {
-                        applyPipMarqueeIfNeeded(lastGroup.elem);
-                    }
-                }
-            }
-
-            showToast(`懸浮字幕: ${cur.name}`);
-        }
-
-        /* ------------------ 10. 粵拼注音與朗讀 ------------------ */
-        const modal = document.getElementById('phoneticModal');
-        const modalContent = document.getElementById('modalContent');
-        const ttsStatus = document.getElementById('ttsStatus');
-        let currentPureText = "";
-
-        function getAllRecognizedText() {
-            return groupList.map(item => item.fullText).join('') + interimPart.textContent;
-        }
-
-        async function fetchJyutpingRubyHTML(text) {
-            if (!text) return "";
-            if (!window.ToJyutping) {
-                try {
-                    const mod = await import('https://cdn.jsdelivr.net/npm/to-jyutping@3.1.1/+esm');
-                    window.ToJyutping = mod.default || mod;
-                } catch (e) {}
-            }
-
-            let html = "";
-            if (window.ToJyutping && typeof window.ToJyutping.getJyutpingList === 'function') {
-                try {
-                    const list = window.ToJyutping.getJyutpingList(text);
-                    for (const [char, rawJp] of list) {
-                        if (char === '\n') {
-                            html += '<div style="flex-basis: 100%; height: 8px;"></div>';
-                            continue;
-                        }
-                        if (rawJp) {
-                            html += `<ruby class="jp-ruby"><span class="c-char">${char}</span><rt class="c-rt">${rawJp}</rt></ruby>`;
-                        } else {
-                            html += `<span class="jp-punct">${char}</span>`;
-                        }
-                    }
-                    return html;
-                } catch (err) {}
-            }
-            return text;
-        }
-
-        async function openPhoneticModal() {
-            const fullText = getAllRecognizedText().trim();
-            currentPureText = cleanString(fullText);
-
-            if (!fullText) {
-                modalContent.innerHTML = "<div style='color:var(--text-muted); font-size:1rem; padding:10px; font-family:var(--font-mono);'>NO TEXT RECORDED</div>";
-                modal.classList.add('active');
-                return;
-            }
-
-            modalContent.innerHTML = "<div style='color:var(--primary); font-size:0.9rem; width:100%; text-align:center; padding:30px 0; font-family:var(--font-mono); letter-spacing:2px;'>GENERATING PHONETICS...</div>";
-            ttsStatus.innerText = "PROCESSING";
-            modal.classList.add('active');
-
-            const rubyHTML = await fetchJyutpingRubyHTML(fullText);
-            modalContent.innerHTML = rubyHTML;
-            ttsStatus.innerText = "READY";
-        }
-
-        function closePhoneticModal() {
-            modal.classList.remove('active');
-            if (window.speechSynthesis) window.speechSynthesis.cancel();
-        }
-
-        function closeModalOnBackdrop(event) {
-            if (event.target === modal) closePhoneticModal();
-            if (event.target === qrModal) closeQrModal();
-            if (event.target === joinModal) closeJoinModal();
-        }
-
-        function speakCurrentText() {
-            if (!('speechSynthesis' in window)) return;
-            window.speechSynthesis.cancel();
-
-            const utter = new SpeechSynthesisUtterance(currentPureText);
-            utter.lang = 'zh-HK';
-            utter.rate = 0.85;
-
-            utter.onstart = () => ttsStatus.innerText = "PLAYING";
-            utter.onend = () => ttsStatus.innerText = "FINISHED";
-            utter.onerror = () => ttsStatus.innerText = "READY";
-
-            window.speechSynthesis.speak(utter);
-        }
-
-        /* ------------------ 11. 桌面置頂懸浮字幕條 ------------------ */
-        let pipWindow = null;
-        let pipLongPressTimer = null;
-        let isPipLongPress = false;
-
-        async function togglePipPrompter() {
-            if (pipWindow && !pipWindow.closed) {
-                pipWindow.close();
-                pipWindow = null;
-                return;
-            }
-
-            if (!('documentPictureInPicture' in window)) {
-                alert('您的瀏覽器尚未支援 Document Picture-in-Picture。\n請在電腦使用最新版 Chrome 或 Edge 瀏覽器！');
-                return;
-            }
-
-            try {
-                const availLeft = window.screen.availLeft ?? 0;
-                const availTop = window.screen.availTop ?? 0;
-                const availW = window.screen.availWidth || window.screen.width || window.innerWidth;
-                const availH = window.screen.availHeight || window.screen.height || window.innerHeight;
-                
-                const targetH = 92;
-
-                pipWindow = await window.documentPictureInPicture.requestWindow({
-                    width: availW,
-                    height: targetH
-                });
-
-                const snapToFullWidthBottom = () => {
-                    try {
-                        const winH = pipWindow.outerHeight || targetH;
-                        pipWindow.resizeTo(availW, winH);
-                        pipWindow.moveTo(availLeft, availTop + availH - winH);
-                    } catch (e) {}
-                };
-
-                snapToFullWidthBottom();
-                requestAnimationFrame(snapToFullWidthBottom);
-                setTimeout(snapToFullWidthBottom, 100);
-                setTimeout(snapToFullWidthBottom, 300);
-
-                document.querySelectorAll('link[rel="stylesheet"]').forEach(link => {
-                    pipWindow.document.head.appendChild(link.cloneNode(true));
-                });
-                document.querySelectorAll('style').forEach(style => {
-                    pipWindow.document.head.appendChild(style.cloneNode(true));
-                });
-
-                pipWindow.document.documentElement.style.setProperty(
-                    '--pip-cantonese-size',
-                    pipFontScales[currentPipScaleIdx].size
-                );
-
-                const pipStyle = pipWindow.document.createElement('style');
-                pipStyle.textContent = `
-                    html, body {
-                        margin: 0 !important;
-                        padding: 0 !important;
-                        background: #121213 !important;
-                        height: 100% !important;
-                        width: 100% !important;
-                        overflow: hidden !important;
-                    }
-
-                    .viewport-container::before, .viewport-container::after,
-                    .bottom-safe-spacer {
-                        display: none !important;
-                        height: 0 !important;
-                        width: 0 !important;
-                        margin: 0 !important;
-                        padding: 0 !important;
-                    }
-
-                    .scroll-body {
-                        height: 100% !important;
-                        width: 100% !important;
-                        padding: 0 28px !important;
-                        margin: 0 !important;
-                        box-sizing: border-box !important;
-                        overflow-x: auto !important;
-                        overflow-y: hidden !important;
-                        scrollbar-width: none !important;
-                        display: flex !important;
-                        flex-direction: row !important;
-                        align-items: center !important;
-                        justify-content: flex-start !important;
-                    }
-                    .scroll-body::-webkit-scrollbar {
-                        display: none !important;
-                    }
-
-                    .cantonese-stream {
-                        display: inline-flex !important;
-                        flex-direction: row !important;
-                        align-items: center !important;
-                        min-width: 100% !important;
-                        width: max-content !important;
-                        height: 100% !important;
-                        white-space: nowrap !important;
-                        gap: 0 !important;
-                        margin: 0 auto !important;
-                        padding: 0 !important;
-                        font-size: var(--pip-cantonese-size, 2.15rem) !important;
-                        line-height: 1 !important;
-                        font-family: var(--font-serif) !important;
-                    }
-
-                    .phrase-group.past {
-                        display: none !important;
-                    }
-
-                    #cantoStream.has-interim .phrase-group.active-latest,
-                    #cantoStream:has(#interimPart:not(:empty)) .phrase-group.active-latest {
-                        display: none !important;
-                    }
-
-                    .phrase-item.interim {
-                        display: inline-block !important;
-                        color: #CDB38B !important;
-                        font-weight: 700 !important;
-                        text-shadow: 0 0 16px rgba(205, 179, 139, 0.45) !important;
-                        white-space: nowrap !important;
-                        line-height: 1 !important;
-                        vertical-align: middle !important;
-                        margin: 0 auto !important;
-                    }
-                    .phrase-item.interim:empty {
-                        display: none !important;
-                    }
-
-                    .phrase-group.active-latest {
-                        display: inline-block !important;
-                        color: #E6E2D6 !important;
-                        font-weight: 700 !important;
-                        text-shadow: 0 0 16px rgba(230, 226, 214, 0.35) !important;
-                        white-space: nowrap !important;
-                        line-height: 1 !important;
-                        vertical-align: middle !important;
-                        margin: 0 auto !important;
-                        flex-shrink: 0 !important;
-                    }
-
-                    .phrase-group.active-latest.pip-marquee {
-                        margin: 0 !important;
-                        animation: pipMarqueeSmooth var(--marquee-duration, 8s) cubic-bezier(0.25, 0.1, 0.25, 1) infinite !important;
-                    }
-
-                    @keyframes pipMarqueeSmooth {
-                        0%, 18% { transform: translateX(0); }
-                        75%, 88% { transform: translateX(calc(-1 * var(--marquee-dist, 0px))); }
-                        100% { transform: translateX(0); }
-                    }
-                `;
-                pipWindow.document.head.appendChild(pipStyle);
-
-                const cantoScrollElem = document.getElementById('cantoScroll');
-                const viewportContainer = document.querySelector('.viewport-container');
-                pipWindow.document.body.appendChild(cantoScrollElem);
-
-                const btnPip = document.getElementById('btnPip');
-                if (btnPip) btnPip.classList.add('mode-active');
-
-                if (groupList.length > 0) {
-                    const lastGroup = groupList[groupList.length - 1];
-                    if (lastGroup && lastGroup.elem) {
-                        applyPipMarqueeIfNeeded(lastGroup.elem);
-                    }
-                }
-
-                pipWindow.addEventListener('pagehide', () => {
-                    if (viewportContainer && cantoScrollElem) {
-                        viewportContainer.appendChild(cantoScrollElem);
-                    }
-                    pipWindow = null;
-                    if (btnPip) btnPip.classList.remove('mode-active');
-                    resetPipMarquee();
-                    scrollCantoToBottom();
-                });
-
-            } catch (err) {
-                console.error('開啟置頂字幕視窗失敗:', err);
-            }
-        }
-
-        /* 綁定長按與短按至 #btnPip 按鈕 */
-        (function setupPipButtonEvents() {
-            const btnPip = document.getElementById('btnPip');
-            if (!btnPip) return;
-
-            const onPointerStart = () => {
-                isPipLongPress = false;
-                clearTimeout(pipLongPressTimer);
-                pipLongPressTimer = setTimeout(() => {
-                    isPipLongPress = true;
-                    if (navigator.vibrate) navigator.vibrate(40);
-                    cyclePipFontSize();
-                }, 520);
-            };
-
-            const onPointerEnd = () => {
-                clearTimeout(pipLongPressTimer);
-            };
-
-            btnPip.addEventListener('mousedown', onPointerStart);
-            btnPip.addEventListener('mouseup', onPointerEnd);
-            btnPip.addEventListener('mouseleave', onPointerEnd);
-
-            btnPip.addEventListener('touchstart', onPointerStart, { passive: true });
-            btnPip.addEventListener('touchend', onPointerEnd);
-            btnPip.addEventListener('touchcancel', onPointerEnd);
-
-            btnPip.addEventListener('click', (e) => {
-                if (isPipLongPress) {
-                    isPipLongPress = false;
-                    e.preventDefault();
-                    e.stopPropagation();
-                    return;
-                }
-                togglePipPrompter();
-            });
-        })();
+        // 啟動初始化
+        switchRole(myRole);
+        updateURLParams();
+        initSignaling();
     </script>
 </body>
 </html>
