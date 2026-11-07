@@ -3,36 +3,33 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>AirMic Studio - 零延遲無線麥克風</title>
+    <title>AirMic Studio - 零延遲無線麥克風 [除錯加強版]</title>
 
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Oswald:wght@400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Oswald:wght@500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
 
-    <!-- 雲端信號交換庫 (WebRTC 信號中繼) -->
-    <script src="https://unpkg.com/mqtt@5.3.5/dist/mqtt.min.js"></script>
+    <!-- WebRTC 核心引擎 (專門解決 P2P 穿透與候選佇列死鎖) -->
+    <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
     <!-- QRCode 生成庫 -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 
     <style>
         :root {
-            --bg-base: #141517;       
-            --surface: #1E1F23;       
-            --surface-light: #2A2B30; 
+            --bg-base: #121315;       
+            --surface: #1B1C20;       
+            --surface-light: #26272D; 
             --primary: #C5A059;       
             --primary-hover: #D8B46E;
-            --text-main: #EDEAE1;     
-            --text-muted: #808082;    
-            --border: #323338;        
+            --text-main: #ECE9DF;     
+            --text-muted: #7E7F85;    
+            --border: #32333A;        
             --accent-red: #D94A43;
             --accent-green: #3EB370;
 
             --font-title: 'Oswald', sans-serif;
             --font-mono: 'Space Mono', monospace;
             --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
-
-            --shadow-depth: 0 24px 60px rgba(0, 0, 0, 0.8);
-            --inner-glow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
         }
 
         * {
@@ -45,7 +42,7 @@
 
         body {
             background-color: var(--bg-base);
-            background-image: radial-gradient(circle at 50% 0%, #202227 0%, var(--bg-base) 85%);
+            background-image: radial-gradient(circle at 50% 0%, #202229 0%, var(--bg-base) 90%);
             color: var(--text-main);
             font-family: var(--font-sans);
             height: 100vh;
@@ -57,35 +54,17 @@
             -webkit-font-smoothing: antialiased;
         }
 
-        /* 機身飾條水印 */
-        body::before {
-            content: "AIR-LINK // P2P ZERO-LATENCY OPUS AUDIO ENGINE";
-            position: fixed;
-            top: 50%;
-            left: 20px;
-            transform: translateY(-50%) rotate(-90deg);
-            transform-origin: left center;
-            font-size: 10px;
-            font-family: var(--font-mono);
-            letter-spacing: 5px;
-            color: rgba(255, 255, 255, 0.12);
-            white-space: nowrap;
-            pointer-events: none;
-            z-index: 2;
-        }
-
         .studio-rig {
             position: relative;
             z-index: 10;
             width: 100%;
-            max-width: 720px;
+            max-width: 760px;
             height: 100vh;
             height: 100dvh;
-            max-height: 860px;
+            max-height: 900px;
             display: flex;
             flex-direction: column;
-            padding: 20px;
-            box-sizing: border-box;
+            padding: 16px;
         }
 
         .rig-enclosure {
@@ -95,63 +74,44 @@
             background: var(--surface);
             border-radius: 8px;
             border: 1px solid var(--border);
-            box-shadow: var(--shadow-depth), var(--inner-glow);
+            box-shadow: 0 24px 60px rgba(0, 0, 0, 0.8), inset 0 1px 0 rgba(255, 255, 255, 0.05);
             overflow: hidden;
-            position: relative;
         }
 
         /* 頂部 Header */
         header {
-            padding: 14px 20px;
+            padding: 12px 18px;
             display: flex;
             justify-content: space-between;
             align-items: center;
             border-bottom: 1px solid var(--border);
-            background: #18191B;
-            flex-shrink: 0;
-            gap: 12px;
+            background: #17181B;
+            gap: 10px;
         }
 
         .brand-meta {
             display: flex;
             align-items: center;
-            gap: 12px;
-        }
-
-        .brand-title {
-            font-size: 1.15rem;
-            font-weight: 600;
-            color: var(--text-main);
-            letter-spacing: 2px;
-            font-family: var(--font-title);
-            text-transform: uppercase;
-        }
-
-        .brand-title span {
-            color: var(--primary);
-            font-size: 0.8rem;
-            font-family: var(--font-mono);
-            margin-left: 6px;
+            gap: 10px;
         }
 
         .status-dot {
-            width: 8px;
-            height: 8px;
+            width: 10px;
+            height: 10px;
             border-radius: 50%;
             background: #4A4B50;
-            display: inline-block;
             transition: all 0.3s ease;
         }
 
         .status-dot.active-live {
             background: var(--accent-red);
-            box-shadow: 0 0 10px var(--accent-red);
+            box-shadow: 0 0 12px var(--accent-red);
             animation: pulseLive 1.4s infinite ease-in-out;
         }
 
         .status-dot.active-connected {
             background: var(--accent-green);
-            box-shadow: 0 0 10px var(--accent-green);
+            box-shadow: 0 0 12px var(--accent-green);
         }
 
         @keyframes pulseLive {
@@ -159,118 +119,100 @@
             50% { opacity: 0.35; transform: scale(0.85); }
         }
 
+        .brand-title {
+            font-size: 1.1rem;
+            font-weight: 600;
+            letter-spacing: 2px;
+            font-family: var(--font-title);
+            text-transform: uppercase;
+        }
+
+        .brand-title span {
+            color: var(--primary);
+            font-size: 0.75rem;
+            font-family: var(--font-mono);
+            margin-left: 4px;
+        }
+
         .btn-group {
             display: flex;
             align-items: center;
-            gap: 8px;
+            gap: 6px;
         }
 
         .icon-btn {
             background: var(--surface-light);
             border: 1px solid var(--border);
             color: var(--text-muted);
-            height: 38px;
-            padding: 0 12px;
+            height: 36px;
+            padding: 0 10px;
             border-radius: 4px;
             display: inline-flex;
             align-items: center;
             justify-content: center;
-            gap: 8px;
+            gap: 6px;
             cursor: pointer;
             transition: all 0.2s ease;
             outline: none;
             font-family: var(--font-mono);
-            font-size: 0.75rem;
+            font-size: 0.72rem;
             letter-spacing: 1px;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.4);
         }
 
         .icon-btn:hover {
-            background: #36373D;
+            background: #34353C;
             color: var(--text-main);
-            border-color: #4B4C52;
         }
 
         .icon-btn.mode-active {
-            background: rgba(197, 160, 89, 0.15);
+            background: rgba(197, 160, 89, 0.18);
             border-color: var(--primary);
             color: var(--primary);
-            box-shadow: inset 0 0 12px rgba(197, 160, 89, 0.2);
         }
 
-        .icon-btn svg {
-            width: 16px;
-            height: 16px;
-        }
+        .icon-btn svg { width: 15px; height: 15px; }
 
-        /* 核心中央控制視口 */
+        /* 工作區 */
         .workspace-viewport {
             flex: 1;
             display: flex;
             flex-direction: column;
             justify-content: space-between;
             align-items: center;
-            padding: 32px 24px;
-            position: relative;
-            background: #121315;
-            box-shadow: inset 0 0 40px rgba(0,0,0,0.85);
+            padding: 24px 20px;
+            background: #101113;
             overflow-y: auto;
         }
 
-        /* 狀態卡片顯示 */
         .session-info-badge {
             display: flex;
             align-items: center;
-            gap: 14px;
-            background: #18191C;
+            gap: 16px;
+            background: #17181B;
             border: 1px solid var(--border);
             padding: 6px 16px;
-            border-radius: 30px;
+            border-radius: 20px;
             font-family: var(--font-mono);
             font-size: 0.75rem;
-            letter-spacing: 2px;
             color: var(--text-muted);
         }
 
-        .session-info-badge strong {
-            color: var(--primary);
-            font-weight: 700;
-        }
+        .session-info-badge strong { color: var(--primary); }
 
-        /* 動態波形與電平畫布 */
-        .meter-container {
-            width: 100%;
-            max-width: 480px;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            gap: 12px;
-            margin: 20px 0;
-        }
-
-        #visualizerCanvas {
-            width: 100%;
-            height: 100px;
-            background: #0E0F10;
-            border-radius: 6px;
-            border: 1px solid #232428;
-            box-shadow: inset 0 2px 10px rgba(0,0,0,0.8);
-        }
-
-        /* 中央巨大互動主掣 */
+        /* 中央互動按鈕 */
         .main-action-zone {
             display: flex;
             flex-direction: column;
             align-items: center;
-            gap: 18px;
+            gap: 16px;
             margin: auto 0;
         }
 
         .big-push-btn {
-            width: 160px;
-            height: 160px;
+            width: 150px;
+            height: 150px;
             border-radius: 50%;
-            background: #191A1D;
+            background: #18191D;
             border: 3px solid var(--border);
             color: var(--text-muted);
             display: flex;
@@ -279,21 +221,19 @@
             justify-content: center;
             cursor: pointer;
             outline: none;
-            transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
-            box-shadow: 0 12px 30px rgba(0, 0, 0, 0.6), inset 0 2px 4px rgba(255,255,255,0.05);
-            position: relative;
+            transition: all 0.25s ease;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.6);
         }
 
         .big-push-btn svg {
-            width: 50px;
-            height: 50px;
-            margin-bottom: 8px;
-            transition: transform 0.25s ease;
+            width: 46px;
+            height: 46px;
+            margin-bottom: 6px;
         }
 
         .big-push-btn span {
             font-family: var(--font-title);
-            font-size: 1.1rem;
+            font-size: 1.05rem;
             letter-spacing: 2px;
             text-transform: uppercase;
         }
@@ -304,38 +244,18 @@
             transform: translateY(-2px);
         }
 
-        .big-push-btn:active {
-            transform: scale(0.96);
-        }
-
-        /* 發射中 (ON AIR) 狀態 */
         .big-push-btn.broadcasting {
-            background: radial-gradient(circle, #521815 0%, #200E0D 100%);
+            background: radial-gradient(circle, #521815 0%, #1D0D0C 100%);
             border-color: var(--accent-red);
             color: #FFFFFF;
             box-shadow: 0 0 35px rgba(217, 74, 67, 0.45);
         }
 
-        .big-push-btn.broadcasting svg {
-            color: var(--accent-red);
-            animation: micPulse 1.8s infinite ease-in-out;
-        }
-
-        /* 接收播放中狀態 */
         .big-push-btn.receiving {
-            background: radial-gradient(circle, #103422 0%, #0C1E15 100%);
+            background: radial-gradient(circle, #123C27 0%, #0B1C13 100%);
             border-color: var(--accent-green);
             color: #FFFFFF;
             box-shadow: 0 0 35px rgba(62, 179, 112, 0.45);
-        }
-
-        .big-push-btn.receiving svg {
-            color: var(--accent-green);
-        }
-
-        @keyframes micPulse {
-            0%, 100% { transform: scale(1); }
-            50% { transform: scale(1.08); }
         }
 
         .latency-hint {
@@ -346,44 +266,62 @@
             text-align: center;
         }
 
-        /* 底部參數與音量推桿控制欄 */
-        .footer-controls {
+        /* 音訊頻譜電平表 */
+        .meter-container {
             width: 100%;
-            background: #18191B;
-            border-top: 1px solid var(--border);
-            padding: 16px 24px;
+            max-width: 500px;
             display: flex;
             flex-direction: column;
-            gap: 14px;
+            align-items: center;
+            gap: 8px;
         }
 
-        .slider-row {
+        #visualizerCanvas {
+            width: 100%;
+            height: 70px;
+            background: #0B0C0D;
+            border-radius: 4px;
+            border: 1px solid #232428;
+        }
+
+        /* 底部控制欄 */
+        .footer-controls {
+            width: 100%;
+            background: #17181B;
+            border-top: 1px solid var(--border);
+            padding: 14px 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .control-row {
             display: flex;
             align-items: center;
             justify-content: space-between;
-            gap: 16px;
+            gap: 14px;
         }
 
-        .slider-label {
+        .control-label {
             font-family: var(--font-mono);
             font-size: 0.75rem;
             color: var(--text-muted);
             text-transform: uppercase;
             letter-spacing: 1.5px;
-            width: 130px;
+            width: 140px;
         }
 
         .slider-wrapper {
             flex: 1;
             display: flex;
             align-items: center;
-            gap: 14px;
+            gap: 12px;
         }
 
         input[type="range"] {
             flex: 1;
             -webkit-appearance: none;
-            height: 6px;
+            height: 5px;
             background: #2B2C31;
             border-radius: 3px;
             outline: none;
@@ -391,38 +329,52 @@
 
         input[type="range"]::-webkit-slider-thumb {
             -webkit-appearance: none;
-            width: 18px;
-            height: 18px;
+            width: 16px;
+            height: 16px;
             border-radius: 50%;
             background: var(--primary);
             cursor: pointer;
-            box-shadow: 0 0 8px rgba(197, 160, 89, 0.7);
-            transition: transform 0.15s ease;
-        }
-
-        input[type="range"]::-webkit-slider-thumb:hover {
-            transform: scale(1.15);
         }
 
         .val-display {
             font-family: var(--font-mono);
-            font-size: 0.82rem;
+            font-size: 0.8rem;
             color: var(--primary);
-            width: 45px;
+            width: 48px;
             text-align: right;
         }
 
-        /* 彈窗樣式 */
+        /* 即時診斷日誌框 (Debug Console) */
+        .debug-console {
+            background: #0B0C0D;
+            border: 1px solid #26272C;
+            border-radius: 4px;
+            padding: 8px 12px;
+            font-family: var(--font-mono);
+            font-size: 0.68rem;
+            color: #8C8E96;
+            height: 72px;
+            overflow-y: auto;
+            line-height: 1.4;
+            display: flex;
+            flex-direction: column-reverse;
+        }
+
+        .log-entry.error { color: #D94A43; }
+        .log-entry.success { color: #3EB370; }
+        .log-entry.info { color: #C5A059; }
+
+        /* 彈窗 */
         .modal-overlay {
             position: fixed;
             top: 0; left: 0; width: 100vw; height: 100vh;
-            background: rgba(14, 15, 17, 0.94);
-            backdrop-filter: blur(10px);
+            background: rgba(10, 11, 13, 0.94);
+            backdrop-filter: blur(8px);
             z-index: 100;
             display: none;
             align-items: center;
             justify-content: center;
-            padding: 20px;
+            padding: 16px;
         }
 
         .modal-overlay.active { display: flex; }
@@ -431,229 +383,167 @@
             background: var(--surface);
             border: 1px solid var(--border);
             width: 100%;
-            max-width: 400px;
+            max-width: 380px;
             border-radius: 8px;
             overflow: hidden;
-            box-shadow: var(--shadow-depth);
         }
 
         .modal-header {
-            padding: 16px 20px;
+            padding: 14px 18px;
             display: flex;
             justify-content: space-between;
             align-items: center;
             border-bottom: 1px solid var(--border);
             font-family: var(--font-title);
-            font-size: 1.15rem;
+            font-size: 1.1rem;
             letter-spacing: 2px;
-            color: var(--text-main);
-            background: #18191B;
+            background: #17181B;
         }
 
         .modal-body {
-            padding: 24px;
+            padding: 20px;
             display: flex;
             flex-direction: column;
             align-items: center;
-            gap: 18px;
+            gap: 16px;
         }
 
-        #qrContainer {
-            background: #FFFFFF;
-            padding: 12px;
-            border-radius: 6px;
-        }
-
-        .room-num-box {
-            font-family: var(--font-mono);
-            font-size: 2rem;
-            font-weight: 700;
-            letter-spacing: 4px;
-            color: var(--primary);
-        }
-
+        #qrContainer { background: #FFFFFF; padding: 10px; border-radius: 4px; }
+        .room-num-box { font-family: var(--font-mono); font-size: 2rem; font-weight: 700; color: var(--primary); }
         .app-input {
-            width: 100%;
-            background: #121315;
-            border: 1px solid var(--border);
-            padding: 12px 16px;
-            border-radius: 4px;
-            color: var(--primary);
-            font-family: var(--font-mono);
-            font-size: 1.25rem;
-            letter-spacing: 3px;
-            text-align: center;
-            outline: none;
+            width: 100%; background: #101113; border: 1px solid var(--border);
+            padding: 10px 14px; border-radius: 4px; color: var(--primary);
+            font-family: var(--font-mono); font-size: 1.2rem; text-align: center; outline: none;
         }
-
-        .app-input:focus {
-            border-color: var(--primary);
-        }
-
         .btn-confirm {
-            width: 100%;
-            background: var(--primary);
-            color: #121315;
-            border: none;
-            padding: 12px;
-            border-radius: 4px;
-            font-family: var(--font-title);
-            font-size: 1.1rem;
-            letter-spacing: 2px;
-            cursor: pointer;
-            font-weight: 600;
-            transition: background 0.2s;
-        }
-
-        .btn-confirm:hover {
-            background: var(--primary-hover);
-        }
-
-        @media (max-width: 600px) {
-            body::before { display: none; }
-            .studio-rig { padding: 8px; }
-            .brand-title span { display: none; }
-            .slider-label { width: 90px; }
+            width: 100%; background: var(--primary); color: #121315; border: none;
+            padding: 10px; border-radius: 4px; font-family: var(--font-title);
+            font-size: 1.05rem; letter-spacing: 2px; cursor: pointer; font-weight: 600;
         }
     </style>
 </head>
 <body>
 
+    <!-- 關鍵核心：實體音訊標籤 (防止 Safari / Chrome 靜默封鎖 WebRTC 音軌) -->
+    <audio id="remoteAudioTag" autoplay playsinline></audio>
+
     <main class="studio-rig">
         <div class="rig-enclosure">
-            <!-- 頂部操控列 -->
             <header>
                 <div class="brand-meta">
                     <span id="statusDot" class="status-dot"></span>
-                    <span class="brand-title">AirMic <span>ZERO-LATENCY WIRELESS MIC</span></span>
+                    <span class="brand-title">AirMic <span>DEBUGGED LIVE</span></span>
                 </div>
                 
                 <div class="btn-group">
                     <button id="btnRoleBroadcast" class="icon-btn mode-active" onclick="switchRole('broadcaster')">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path>
-                            <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
-                            <line x1="12" y1="19" x2="12" y2="23"></line>
-                        </svg>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><line x1="12" y1="19" x2="12" y2="23"></line></svg>
                         <span>發射端 (咪)</span>
                     </button>
                     <button id="btnRoleReceiver" class="icon-btn" onclick="switchRole('receiver')">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
-                            <path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"></path>
-                        </svg>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"></path></svg>
                         <span>接收端 (喇叭)</span>
                     </button>
-                    <button id="btnPair" class="icon-btn" onclick="openPairModal()" title="配對設定">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <rect x="2" y="2" width="20" height="8" rx="2" ry="2"></rect>
-                            <rect x="2" y="14" width="20" height="8" rx="2" ry="2"></rect>
-                            <line x1="6" y1="6" x2="6.01" y2="6"></line>
-                            <line x1="6" y1="18" x2="6.01" y2="18"></line>
-                        </svg>
+                    <button class="icon-btn" onclick="openPairModal()" title="配對">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="8" rx="2"></rect><rect x="2" y="14" width="20" height="8" rx="2"></rect></svg>
                     </button>
                 </div>
             </header>
 
-            <!-- 工作區視窗 -->
             <div class="workspace-viewport">
                 <div class="session-info-badge">
                     <span>ROOM: <strong id="roomCodeDisplay">------</strong></span>
-                    <span>STATUS: <strong id="linkStatusText">STANDBY</strong></span>
+                    <span>LINK: <strong id="linkStatusText">INIT</strong></span>
                 </div>
 
-                <!-- 大動作切換圓鈕 -->
                 <div class="main-action-zone">
                     <button id="mainToggleBtn" class="big-push-btn" onclick="handleMainAction()">
-                        <svg id="btnIconMic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path>
-                            <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
-                            <line x1="12" y1="19" x2="12" y2="23"></line>
-                        </svg>
-                        <svg id="btnIconSpeaker" style="display:none;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
-                            <path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"></path>
-                        </svg>
+                        <svg id="btnIconMic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><line x1="12" y1="19" x2="12" y2="23"></line></svg>
+                        <svg id="btnIconSpeaker" style="display:none;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"></path></svg>
                         <span id="mainBtnText">開啟咪高風</span>
                     </button>
-                    <div id="subHintText" class="latency-hint">點擊上方按鈕開始超低延遲語音串流</div>
+                    <div id="subHintText" class="latency-hint">點擊上方按鈕開始廣播語音</div>
                 </div>
 
-                <!-- 實時音訊頻譜 & LED VU 表 -->
                 <div class="meter-container">
-                    <canvas id="visualizerCanvas" width="480" height="100"></canvas>
+                    <canvas id="visualizerCanvas" width="500" height="70"></canvas>
                     <div style="width:100%; display:flex; justify-content:space-between; font-family:var(--font-mono); font-size:0.65rem; color:var(--text-muted);">
                         <span>-48dB</span>
                         <span>-24dB</span>
                         <span>-12dB</span>
-                        <span>-6dB</span>
                         <span>0dB (PEAK)</span>
                     </div>
                 </div>
             </div>
 
-            <!-- 底部調節台 -->
             <div class="footer-controls">
-                <div class="slider-row">
-                    <span class="slider-label" id="gainLabel">咪增益 / GAIN</span>
+                <div class="control-row">
+                    <span class="control-label" id="gainLabel">增益放大 / BOOST</span>
                     <div class="slider-wrapper">
-                        <input id="gainSlider" type="range" min="0" max="3" step="0.05" value="1.0" oninput="updateGain(this.value)">
-                        <span id="gainValueDisplay" class="val-display">100%</span>
+                        <input id="gainSlider" type="range" min="0" max="4" step="0.1" value="1.5" oninput="updateGain(this.value)">
+                        <span id="gainValueDisplay" class="val-display">150%</span>
                     </div>
                 </div>
+                
+                <div class="control-row" style="gap:8px;">
+                    <button class="icon-btn" style="flex:1;" onclick="testHardwareAudio()">🔊 喇叭測試 (Beep Test)</button>
+                    <button class="icon-btn" style="width:110px;" onclick="clearLogs()">清除日誌</button>
+                </div>
+
+                <!-- 實時連線日誌 -->
+                <div id="debugConsole" class="debug-console"></div>
             </div>
         </div>
     </main>
 
-    <!-- 配對資訊視窗 -->
+    <!-- 配對 QR 彈窗 -->
     <div id="pairModal" class="modal-overlay" onclick="closeModalOnBackdrop(event)">
         <div class="modal-window">
             <div class="modal-header">
-                <span>配對終端 / CONNECT</span>
-                <button class="icon-btn" style="width:30px; height:30px; padding:0;" onclick="closePairModal()">✕</button>
+                <span>終端配對 / PAIRING</span>
+                <button class="icon-btn" style="width:28px; height:28px; padding:0;" onclick="closePairModal()">✕</button>
             </div>
             <div class="modal-body">
                 <div id="qrContainer"></div>
                 <div style="text-align:center;">
-                    <div style="font-size:0.75rem; color:var(--text-muted); font-family:var(--font-mono); margin-bottom:4px;">純數字房間號</div>
+                    <div style="font-size:0.75rem; color:var(--text-muted); font-family:var(--font-mono);">純數字房間號</div>
                     <div id="modalRoomNum" class="room-num-box">------</div>
                 </div>
-                <div style="width:100%; border-top:1px solid var(--border); padding-top:16px;">
-                    <div style="font-size:0.75rem; color:var(--text-muted); font-family:var(--font-mono); margin-bottom:8px;">或在此設備手動加入其他房間：</div>
-                    <input id="inputJoinRoom" type="text" inputmode="numeric" pattern="[0-9]*" class="app-input" placeholder="輸入 6 位數字" />
+                <div style="width:100%; border-top:1px solid var(--border); padding-top:12px;">
+                    <input id="inputJoinRoom" type="text" inputmode="numeric" pattern="[0-9]*" class="app-input" placeholder="輸入 6 位數字加入" />
                 </div>
-                <button class="btn-confirm" onclick="submitManualJoin()">立即加入該房間</button>
+                <button class="btn-confirm" onclick="submitManualJoin()">連線至該房間</button>
             </div>
         </div>
     </div>
 
     <script>
-        /* ------------------ 0. 系統狀態與參數 ------------------ */
+        /* ------------------ 0. 日誌與除錯監視器 ------------------ */
+        const debugConsole = document.getElementById('debugConsole');
+        function log(msg, type = 'info') {
+            const time = new Date().toTimeString().split(' ')[0];
+            const div = document.createElement('div');
+            div.className = `log-entry ${type}`;
+            div.innerText = `[${time}] ${msg}`;
+            debugConsole.prepend(div);
+        }
+        function clearLogs() { debugConsole.innerHTML = ''; }
+
+        /* ------------------ 1. 狀態與房間初始化 ------------------ */
         const urlParams = new URLSearchParams(window.location.search);
         let assignedRoom = urlParams.get('room') ? urlParams.get('room').replace(/\D/g, '') : null;
-        let myRole = urlParams.get('role') === 'receiver' || assignedRoom ? 'receiver' : 'broadcaster';
+        let myRole = urlParams.get('role') || (assignedRoom ? 'receiver' : 'broadcaster');
 
         let currentRoomId = assignedRoom || String(Math.floor(100000 + Math.random() * 900000));
-        let myPeerId = 'peer_' + Math.random().toString(36).substring(2, 9);
 
-        let isStreaming = false;
-        let isReceiving = false;
-        let localAudioStream = null;
-        let audioContext = null;
+        let peer = null;
+        let activeCall = null;
+        let localMicStream = null;
+        let audioCtx = null;
         let gainNode = null;
         let analyser = null;
-        let remoteAudioElem = null;
 
-        let peerConnections = {}; // targetPeerId -> RTCPeerConnection
-        let mqttClient = null;
-
-        const rtcConfig = {
-            iceServers: [
-                { urls: 'stun:stun.l.google.com:19302' },
-                { urls: 'stun:stun1.l.google.com:19302' }
-            ]
-        };
-
+        const remoteAudioTag = document.getElementById('remoteAudioTag');
         const roomCodeDisplay = document.getElementById('roomCodeDisplay');
         const modalRoomNum = document.getElementById('modalRoomNum');
         const linkStatusText = document.getElementById('linkStatusText');
@@ -663,71 +553,169 @@
         const btnIconSpeaker = document.getElementById('btnIconSpeaker');
         const mainBtnText = document.getElementById('mainBtnText');
         const subHintText = document.getElementById('subHintText');
-        const gainLabel = document.getElementById('gainLabel');
         const gainSlider = document.getElementById('gainSlider');
         const gainValueDisplay = document.getElementById('gainValueDisplay');
-        const btnRoleBroadcast = document.getElementById('btnRoleBroadcast');
-        const btnRoleReceiver = document.getElementById('btnRoleReceiver');
 
-        /* ------------------ 1. WebRTC & MQTT 信號中繼 (極低延遲架構) ------------------ */
-        function initSignaling() {
-            if (mqttClient) {
-                try { mqttClient.end(); } catch (e) {}
+        // 生成符合房間規則的 Peer ID
+        function getHostPeerId(roomId) { return `airmic-v2-${roomId}-host`; }
+
+        /* ------------------ 2. 核心 WebRTC (PeerJS) 引擎 ------------------ */
+        function initPeerNode() {
+            if (peer) {
+                try { peer.destroy(); } catch (e) {}
             }
 
-            mqttClient = mqtt.connect('wss://broker.emqx.io:8084/mqtt', { clean: true });
+            const myPeerId = (myRole === 'broadcaster') ? getHostPeerId(currentRoomId) : undefined;
+            log(`正在初始化節點 (角色: ${myRole})...`);
 
-            mqttClient.on('connect', () => {
-                mqttClient.subscribe(`airmic/room_${currentRoomId}`);
-                linkStatusText.innerText = "ONLINE";
-                statusDot.className = 'status-dot active-connected';
-
-                if (myRole === 'receiver') {
-                    // 接收端發送準備接收通知
-                    sendSignal({ type: 'receiver-ready', from: myPeerId });
+            peer = new Peer(myPeerId, {
+                debug: 1,
+                config: {
+                    iceServers: [
+                        { urls: 'stun:stun.l.google.com:19302' },
+                        { urls: 'stun:stun1.l.google.com:19302' },
+                        { urls: 'stun:stun.cloudflare.com:3478' }
+                    ]
                 }
             });
 
-            mqttClient.on('message', async (topic, payload) => {
-                try {
-                    const data = JSON.parse(payload.toString());
-                    if (data.from === myPeerId) return; // 忽略自己
+            peer.on('open', (id) => {
+                log(`信號伺服器連線成功！ID: ${id}`, 'success');
+                linkStatusText.innerText = "READY";
+                statusDot.className = 'status-dot active-connected';
 
-                    if (data.type === 'receiver-ready' && myRole === 'broadcaster' && localAudioStream) {
-                        // 有新的接收端進入，發射端建立連線並發送 Offer
-                        initiatePeerConnection(data.from);
-                    } else if (data.type === 'offer' && myRole === 'receiver') {
-                        handleRemoteOffer(data.from, data.sdp);
-                    } else if (data.type === 'answer' && myRole === 'broadcaster') {
-                        if (peerConnections[data.from]) {
-                            await peerConnections[data.from].setRemoteDescription(new RTCSessionDescription(data.sdp));
-                        }
-                    } else if (data.type === 'candidate') {
-                        const pc = peerConnections[data.from];
-                        if (pc && data.candidate) {
-                            try {
-                                await pc.addIceCandidate(new RTCIceCandidate(data.candidate));
-                            } catch (e) {}
-                        }
+                if (myRole === 'receiver') {
+                    // 接收端主動向發射端發起連線
+                    connectToBroadcaster();
+                }
+            });
+
+            peer.on('call', (call) => {
+                log(`偵測到連線請求 (From: ${call.peer})`, 'info');
+                if (myRole === 'broadcaster') {
+                    if (localMicStream) {
+                        call.answer(localMicStream);
+                        log("已回應接收端，傳送麥克風音訊串流！", 'success');
+                    } else {
+                        log("接收端已連入，請點擊中央按鈕開啟麥克風！", 'error');
+                        // 暫存此連線，待開啟麥克風後回答
+                        activeCall = call;
                     }
-                } catch (e) {}
+                }
+            });
+
+            peer.on('error', (err) => {
+                log(`Peer 錯誤: ${err.type} - ${err.message}`, 'error');
+                if (err.type === 'unavailable-id') {
+                    alert("該房間已有發射端在線，請換一個房間號碼或切換為接收端。");
+                }
             });
         }
 
-        function sendSignal(msgObj) {
-            if (mqttClient && mqttClient.connected) {
-                mqttClient.publish(`airmic/room_${currentRoomId}`, JSON.stringify(msgObj));
-            }
+        /* ------------------ 3. 接收端專用：安全建立連線 ------------------ */
+        // 核心黑科技：生成 0 頻寬虛擬靜音軌，讓接收端無需申請麥克風權限即可建立通話
+        function createSilentMediaStream() {
+            const ctx = new (window.AudioContext || window.webkitAudioContext)();
+            const osc = ctx.createOscillator();
+            const dst = ctx.createMediaStreamDestination();
+            osc.connect(dst);
+            osc.start();
+            const stream = dst.stream;
+            stream.getAudioTracks().forEach(t => t.enabled = false); // 關閉輸出，純佔位
+            return stream;
         }
 
-        /* ------------------ 2. 發射端：開啟麥克風與點對點推流 ------------------ */
-        async function startBroadcaster() {
+        function connectToBroadcaster() {
+            const hostId = getHostPeerId(currentRoomId);
+            log(`正在呼叫發射端 [${hostId}]...`);
+
+            const dummyStream = createSilentMediaStream();
+            const call = peer.call(hostId, dummyStream);
+
+            if (!call) {
+                log("呼叫失敗，請確認發射端是否在線", 'error');
+                return;
+            }
+
+            bindCallEvents(call);
+        }
+
+        function bindCallEvents(call) {
+            activeCall = call;
+
+            call.on('stream', (remoteStream) => {
+                log("★★★ 成功接收到發射端音訊串流！★★★", 'success');
+                attachRemoteAudio(remoteStream);
+            });
+
+            call.on('close', () => {
+                log("連線已中斷", 'error');
+                statusDot.className = 'status-dot';
+                linkStatusText.innerText = "DISCONNECTED";
+            });
+
+            call.on('error', (e) => {
+                log("通話中斷錯誤: " + e, 'error');
+            });
+        }
+
+        /* ------------------ 4. 解決瀏覽器封鎖音訊：實體播放與增益 ------------------ */
+        async function attachRemoteAudio(stream) {
+            // 1. 先綁定實體 Audio 標籤
+            remoteAudioTag.srcObject = stream;
+            
             try {
-                // 請求低延遲麥克風約束 (禁用回音消除避免處理引入延遲；開啟降噪)
-                localAudioStream = await navigator.mediaDevices.getUserMedia({
+                await remoteAudioTag.play();
+                log("實體 <audio> 標籤播放成功！", 'success');
+            } catch (err) {
+                log("瀏覽器阻擋自動播放！請點擊中央大按鈕解鎖！", 'error');
+            }
+
+            // 2. 接管至 Web Audio API 進行音量增益放大與頻譜繪製
+            setupAudioPipeline(stream, true);
+
+            mainToggleBtn.classList.add('receiving');
+            mainBtnText.innerText = "ON SPEAKER";
+            subHintText.innerText = "正在實時零延遲播放來自發射端的聲音";
+            statusDot.className = 'status-dot active-live';
+            linkStatusText.innerText = "STREAMING";
+        }
+
+        function setupAudioPipeline(stream, isOutputDestination) {
+            if (!audioCtx) {
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)({ latencyHint: 'interactive' });
+            }
+            if (audioCtx.state === 'suspended') {
+                audioCtx.resume();
+            }
+
+            const source = audioCtx.createMediaStreamSource(stream);
+            gainNode = audioCtx.createGain();
+            analyser = audioCtx.createAnalyser();
+            analyser.fftSize = 64;
+
+            gainNode.gain.value = parseFloat(gainSlider.value);
+
+            source.connect(gainNode);
+            gainNode.connect(analyser);
+
+            if (isOutputDestination) {
+                // 如果是接收端，輸出至音效卡
+                gainNode.connect(audioCtx.destination);
+                log("音訊管線已導向音效卡喇叭");
+            }
+
+            drawVU();
+        }
+
+        /* ------------------ 5. 發射端：取得低延遲麥克風 ------------------ */
+        async function startBroadcasterMic() {
+            try {
+                log("正在請求低延遲麥克風權限...");
+                localMicStream = await navigator.mediaDevices.getUserMedia({
                     audio: {
-                        echoCancellation: false,
-                        noiseSuppression: true,
+                        echoCancellation: false, // 關閉回音消除，延遲降到最低
+                        noiseSuppression: false,
                         autoGainControl: true,
                         latency: 0,
                         channelCount: 1
@@ -735,130 +723,59 @@
                     video: false
                 });
 
-                setupAudioContext(localAudioStream, false);
-                isStreaming = true;
+                log("麥克風已就緒，啟動頻譜監視", 'success');
+                setupAudioPipeline(localMicStream, false);
 
-                // UI 更新
                 mainToggleBtn.classList.add('broadcasting');
-                mainBtnText.innerText = "ON AIR (直播中)";
-                subHintText.innerText = "麥克風運作中，發音即刻超低延遲同步到音響";
+                mainBtnText.innerText = "ON AIR (直播)";
+                subHintText.innerText = "麥克風正常收音中，聲音即時廣播";
                 statusDot.className = 'status-dot active-live';
-                linkStatusText.innerText = "TRANSMITTING";
+                linkStatusText.innerText = "LIVE TRANSMIT";
 
-                // 廣播給所有在此房間的接收端
-                sendSignal({ type: 'broadcaster-started', from: myPeerId });
-
-                // 保持螢幕喚醒
-                if ('wakeLock' in navigator) {
-                    navigator.wakeLock.request('screen').catch(() => {});
+                // 若有排隊中的接收端，立刻給予音訊
+                if (activeCall) {
+                    activeCall.answer(localMicStream);
+                    log("已向等待中的接收端推送聲音！", 'success');
                 }
+
+                // 防止手機鎖定睡眠
+                if ('wakeLock' in navigator) navigator.wakeLock.request('screen').catch(()=>{});
 
             } catch (err) {
-                alert("無法存取麥克風，請檢查權限：" + err.message);
+                log("存取麥克風失敗: " + err.message, 'error');
+                alert("無法開啟麥克風：" + err.message);
             }
         }
 
-        function stopBroadcaster() {
-            if (localAudioStream) {
-                localAudioStream.getTracks().forEach(t => t.stop());
-                localAudioStream = null;
+        function stopBroadcasterMic() {
+            if (localMicStream) {
+                localMicStream.getTracks().forEach(t => t.stop());
+                localMicStream = null;
             }
-            Object.values(peerConnections).forEach(pc => pc.close());
-            peerConnections = {};
-
-            isStreaming = false;
             mainToggleBtn.classList.remove('broadcasting');
             mainBtnText.innerText = "開啟咪高風";
-            subHintText.innerText = "點擊上方按鈕開始超低延遲語音串流";
+            subHintText.innerText = "點擊開始廣播語音";
             statusDot.className = 'status-dot active-connected';
-            linkStatusText.innerText = "ONLINE";
+            linkStatusText.innerText = "READY";
         }
 
-        async function initiatePeerConnection(targetReceiverId) {
-            const pc = new RTCPeerConnection(rtcConfig);
-            peerConnections[targetReceiverId] = pc;
-
-            localAudioStream.getAudioTracks().forEach(track => {
-                pc.addTrack(track, localAudioStream);
-            });
-
-            pc.onicecandidate = (e) => {
-                if (e.candidate) {
-                    sendSignal({ type: 'candidate', from: myPeerId, target: targetReceiverId, candidate: e.candidate });
-                }
-            };
-
-            const offer = await pc.createOffer({
-                offerToReceiveAudio: false,
-                offerToReceiveVideo: false,
-                voiceActivityDetection: false
-            });
-
-            // 優化 Opus SDP: 限制最低延遲
-            offer.sdp = offer.sdp.replace('useinbandfec=1', 'useinbandfec=1;minptime=10;cbr=1');
-            await pc.setLocalDescription(offer);
-
-            sendSignal({ type: 'offer', from: myPeerId, target: targetReceiverId, sdp: offer });
-        }
-
-        /* ------------------ 3. 接收端：播放音訊與擴音輸出 ------------------ */
-        async function handleRemoteOffer(broadcasterId, offerSdp) {
-            const pc = new RTCPeerConnection(rtcConfig);
-            peerConnections[broadcasterId] = pc;
-
-            pc.onicecandidate = (e) => {
-                if (e.candidate) {
-                    sendSignal({ type: 'candidate', from: myPeerId, target: broadcasterId, candidate: e.candidate });
-                }
-            };
-
-            pc.ontrack = (event) => {
-                const stream = event.streams[0];
-                setupAudioContext(stream, true);
-
-                isReceiving = true;
-                mainToggleBtn.classList.add('receiving');
-                mainBtnText.innerText = "RECEIVING (播放中)";
-                subHintText.innerText = "已連線至麥克風發射端，音訊正在即時輸出";
-                statusDot.className = 'status-dot active-live';
-                linkStatusText.innerText = "LINKED LIVE";
-            };
-
-            await pc.setRemoteDescription(new RTCSessionDescription(offerSdp));
-            const answer = await pc.createAnswer();
-            await pc.setLocalDescription(answer);
-
-            sendSignal({ type: 'answer', from: myPeerId, target: broadcasterId, sdp: answer });
-        }
-
-        /* ------------------ 4. 專業 Web Audio 增益放大與 LED 電平 ------------------ */
-        function setupAudioContext(stream, isPlaybackDestination) {
-            if (!audioContext) {
-                audioContext = new (window.AudioContext || window.webkitAudioContext)({
-                    latencyHint: 'interactive'
-                });
+        /* ------------------ 6. 使用者互動按鈕 ------------------ */
+        function handleMainAction() {
+            // 核心：任意使用者手勢直接喚醒 AudioContext 與音訊播放
+            if (audioCtx && audioCtx.state === 'suspended') {
+                audioCtx.resume();
+            }
+            if (remoteAudioTag && remoteAudioTag.paused) {
+                remoteAudioTag.play().catch(()=>{});
             }
 
-            if (audioContext.state === 'suspended') {
-                audioContext.resume();
+            if (myRole === 'broadcaster') {
+                if (!localMicStream) startBroadcasterMic();
+                else stopBroadcasterMic();
+            } else {
+                log("手動解鎖音訊播放權限...", 'info');
+                connectToBroadcaster();
             }
-
-            const source = audioContext.createMediaStreamSource(stream);
-            gainNode = audioContext.createGain();
-            analyser = audioContext.createAnalyser();
-
-            analyser.fftSize = 64;
-            gainNode.gain.value = parseFloat(gainSlider.value);
-
-            source.connect(gainNode);
-            gainNode.connect(analyser);
-
-            if (isPlaybackDestination) {
-                // 接收端將聲音導向喇叭輸出
-                gainNode.connect(audioContext.destination);
-            }
-
-            drawVisualizer();
         }
 
         function updateGain(val) {
@@ -867,12 +784,31 @@
             gainValueDisplay.innerText = Math.round(num * 100) + '%';
         }
 
-        /* ------------------ 5. 畫布：LED 級聯電平動態繪製 ------------------ */
+        // 硬體嗶聲測試（檢查裝置喇叭是否有聲音）
+        function testHardwareAudio() {
+            try {
+                const ctx = new (window.AudioContext || window.webkitAudioContext)();
+                const osc = ctx.createOscillator();
+                const g = ctx.createGain();
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(880, ctx.currentTime); // 880Hz 音調
+                g.gain.setValueAtTime(0.3, ctx.currentTime);
+                osc.connect(g);
+                g.connect(ctx.destination);
+                osc.start();
+                osc.stop(ctx.currentTime + 0.3);
+                log("發出測試音效：如果您聽到聲響，代表喇叭硬體與瀏覽器正常！", 'success');
+            } catch (e) {
+                log("喇叭測試失敗: " + e.message, 'error');
+            }
+        }
+
+        /* ------------------ 7. LED VU 動態表繪製 ------------------ */
         const canvas = document.getElementById('visualizerCanvas');
         const ctx = canvas.getContext('2d');
 
-        function drawVisualizer() {
-            requestAnimationFrame(drawVisualizer);
+        function drawVU() {
+            requestAnimationFrame(drawVU);
             if (!analyser) {
                 ctx.clearRect(0, 0, canvas.width, canvas.height);
                 return;
@@ -881,128 +817,88 @@
             const dataArray = new Uint8Array(analyser.frequencyBinCount);
             analyser.getByteFrequencyData(dataArray);
 
-            ctx.fillStyle = '#0E0F10';
+            ctx.fillStyle = '#0B0C0D';
             ctx.fillRect(0, 0, canvas.width, canvas.height);
 
             let sum = 0;
             for (let i = 0; i < dataArray.length; i++) sum += dataArray[i];
-            const avg = sum / dataArray.length; // 0 ~ 255
+            const avg = sum / dataArray.length;
 
-            // 繪製 LED 柱段 (橫向多格立體表)
-            const numBars = 32;
-            const barWidth = (canvas.width / numBars) - 3;
-            const levelRatio = avg / 120; // 敏感度系數
+            const bars = 36;
+            const barWidth = (canvas.width / bars) - 2;
+            const levelRatio = avg / 128;
 
-            for (let i = 0; i < numBars; i++) {
-                const threshold = i / numBars;
-                let barColor = '#242528';
+            for (let i = 0; i < bars; i++) {
+                const threshold = i / bars;
+                let color = '#202226';
 
                 if (levelRatio > threshold) {
-                    if (threshold > 0.85) barColor = '#D94A43'; // 紅色過載峰值
-                    else if (threshold > 0.65) barColor = '#C5A059'; // 琥珀警戒
-                    else barColor = '#3EB370'; // 綠色正常
+                    if (threshold > 0.85) color = '#D94A43';
+                    else if (threshold > 0.6) color = '#C5A059';
+                    else color = '#3EB370';
                 }
 
-                ctx.fillStyle = barColor;
-                const barHeight = Math.min(canvas.height - 16, Math.max(8, (avg * 0.7)));
-                ctx.fillRect(i * (barWidth + 3) + 4, (canvas.height - barHeight) / 2, barWidth, barHeight);
+                ctx.fillStyle = color;
+                const h = Math.min(canvas.height - 10, Math.max(6, avg * 0.5));
+                ctx.fillRect(i * (barWidth + 2) + 2, (canvas.height - h) / 2, barWidth, h);
             }
         }
 
-        /* ------------------ 6. 操作邏輯與角色切換 ------------------ */
+        /* ------------------ 8. 角色切換與配對 ------------------ */
         function switchRole(role) {
-            if (isStreaming) stopBroadcaster();
+            if (localMicStream) stopBroadcasterMic();
             myRole = role;
 
-            btnRoleBroadcast.classList.remove('mode-active');
-            btnRoleReceiver.classList.remove('mode-active');
+            document.getElementById('btnRoleBroadcast').classList.toggle('mode-active', role === 'broadcaster');
+            document.getElementById('btnRoleReceiver').classList.toggle('mode-active', role === 'receiver');
             mainToggleBtn.className = 'big-push-btn';
 
             if (role === 'broadcaster') {
-                btnRoleBroadcast.classList.add('mode-active');
                 btnIconMic.style.display = 'block';
                 btnIconSpeaker.style.display = 'none';
                 mainBtnText.innerText = "開啟咪高風";
-                gainLabel.innerText = "咪增益 / MIC GAIN";
-                subHintText.innerText = "點擊上方按鈕開始超低延遲語音串流";
+                subHintText.innerText = "點擊開啟麥克風並廣播聲音";
             } else {
-                btnRoleReceiver.classList.add('mode-active');
                 btnIconMic.style.display = 'none';
                 btnIconSpeaker.style.display = 'block';
-                mainBtnText.innerText = "啟用音響播放";
-                gainLabel.innerText = "喇叭音量 / VOLUME";
-                subHintText.innerText = "點擊以允許瀏覽器播放音訊串流";
+                mainBtnText.innerText = "連接發射端";
+                subHintText.innerText = "點擊以允許播放來自發射端的聲音";
             }
-            updateURLParams();
+
+            updateURL();
+            initPeerNode();
         }
 
-        function handleMainAction() {
-            // 解除瀏覽器音訊限制
-            if (audioContext && audioContext.state === 'suspended') {
-                audioContext.resume();
-            }
-
-            if (myRole === 'broadcaster') {
-                if (!isStreaming) startBroadcaster();
-                else stopBroadcaster();
-            } else {
-                // 接收端點擊以解鎖音訊自動播放機制
-                if (!audioContext) {
-                    audioContext = new (window.AudioContext || window.webkitAudioContext)();
-                }
-                audioContext.resume().then(() => {
-                    mainBtnText.innerText = "音訊已就緒";
-                    subHintText.innerText = "已解鎖音響播放權限，正等待發射端傳送聲音...";
-                    sendSignal({ type: 'receiver-ready', from: myPeerId });
-                });
-            }
-        }
-
-        function updateURLParams() {
+        function updateURL() {
             roomCodeDisplay.innerText = currentRoomId;
             modalRoomNum.innerText = currentRoomId;
             const newUrl = `${window.location.origin}${window.location.pathname}?room=${currentRoomId}&role=${myRole}`;
             window.history.replaceState(null, '', newUrl);
         }
 
-        /* ------------------ 7. 配對彈窗與 QR Code ------------------ */
         const pairModal = document.getElementById('pairModal');
         const qrContainer = document.getElementById('qrContainer');
-
         function openPairModal() {
             pairModal.classList.add('active');
             qrContainer.innerHTML = '';
-
-            // 生成專門讓另一台手機直接以「接收」或「發射」配對的連結
-            const oppositeRole = (myRole === 'broadcaster') ? 'receiver' : 'broadcaster';
-            const targetUrl = `${window.location.origin}${window.location.pathname}?room=${currentRoomId}&role=${oppositeRole}`;
-
-            new QRCode(qrContainer, {
-                text: targetUrl,
-                width: 170,
-                height: 170,
-                colorDark: "#121315",
-                colorLight: "#FFFFFF",
-                correctLevel: QRCode.CorrectLevel.M
-            });
+            const opposite = (myRole === 'broadcaster') ? 'receiver' : 'broadcaster';
+            const url = `${window.location.origin}${window.location.pathname}?room=${currentRoomId}&role=${opposite}`;
+            new QRCode(qrContainer, { text: url, width: 160, height: 160, colorDark: "#101113", colorLight: "#FFF" });
         }
-
         function closePairModal() { pairModal.classList.remove('active'); }
         function closeModalOnBackdrop(e) { if (e.target === pairModal) closePairModal(); }
 
         function submitManualJoin() {
             const val = document.getElementById('inputJoinRoom').value.replace(/\D/g, '').trim();
-            if (val.length < 4) return alert("請輸入有效的房間號碼");
+            if (val.length < 4) return alert("請輸入正確房間號");
             currentRoomId = val;
-            updateURLParams();
+            updateURL();
             closePairModal();
-            initSignaling();
+            initPeerNode();
         }
 
-        // 啟動初始化
+        // 啟動
         switchRole(myRole);
-        updateURLParams();
-        initSignaling();
     </script>
 </body>
 </html>
